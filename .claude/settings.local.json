@@ -6,7 +6,8 @@
       "Bash(npm run lint)",
       "Bash(npm run test:*)",
       "Bash(del test-n8n.js)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(cmd /c:*)"
     ],
     "deny": [],
     "ask": []

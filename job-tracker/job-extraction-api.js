@@ -96,7 +96,9 @@ function makeRequest(url, options = {}) {
     });
     
     req.on('error', reject);
-    req.on('timeout', () => {
+    
+    // Set a proper timeout
+    req.setTimeout(options.timeout || 30000, () => {
       req.destroy();
       reject(new Error('Request timeout'));
     });
@@ -131,11 +133,16 @@ async function extractJobFromUrl(url) {
       throw new Error('Page content too short');
     }
     
-    // Try AI extraction first
-    console.log('🤖 Trying AI extraction...');
+    // Try AI extraction first with timeout
+    console.log('🤖 Trying AI extraction (15s timeout)...');
     try {
-      const aiResult = await extractWithOllama(html, url);
+      const aiResult = await Promise.race([
+        extractWithOllama(html, url),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('AI timeout after 15s')), 15000))
+      ]);
+      
       if (aiResult.success) {
+        console.log('✅ AI extraction successful!');
         return aiResult;
       }
     } catch (aiError) {
@@ -156,67 +163,64 @@ async function extractJobFromUrl(url) {
   }
 }
 
-// AI extraction using Ollama with better prompting
+// AI extraction using Ollama with better prompting and faster processing
 async function extractWithOllama(html, url) {
-  // Clean HTML first
+  console.log('🧠 Preparing AI prompt...');
+  
+  // Clean HTML first and use less context for speed
   const cleanedHtml = html
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<[^>]*>/g, ' ')
     .replace(/\s+/g, ' ')
-    .substring(0, 4000); // Use more context
+    .substring(0, 2000); // Reduced context for speed
 
-  const prompt = `You are a job data extractor. Extract job information from this text.
+  console.log(`📝 Text length: ${cleanedHtml.length} characters`);
 
-TEXT: ${cleanedHtml}
-URL: ${url}
+  const prompt = `Extract job info as JSON from this text:
 
-Extract and return ONLY a JSON object with exactly these fields:
-{
-  "title": "exact job title only",
-  "company": "company name only",
-  "location": "city, country or Remote",
-  "salary": "salary range or null",
-  "employmentType": "full-time or part-time or contract or internship",
-  "remotePolicy": "remote or hybrid or on-site",
-  "description": "2-3 sentence summary of the job"
-}
+${cleanedHtml}
 
-Rules:
-- Return ONLY the JSON, no other text
-- Use null for missing fields
-- Keep values short and clean
-- No explanations, just the JSON`;
+Return ONLY:
+{"title":"","company":"","location":"","salary":"","employmentType":"","remotePolicy":"","description":""}`;
 
+  console.log('🚀 Sending request to Ollama...');
+  
   const ollamaResponse = await makeRequest(`${OLLAMA_URL}/api/generate`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'llama3.2:3b', // Use the better model now available
+      model: 'llama3.2:1b', // Use faster 1b model
       prompt: prompt,
       stream: false,
       options: {
-        temperature: 0.1, // Low temperature for consistency
-        num_predict: 500, // Limit response length
-        timeout: 30000    // 30 second timeout
+        temperature: 0,
+        num_predict: 300,
+        stop: ["\n\n", "```"]
       }
-    })
+    }),
+    timeout: 12000 // 12 second timeout
   });
   
   if (!ollamaResponse.ok) {
     throw new Error('Ollama API request failed');
   }
   
+  console.log('📥 Parsing Ollama response...');
   const ollamaResult = await ollamaResponse.json();
   const aiText = ollamaResult.response;
+  
+  console.log('🔍 AI Response preview:', aiText.substring(0, 200) + '...');
   
   // Try to parse JSON from AI response
   const jsonMatch = aiText.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
+    console.log('✅ Found JSON in response, parsing...');
     const jobData = JSON.parse(jsonMatch[0]);
     
+    console.log('🎯 AI extraction completed successfully!');
     return {
       success: true,
       data: {
@@ -228,6 +232,7 @@ Rules:
       error: null
     };
   } else {
+    console.log('❌ No JSON found in AI response');
     throw new Error('Could not find JSON in AI response');
   }
 }

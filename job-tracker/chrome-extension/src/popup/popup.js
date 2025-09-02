@@ -104,7 +104,7 @@ async function loadStats() {
 function setupEventListeners() {
   let currentJobData = null;
 
-  // Extract button - Extract job data using n8n workflow
+  // Extract button - Extract AND auto-save job data
   extractBtn?.addEventListener('click', async () => {
     extractBtn.disabled = true;
     extractBtn.innerHTML = `

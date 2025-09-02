@@ -1,7 +1,7 @@
 // Popup JavaScript
 
 const API_BASE_URL = 'http://localhost:3000';
-const N8N_WEBHOOK_URL = 'http://localhost:5678/webhook/extract-job';
+const EXTRACTION_API_URL = 'http://localhost:5679/extract-job';
 
 // DOM Elements
 const statusIndicator = document.getElementById('statusIndicator');
@@ -119,8 +119,8 @@ function setupEventListeners() {
       // Get current tab URL
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       
-      // Call n8n webhook with the URL
-      const response = await fetch(N8N_WEBHOOK_URL, {
+      // Call job extraction API with the URL
+      const response = await fetch(EXTRACTION_API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -132,10 +132,10 @@ function setupEventListeners() {
       
       if (response.ok) {
         const responseText = await response.text();
-        console.log('n8n webhook response:', responseText);
+        console.log('Job extraction API response:', responseText);
         
         if (!responseText.trim()) {
-          throw new Error('Empty response from n8n webhook');
+          throw new Error('Empty response from job extraction API');
         }
         
         const result = JSON.parse(responseText);
@@ -161,7 +161,7 @@ function setupEventListeners() {
           throw new Error(result.error || 'Failed to extract job data');
         }
       } else {
-        throw new Error('n8n webhook request failed');
+        throw new Error('Job extraction API request failed');
       }
       
     } catch (error) {
@@ -274,6 +274,7 @@ function setupEventListeners() {
             saveBtn.disabled = false;
           }, 2000);
         } else {
+          const errorMsg = response?.error || 'Failed to save';
           saveBtn.innerHTML = `
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
@@ -282,7 +283,14 @@ function setupEventListeners() {
             </svg>
             Failed
           `;
-          console.error('Failed to save job:', response?.error);
+          console.error('Failed to save job:', errorMsg);
+          
+          // Show auth error specifically
+          if (errorMsg.includes('Not authenticated') || errorMsg.includes('401')) {
+            alert('Please sign in to your Job Tracker first at http://localhost:3000');
+            chrome.tabs.create({ url: `${API_BASE_URL}/auth/signin` });
+          }
+          
           saveBtn.disabled = false;
         }
       });

@@ -32,12 +32,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Save job to database via API
 async function saveJobToDatabase(jobData) {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/jobs`, {
+    // Use public endpoint that doesn't require auth (for development)
+    const response = await fetch(`${API_BASE_URL}/api/jobs/public`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      credentials: 'include',
       body: JSON.stringify(jobData)
     });
     

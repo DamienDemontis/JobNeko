@@ -157,6 +157,21 @@ body {
   background: #f0f0f0;
 }
 
+.btn-success {
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  color: white;
+}
+
+.btn-success:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
 /* Stats Section */
 .stats-grid {
   display: grid;
@@ -268,4 +283,43 @@ body {
 
 .footer-link:hover {
   color: #667eea;
+}
+
+/* Extract Status */
+.extract-status {
+  margin: 12px 0;
+}
+
+.extract-status.hidden {
+  display: none;
+}
+
+.extracted-job {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.job-info {
+  margin-bottom: 8px;
+}
+
+.job-info h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 4px 0;
+  color: #333;
+}
+
+.job-info p {
+  font-size: 12px;
+  color: #666;
+  margin: 2px 0;
+}
+
+.job-actions {
+  display: flex;
+  justify-content: flex-end;
 }

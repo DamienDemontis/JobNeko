@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # n8n - Workflow Automation
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: job-tracker-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=password123
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=America/New_York
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/custom-nodes:/home/node/.n8n/custom
+    networks:
+      - job-tracker-network
+    depends_on:
+      - ollama
+
+  # Ollama - Local AI Models
+  ollama:
+    image: ollama/ollama:latest
+    container_name: job-tracker-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - job-tracker-network
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+
+  # Redis for n8n caching (optional but recommended)
+  redis:
+    image: redis:7-alpine
+    container_name: job-tracker-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - job-tracker-network
+
+volumes:
+  n8n_data:
+  ollama_data:
+  redis_data:
+
+networks:
+  job-tracker-network:
+    driver: bridge

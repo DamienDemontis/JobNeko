@@ -1,0 +1,92 @@
+{
+  "name": "Simple Job Data Extraction",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "extract-job",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-node",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "job-extraction-webhook"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "http-request",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simple fallback extraction\nconst url = $('Webhook').first().json.url;\nconst html = $input.first().json.data;\n\nif (!html || html.length < 100) {\n  return {\n    success: false,\n    error: 'Page content too short or empty',\n    data: null\n  };\n}\n\n// Extract title from page title or h1\nconst titleMatch = html.match(/<title[^>]*>([^<]+)<\\/title>/i) || html.match(/<h1[^>]*>([^<]+)<\\/h1>/i);\nconst title = titleMatch ? titleMatch[1].trim().replace(/\\s+/g, ' ') : 'Job Title Not Found';\n\n// Extract company from domain or meta tags\nlet company = 'Unknown Company';\nconst urlObj = new URL(url);\nconst domain = urlObj.hostname.replace('www.', '');\ncompany = domain.split('.')[0];\ncompany = company.charAt(0).toUpperCase() + company.slice(1);\n\n// Extract location hints\nconst locationKeywords = ['seoul', 'busan', 'korea', 'remote', 'hybrid'];\nlet location = 'Location not specified';\nfor (const keyword of locationKeywords) {\n  if (html.toLowerCase().includes(keyword)) {\n    location = keyword.charAt(0).toUpperCase() + keyword.slice(1);\n    break;\n  }\n}\n\n// Create job data\nconst jobData = {\n  title: title.length > 100 ? title.substring(0, 100) + '...' : title,\n  company: company,\n  location: location,\n  salary: null,\n  employmentType: 'full-time',\n  remotePolicy: html.toLowerCase().includes('remote') ? 'remote' : 'on-site',\n  description: html.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').substring(0, 300) + '...',\n  url: url,\n  extractedAt: new Date().toISOString(),\n  source: 'n8n-simple-extraction'\n};\n\nreturn {\n  success: true,\n  data: jobData,\n  error: null\n};"
+      },
+      "id": "code-node",
+      "name": "Code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "response-node",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

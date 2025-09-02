@@ -24,15 +24,32 @@
         </div>
         
         <div class="quick-save-section">
-          <h2>Quick Save</h2>
-          <p class="info-text">Click "Save Job" on any job listing page to save it to your tracker.</p>
+          <h2>Extract & Save Job</h2>
+          <div id="extractStatus" class="extract-status hidden">
+            <div class="extracted-job">
+              <div class="job-info">
+                <h3 id="jobTitle">-</h3>
+                <p id="jobCompany">-</p>
+                <p id="jobLocation">-</p>
+              </div>
+              <div class="job-actions">
+                <button id="saveBtn" class="btn btn-success btn-small">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17 21 17 13 7 13 7 21"/>
+                    <polyline points="7 3 7 8 15 8"/>
+                  </svg>
+                  Save Job
+                </button>
+              </div>
+            </div>
+          </div>
+          <p class="info-text">Visit a job listing page and click extract to save it to your tracker.</p>
           <button id="extractBtn" class="btn btn-primary">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-              <polyline points="17 21 17 13 7 13 7 21"/>
-              <polyline points="7 3 7 8 15 8"/>
+              <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
             </svg>
-            Extract Current Page
+            Extract Job Data
           </button>
         </div>
         

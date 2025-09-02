@@ -1,6 +1,7 @@
 // Popup JavaScript
 
 const API_BASE_URL = 'http://localhost:3000';
+const N8N_WEBHOOK_URL = 'http://localhost:5678/webhook/extract-job';
 
 // DOM Elements
 const statusIndicator = document.getElementById('statusIndicator');
@@ -16,6 +17,11 @@ const totalJobs = document.getElementById('totalJobs');
 const appliedJobs = document.getElementById('appliedJobs');
 
 const extractBtn = document.getElementById('extractBtn');
+const saveBtn = document.getElementById('saveBtn');
+const extractStatus = document.getElementById('extractStatus');
+const jobTitle = document.getElementById('jobTitle');
+const jobCompany = document.getElementById('jobCompany');
+const jobLocation = document.getElementById('jobLocation');
 const dashboardLink = document.getElementById('dashboardLink');
 const signOutBtn = document.getElementById('signOutBtn');
 const signInBtn = document.getElementById('signInBtn');
@@ -66,12 +72,19 @@ function showUnauthenticatedView() {
 // Load user data
 async function loadUserData() {
   try {
-    const cookies = await chrome.cookies.getAll({ url: API_BASE_URL });
-    // In a real implementation, you would decode the JWT token or make an API call
-    // For now, we'll just show a placeholder
-    userEmail.textContent = 'user@example.com';
+    const response = await fetch(`${API_BASE_URL}/api/auth/status`, {
+      credentials: 'include'
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      userEmail.textContent = data.user.email;
+    } else {
+      userEmail.textContent = 'user@example.com';
+    }
   } catch (error) {
     console.error('Error loading user data:', error);
+    userEmail.textContent = 'user@example.com';
   }
 }
 
@@ -89,49 +102,201 @@ async function loadStats() {
 
 // Set up event listeners
 function setupEventListeners() {
-  // Extract button
+  let currentJobData = null;
+
+  // Extract button - Extract job data using n8n workflow
   extractBtn?.addEventListener('click', async () => {
     extractBtn.disabled = true;
-    extractBtn.textContent = 'Extracting...';
+    extractBtn.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 6v6l4 2"/>
+      </svg>
+      Extracting...
+    `;
     
     try {
-      // Get current tab
+      // Get current tab URL
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       
-      // Send message to content script
-      chrome.tabs.sendMessage(tab.id, { action: 'extractAndSave' }, response => {
-        if (response && response.success) {
-          extractBtn.textContent = 'Extracted!';
-          setTimeout(() => {
+      // Call n8n webhook with the URL
+      const response = await fetch(N8N_WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          url: tab.url
+        })
+      });
+      
+      if (response.ok) {
+        const responseText = await response.text();
+        console.log('n8n webhook response:', responseText);
+        
+        if (!responseText.trim()) {
+          throw new Error('Empty response from n8n webhook');
+        }
+        
+        const result = JSON.parse(responseText);
+        
+        if (result.success && result.data) {
+          currentJobData = result.data;
+          
+          // Show extracted job data
+          jobTitle.textContent = currentJobData.title || 'Title not found';
+          jobCompany.textContent = currentJobData.company || 'Company not found';
+          jobLocation.textContent = currentJobData.location || 'Location not specified';
+          extractStatus.classList.remove('hidden');
+          
+          // Reset extract button
+          extractBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Job Extracted
+          `;
+          extractBtn.disabled = false;
+        } else {
+          throw new Error(result.error || 'Failed to extract job data');
+        }
+      } else {
+        throw new Error('n8n webhook request failed');
+      }
+      
+    } catch (error) {
+      console.error('Error extracting job:', error);
+      
+      // Fallback to content script extraction
+      try {
+        chrome.tabs.sendMessage(tab.id, { action: 'extractJobData' }, response => {
+          if (response && response.success && response.data) {
+            currentJobData = response.data;
+            
+            // Show extracted job data
+            jobTitle.textContent = currentJobData.title;
+            jobCompany.textContent = currentJobData.company;
+            jobLocation.textContent = currentJobData.location || 'Location not specified';
+            extractStatus.classList.remove('hidden');
+            
+            // Reset extract button with fallback indicator
             extractBtn.innerHTML = `
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              Job Extracted (Fallback)
+            `;
+            extractBtn.disabled = false;
+          } else {
+            // Show error state
+            extractBtn.innerHTML = `
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="15" y1="9" x2="9" y2="15"/>
+                <line x1="9" y1="9" x2="15" y2="15"/>
+              </svg>
+              No Job Found
+            `;
+            
+            setTimeout(() => {
+              extractBtn.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                Extract Job Data
+              `;
+              extractBtn.disabled = false;
+            }, 2000);
+          }
+        });
+      } catch (fallbackError) {
+        extractBtn.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="15" y1="9" x2="9" y2="15"/>
+            <line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+          Error
+        `;
+        extractBtn.disabled = false;
+      }
+    }
+  });
+
+  // Save button - Save the extracted job data
+  saveBtn?.addEventListener('click', async () => {
+    if (!currentJobData) return;
+    
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 6v6l4 2"/>
+      </svg>
+      Saving...
+    `;
+    
+    try {
+      // Save job via background script
+      chrome.runtime.sendMessage({ 
+        action: 'saveJob', 
+        data: currentJobData 
+      }, response => {
+        if (response && response.success) {
+          saveBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Saved!
+          `;
+          
+          // Update stats
+          loadStats();
+          
+          // Reset after delay
+          setTimeout(() => {
+            extractStatus.classList.add('hidden');
+            currentJobData = null;
+            extractBtn.innerHTML = `
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              Extract Job Data
+            `;
+            saveBtn.innerHTML = `
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
                 <polyline points="17 21 17 13 7 13 7 21"/>
                 <polyline points="7 3 7 8 15 8"/>
               </svg>
-              Extract Current Page
+              Save Job
             `;
-            extractBtn.disabled = false;
+            saveBtn.disabled = false;
           }, 2000);
         } else {
-          extractBtn.textContent = 'No job found';
-          setTimeout(() => {
-            extractBtn.innerHTML = `
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                <polyline points="17 21 17 13 7 13 7 21"/>
-                <polyline points="7 3 7 8 15 8"/>
-              </svg>
-              Extract Current Page
-            `;
-            extractBtn.disabled = false;
-          }, 2000);
+          saveBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            Failed
+          `;
+          console.error('Failed to save job:', response?.error);
+          saveBtn.disabled = false;
         }
       });
     } catch (error) {
-      console.error('Error extracting job:', error);
-      extractBtn.textContent = 'Error';
-      extractBtn.disabled = false;
+      console.error('Error saving job:', error);
+      saveBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="15" y1="9" x2="9" y2="15"/>
+          <line x1="9" y1="9" x2="15" y2="15"/>
+        </svg>
+        Error
+      `;
+      saveBtn.disabled = false;
     }
   });
   

@@ -32,23 +32,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Save job to database via API
 async function saveJobToDatabase(jobData) {
   try {
-    const cookies = await chrome.cookies.getAll({ url: API_BASE_URL });
-    const authCookie = cookies.find(c => c.name.includes('supabase-auth-token'));
-    
-    if (!authCookie) {
-      throw new Error('Not authenticated. Please sign in first.');
-    }
-    
     const response = await fetch(`${API_BASE_URL}/api/jobs`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Cookie': cookies.map(c => `${c.name}=${c.value}`).join('; ')
       },
+      credentials: 'include',
       body: JSON.stringify(jobData)
     });
     
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Not authenticated. Please sign in first.');
+      }
       throw new Error(`Failed to save job: ${response.statusText}`);
     }
     
@@ -62,9 +58,13 @@ async function saveJobToDatabase(jobData) {
 // Check authentication status
 async function checkAuthStatus() {
   try {
-    const cookies = await chrome.cookies.getAll({ url: API_BASE_URL });
-    const authCookie = cookies.find(c => c.name.includes('supabase-auth-token'));
-    return !!authCookie;
+    // Check if user is authenticated by making a test API call
+    const response = await fetch(`${API_BASE_URL}/api/auth/status`, {
+      method: 'GET',
+      credentials: 'include',
+    });
+    
+    return response.ok;
   } catch (error) {
     console.error('Error checking auth status:', error);
     return false;

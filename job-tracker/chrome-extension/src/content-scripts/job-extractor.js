@@ -1,9 +1,6 @@
-// Job Extractor Content Script
+// Job Extractor Content Script - Extract Only Mode
 
 (() => {
-  let saveButton = null;
-  let currentJobData = null;
-
   // Site-specific extractors
   const extractors = {
     indeed: {
@@ -118,16 +115,166 @@
     return null;
   }
 
+  // Generic AI-powered extraction for unknown sites
+  function extractGenericJobData() {
+    try {
+      const data = {};
+      
+      // Try to find job title using common patterns
+      const titleSelectors = [
+        'h1', 'h2', 'h3',
+        '[class*="title"]', '[class*="job"]', '[class*="position"]',
+        '[id*="title"]', '[id*="job"]', '[id*="position"]',
+        '.job-title', '.position-title', '.post-title'
+      ];
+      
+      // First pass - look for job-related keywords
+      const jobKeywords = ['developer', 'engineer', 'manager', 'analyst', 'designer', 'specialist', 'coordinator', 'director', 'lead', 'senior', 'junior', 'intern', 'programmer', 'architect', 'consultant', 'administrator', 'technician'];
+      
+      for (const selector of titleSelectors) {
+        const elements = document.querySelectorAll(selector);
+        for (const element of elements) {
+          const text = element.textContent?.trim();
+          if (text && text.length > 5 && text.length < 100) {
+            if (jobKeywords.some(keyword => text.toLowerCase().includes(keyword))) {
+              data.title = text;
+              break;
+            }
+          }
+        }
+        if (data.title) break;
+      }
+      
+      // Second pass - if no job-related title found, use the main heading
+      if (!data.title) {
+        const mainHeading = document.querySelector('h1');
+        if (mainHeading) {
+          const text = mainHeading.textContent?.trim();
+          if (text && text.length > 3 && text.length < 150) {
+            data.title = text;
+          }
+        }
+      }
+      
+      // Try to find company name
+      const companySelectors = [
+        '[class*="company"]', '[class*="employer"]', '[class*="organization"]',
+        '[id*="company"]', '[id*="employer"]', 
+        '.company-name', '.employer-name', '.org-name',
+        'meta[property="og:site_name"]', 'meta[name="author"]'
+      ];
+      
+      for (const selector of companySelectors) {
+        let text = null;
+        const element = document.querySelector(selector);
+        
+        if (element && element.tagName === 'META') {
+          text = element.getAttribute('content')?.trim();
+        } else {
+          text = element?.textContent?.trim();
+        }
+        
+        if (text && text.length > 1 && text.length < 50) {
+          data.company = text;
+          break;
+        }
+      }
+      
+      // Fallback - try to extract from domain name
+      if (!data.company) {
+        const hostname = window.location.hostname;
+        const domainParts = hostname.split('.');
+        let domainName = domainParts[domainParts.length - 2]; // get the main domain part
+        
+        if (domainName && domainName !== 'www') {
+          // Clean up and capitalize
+          domainName = domainName.replace(/[-_]/g, ' ');
+          domainName = domainName.charAt(0).toUpperCase() + domainName.slice(1);
+          data.company = domainName;
+        }
+      }
+      
+      // Try to find location
+      const locationSelectors = [
+        '[class*="location"]', '[class*="city"]', '[class*="address"]',
+        '[id*="location"]', '[id*="city"]',
+        '.location', '.city', '.address'
+      ];
+      
+      for (const selector of locationSelectors) {
+        const element = document.querySelector(selector);
+        const text = element?.textContent?.trim();
+        if (text && text.length > 2 && text.length < 100) {
+          data.location = text;
+          break;
+        }
+      }
+      
+      // Get page description - try to find the main content
+      const descriptionSelectors = [
+        '[class*="description"]', '[class*="content"]', '[class*="detail"]',
+        '[id*="description"]', '[id*="content"]',
+        '.description', '.content', '.job-description', '.post-content'
+      ];
+      
+      for (const selector of descriptionSelectors) {
+        const element = document.querySelector(selector);
+        const text = element?.textContent?.trim();
+        if (text && text.length > 50) {
+          data.description = text.substring(0, 1000); // Limit description length
+          break;
+        }
+      }
+      
+      // If no specific description found, get the main content of the page
+      if (!data.description) {
+        const mainContent = document.querySelector('main') || document.querySelector('article') || document.querySelector('.main-content') || document.body;
+        const text = mainContent?.textContent?.trim();
+        if (text && text.length > 100) {
+          data.description = text.substring(0, 1000);
+        }
+      }
+      
+      // Set current URL
+      data.url = window.location.href;
+      
+      return data;
+    } catch (error) {
+      console.error('Error in generic extraction:', error);
+      return null;
+    }
+  }
+
   // Extract job data from the current page
   function extractJobData() {
     const extractor = getExtractor();
-    if (!extractor) {
-      console.log('No extractor found for this site');
+    let data = null;
+    
+    if (extractor) {
+      // Use site-specific extractor
+      try {
+        data = extractor.extract();
+      } catch (error) {
+        console.error('Site-specific extraction failed:', error);
+      }
+    }
+    
+    // If no site-specific extractor or it failed, try generic extraction
+    if (!data || !data.title || !data.company) {
+      console.log('Trying generic extraction...');
+      data = extractGenericJobData();
+    }
+    
+    if (!data) {
+      console.log('No job data could be extracted');
       return null;
     }
     
-    try {
-      const data = extractor.extract();
+    // Validate that we have essential data
+    if (!data.title || !data.company) {
+      console.log('Missing essential job data (title or company)');
+      return null;
+    }
       
       // Parse salary if present
       if (data.salary) {
@@ -169,129 +316,13 @@
     }
   }
 
-  // Create save button
-  function createSaveButton() {
-    if (saveButton) return;
-    
-    saveButton = document.createElement('button');
-    saveButton.id = 'job-tracker-save-btn';
-    saveButton.innerHTML = `
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-        <polyline points="17 21 17 13 7 13 7 21"/>
-        <polyline points="7 3 7 8 15 8"/>
-      </svg>
-      <span>Save Job</span>
-    `;
-    saveButton.className = 'job-tracker-save-btn';
-    
-    saveButton.addEventListener('click', handleSaveClick);
-    document.body.appendChild(saveButton);
-  }
-
-  // Handle save button click
-  async function handleSaveClick() {
-    if (!currentJobData) {
-      currentJobData = extractJobData();
-    }
-    
-    if (!currentJobData) {
-      showNotification('Unable to extract job data from this page', 'error');
-      return;
-    }
-    
-    // Check authentication
-    chrome.runtime.sendMessage({ action: 'getAuthStatus' }, response => {
-      if (!response.isAuthenticated) {
-        if (confirm('You need to sign in to save jobs. Open sign in page?')) {
-          chrome.runtime.sendMessage({ action: 'openAuthTab' });
-        }
-        return;
-      }
-      
-      // Save the job
-      saveButton.disabled = true;
-      saveButton.innerHTML = '<span>Saving...</span>';
-      
-      chrome.runtime.sendMessage({ 
-        action: 'saveJob', 
-        data: currentJobData 
-      }, response => {
-        if (response.success) {
-          showNotification('Job saved successfully!', 'success');
-          saveButton.innerHTML = `
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-            <span>Saved</span>
-          `;
-        } else {
-          showNotification('Failed to save job: ' + response.error, 'error');
-          saveButton.disabled = false;
-          saveButton.innerHTML = `
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-              <polyline points="17 21 17 13 7 13 7 21"/>
-              <polyline points="7 3 7 8 15 8"/>
-            </svg>
-            <span>Save Job</span>
-          `;
-        }
-      });
-    });
-  }
-
-  // Show notification
-  function showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    notification.className = `job-tracker-notification job-tracker-notification-${type}`;
-    notification.textContent = message;
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-      notification.classList.add('job-tracker-notification-show');
-    }, 10);
-    
-    setTimeout(() => {
-      notification.classList.remove('job-tracker-notification-show');
-      setTimeout(() => notification.remove(), 300);
-    }, 3000);
-  }
-
-  // Check if current page is a job listing
-  function checkForJobListing() {
-    const extractor = getExtractor();
-    if (extractor) {
-      // Try to extract job data
-      currentJobData = extractJobData();
-      if (currentJobData && currentJobData.title) {
-        createSaveButton();
-      }
-    }
-  }
-
-  // Listen for messages from background script
+  // Listen for messages from popup
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'checkForJobListing') {
-      checkForJobListing();
+    if (request.action === 'extractJobData') {
+      const jobData = extractJobData();
+      sendResponse({ success: !!jobData, data: jobData });
     }
   });
 
-  // Initialize when page loads
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', checkForJobListing);
-  } else {
-    // Delay to ensure page content is loaded
-    setTimeout(checkForJobListing, 1000);
-  }
-  
-  // Also check when URL changes (for SPAs)
-  let lastUrl = location.href;
-  new MutationObserver(() => {
-    const url = location.href;
-    if (url !== lastUrl) {
-      lastUrl = url;
-      setTimeout(checkForJobListing, 1000);
-    }
-  }).observe(document, { subtree: true, childList: true });
+  console.log('Job Tracker: Content script loaded for', window.location.hostname);
 })();

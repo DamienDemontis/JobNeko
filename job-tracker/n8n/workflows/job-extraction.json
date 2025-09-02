@@ -1,0 +1,255 @@
+{
+  "name": "Job Data Extraction Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "extract-job",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "job-extraction-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headers": {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        },
+        "options": {
+          "timeout": 30000,
+          "followRedirect": true,
+          "followAllRedirects": true
+        }
+      },
+      "id": "fetch-page",
+      "name": "Fetch Job Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 180]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:3b",
+        "prompt": "=You are a job data extraction expert. Extract structured job information from the following HTML content.\n\nHTML Content:\n{{ $json.data }}\n\nPage URL: {{ $('Webhook Trigger').first().json.url }}\n\nExtract the following information in JSON format:\n{\n  \"title\": \"exact job title\",\n  \"company\": \"company name\",\n  \"location\": \"job location (city, state/country)\",\n  \"salary\": \"salary range if mentioned\",\n  \"employmentType\": \"full-time/part-time/contract/internship\",\n  \"remotePolicy\": \"remote/hybrid/on-site\",\n  \"description\": \"job description summary (max 500 words)\",\n  \"requirements\": \"key requirements and qualifications\",\n  \"benefits\": \"benefits and perks if mentioned\",\n  \"url\": \"{{ $('Webhook Trigger').first().json.url }}\"\n}\n\nRules:\n1. If information is not available, use empty string \"\" or null\n2. For employment type, default to \"full-time\" if unclear\n3. For remote policy, default to \"on-site\" if unclear\n4. Extract only factual information from the HTML\n5. Keep descriptions concise but informative\n6. Return ONLY the JSON object, no other text",
+        "options": {
+          "temperature": 0.1,
+          "maxTokens": 2000
+        }
+      },
+      "id": "extract-with-ai",
+      "name": "Extract with AI",
+      "type": "n8n-nodes-base.ollama",
+      "typeVersion": 1,
+      "position": [900, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI response and clean up the JSON\nconst aiResponse = $input.first().json.response;\n\ntry {\n  // Clean up the response - remove any markdown formatting\n  let cleanResponse = aiResponse.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  \n  // Try to parse the JSON\n  const jobData = JSON.parse(cleanResponse);\n  \n  // Validate required fields\n  if (!jobData.title || !jobData.company) {\n    return {\n      success: false,\n      error: 'Missing required fields: title or company',\n      data: null\n    };\n  }\n  \n  // Add metadata\n  jobData.extractedAt = new Date().toISOString();\n  jobData.source = 'n8n-ai-extraction';\n  \n  // Clean up empty strings\n  Object.keys(jobData).forEach(key => {\n    if (jobData[key] === '') {\n      jobData[key] = null;\n    }\n  });\n  \n  return {\n    success: true,\n    data: jobData,\n    error: null\n  };\n  \n} catch (error) {\n  return {\n    success: false,\n    error: 'Failed to parse AI response: ' + error.message,\n    data: null,\n    rawResponse: aiResponse\n  };\n}"
+      },
+      "id": "process-result",
+      "name": "Process AI Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fallback extraction using basic HTML parsing\nconst url = $('Webhook Trigger').first().json.url;\nconst html = $('Fetch Job Page').first().json.data;\n\n// Create a basic DOM parser simulation\nfunction extractTextContent(html, selectors) {\n  for (const selector of selectors) {\n    const regex = new RegExp(`<[^>]*class=['\"]?[^'\"]*${selector}[^'\"]*['\"]?[^>]*>([^<]*)</`, 'i');\n    const match = html.match(regex);\n    if (match && match[1].trim()) {\n      return match[1].trim();\n    }\n  }\n  return null;\n}\n\nfunction extractByPattern(html, patterns) {\n  for (const pattern of patterns) {\n    const match = html.match(pattern);\n    if (match && match[1]) {\n      return match[1].trim();\n    }\n  }\n  return null;\n}\n\n// Extract title\nconst titlePatterns = [\n  /<h1[^>]*>([^<]+)</i,\n  /<title>([^<]+)</i,\n  /class=['\"]?[^'\"]*title[^'\"]*['\"]?[^>]*>([^<]+)</i\n];\nconst title = extractByPattern(html, titlePatterns);\n\n// Extract company from domain if not found\nlet company = extractTextContent(html, ['company', 'employer', 'organization']);\nif (!company) {\n  const urlObj = new URL(url);\n  const domain = urlObj.hostname.replace('www.', '');\n  company = domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1);\n}\n\n// Extract location\nconst location = extractTextContent(html, ['location', 'city', 'address']) || 'Location not specified';\n\n// Extract basic job info\nconst description = html.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').substring(0, 500);\n\nconst fallbackData = {\n  title: title || 'Job Title Not Found',\n  company: company || 'Company Not Found',\n  location: location,\n  salary: null,\n  employmentType: 'full-time',\n  remotePolicy: 'on-site',\n  description: description,\n  requirements: null,\n  benefits: null,\n  url: url,\n  extractedAt: new Date().toISOString(),\n  source: 'n8n-fallback-extraction'\n};\n\nreturn {\n  success: true,\n  data: fallbackData,\n  error: null,\n  note: 'Used fallback extraction method'\n};"
+      },
+      "id": "fallback-extraction",
+      "name": "Fallback Extraction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,\n      "position": [900, 420]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },\n          "conditions": [
+            {
+              "leftValue": "={{ $json.success }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-ai-success",
+      "name": "Check AI Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "fallback-response",
+      "name": "Fallback Response", 
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1560, 420]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": false,\n  \"error\": \"Invalid URL provided\",\n  \"data\": null\n}"
+      },
+      "id": "error-response",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [680, 420]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Fetch Job Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Job Page": {
+      "main": [
+        [
+          {
+            "node": "Extract with AI",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fallback Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract with AI": {
+      "main": [
+        [
+          {
+            "node": "Process AI Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process AI Result": {
+      "main": [
+        [
+          {
+            "node": "Check AI Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check AI Success": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fallback Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "job-extraction-workflow",
+  "tags": []
+}

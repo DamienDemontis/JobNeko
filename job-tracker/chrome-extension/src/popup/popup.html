@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Tracker</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header class="popup-header">
+      <h1>Job Tracker</h1>
+      <div class="status-indicator" id="statusIndicator">
+        <span class="status-dot"></span>
+        <span class="status-text">Checking...</span>
+      </div>
+    </header>
+    
+    <main class="popup-content">
+      <!-- Authenticated View -->
+      <div id="authenticatedView" class="view hidden">
+        <div class="user-info">
+          <p class="user-email" id="userEmail"></p>
+        </div>
+        
+        <div class="quick-save-section">
+          <h2>Quick Save</h2>
+          <p class="info-text">Click "Save Job" on any job listing page to save it to your tracker.</p>
+          <button id="extractBtn" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            Extract Current Page
+          </button>
+        </div>
+        
+        <div class="stats-section">
+          <h2>Your Stats</h2>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <span class="stat-value" id="totalJobs">0</span>
+              <span class="stat-label">Total Jobs</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" id="appliedJobs">0</span>
+              <span class="stat-label">Applied</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="actions-section">
+          <a href="#" id="dashboardLink" class="btn btn-secondary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="7" height="7"/>
+              <rect x="14" y="3" width="7" height="7"/>
+              <rect x="14" y="14" width="7" height="7"/>
+              <rect x="3" y="14" width="7" height="7"/>
+            </svg>
+            Open Dashboard
+          </a>
+          <button id="signOutBtn" class="btn btn-ghost">Sign Out</button>
+        </div>
+      </div>
+      
+      <!-- Unauthenticated View -->
+      <div id="unauthenticatedView" class="view hidden">
+        <div class="auth-prompt">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="auth-icon">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+          <h2>Sign In Required</h2>
+          <p>Please sign in to your Job Tracker account to save and manage job listings.</p>
+          <button id="signInBtn" class="btn btn-primary">
+            Sign In
+          </button>
+          <a href="#" id="signUpLink" class="link">Don't have an account? Sign up</a>
+        </div>
+      </div>
+      
+      <!-- Loading View -->
+      <div id="loadingView" class="view">
+        <div class="loader">
+          <div class="loader-spinner"></div>
+        </div>
+      </div>
+    </main>
+    
+    <footer class="popup-footer">
+      <a href="#" id="settingsLink" class="footer-link">Settings</a>
+      <a href="#" id="helpLink" class="footer-link">Help</a>
+    </footer>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

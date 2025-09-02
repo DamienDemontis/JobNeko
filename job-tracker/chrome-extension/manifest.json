@@ -1,0 +1,66 @@
+{
+  "manifest_version": 3,
+  "name": "Job Tracker Extension",
+  "version": "1.0.0",
+  "description": "Save job postings directly from job sites to your Job Tracker platform",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "cookies"
+  ],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "https://*.indeed.com/*",
+    "https://*.linkedin.com/*",
+    "https://*.glassdoor.com/*",
+    "https://*.monster.com/*",
+    "https://*.ziprecruiter.com/*",
+    "https://*.dice.com/*",
+    "https://*.angellist.com/*",
+    "https://*.wellfound.com/*",
+    "https://*.remote.co/*",
+    "https://*.remoteok.io/*",
+    "https://*.flexjobs.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.indeed.com/*",
+        "https://*.linkedin.com/*",
+        "https://*.glassdoor.com/*",
+        "https://*.monster.com/*",
+        "https://*.ziprecruiter.com/*",
+        "https://*.dice.com/*",
+        "https://*.angellist.com/*",
+        "https://*.wellfound.com/*",
+        "https://*.remote.co/*",
+        "https://*.remoteok.io/*",
+        "https://*.flexjobs.com/*"
+      ],
+      "js": ["src/content-scripts/job-extractor.js"],
+      "css": ["src/content-scripts/styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "public/icons/icon16.png",
+      "32": "public/icons/icon32.png",
+      "48": "public/icons/icon48.png",
+      "128": "public/icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "public/icons/icon16.png",
+    "32": "public/icons/icon32.png",
+    "48": "public/icons/icon48.png",
+    "128": "public/icons/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

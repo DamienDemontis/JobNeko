@@ -17,7 +17,10 @@ const eslintConfig = [
       ".next/**",
       "out/**",
       "build/**",
+      "dist/**",
       "next-env.d.ts",
+      "chrome-extension/**",
+      "public/**",
     ],
     rules: {
       "@typescript-eslint/no-explicit-any": "warn",

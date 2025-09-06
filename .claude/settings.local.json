@@ -16,7 +16,8 @@
       "Bash(npm test:*)",
       "Bash(node:*)",
       "Bash(npx prisma db push:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(npx jest:*)"
     ],
     "deny": [],
     "ask": []

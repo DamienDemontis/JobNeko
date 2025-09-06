@@ -84,6 +84,6 @@ export async function validateToken(token: string) {
 // Backward compatibility aliases
 export const createSession = createToken;
 export const validateSession = validateToken;
-export const deleteSession = async (token: string): Promise<void> => {
+export const deleteSession = async (): Promise<void> => {
   // No-op: JWT tokens are stateless, no need to delete
 };

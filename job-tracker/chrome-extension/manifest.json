@@ -1,53 +1,23 @@
 {
   "manifest_version": 3,
-  "name": "Job Tracker Extension",
+  "name": "Job Tracker Assistant",
   "version": "1.0.0",
-  "description": "Save job postings directly from job sites to your Job Tracker platform",
+  "description": "Extract and save job offers from any website",
   "permissions": [
     "activeTab",
     "storage",
+    "scripting",
     "cookies"
   ],
   "host_permissions": [
     "http://localhost:3000/*",
-    "http://localhost:5679/*",
-    "https://*.indeed.com/*",
-    "https://*.linkedin.com/*",
-    "https://*.glassdoor.com/*",
-    "https://*.monster.com/*",
-    "https://*.ziprecruiter.com/*",
-    "https://*.dice.com/*",
-    "https://*.angellist.com/*",
-    "https://*.wellfound.com/*",
-    "https://*.remote.co/*",
-    "https://*.remoteok.io/*",
-    "https://*.flexjobs.com/*"
+    "https://*/*"
   ],
   "background": {
-    "service_worker": "src/background/service-worker.js"
+    "service_worker": "src/background.js"
   },
-  "content_scripts": [
-    {
-      "matches": [
-        "https://*.indeed.com/*",
-        "https://*.linkedin.com/*",
-        "https://*.glassdoor.com/*",
-        "https://*.monster.com/*",
-        "https://*.ziprecruiter.com/*",
-        "https://*.dice.com/*",
-        "https://*.angellist.com/*",
-        "https://*.wellfound.com/*",
-        "https://*.remote.co/*",
-        "https://*.remoteok.io/*",
-        "https://*.flexjobs.com/*"
-      ],
-      "js": ["src/content-scripts/job-extractor.js"],
-      "css": ["src/content-scripts/styles.css"],
-      "run_at": "document_idle"
-    }
-  ],
   "action": {
-    "default_popup": "src/popup/popup-v2.html",
+    "default_popup": "src/popup.html",
     "default_icon": {
       "16": "public/icons/icon16.png",
       "32": "public/icons/icon32.png",
@@ -61,7 +31,11 @@
     "48": "public/icons/icon48.png",
     "128": "public/icons/icon128.png"
   },
-  "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
-  }
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
 }

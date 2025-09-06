@@ -1,0 +1,154 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  password      String
+  name          String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  jobs          Job[]
+  ratings       Rating[]
+  resumes       Resume[]
+  
+  @@index([email])
+}
+
+model Job {
+  id                String         @id @default(cuid())
+  userId            String
+  url               String?
+  title             String
+  company           String
+  location          String?
+  salary            String?
+  salaryMin         Float?
+  salaryMax         Float?
+  contractType      String?
+  skills            String?
+  description       String?
+  requirements      String?
+  perks             String?
+  summary           String?        // AI-generated summary for quick preview
+  workMode          String?        // remote/hybrid/onsite
+  extractedData     String?        // JSON string for raw extracted data
+  matchScore        Float?
+  
+  // Enhanced Application Tracking
+  applicationStatus String         @default("not_applied")
+  appliedAt         DateTime?
+  applicationDeadline DateTime?
+  priority          String         @default("medium") // low/medium/high
+  
+  // Contact Information
+  recruiterName     String?
+  recruiterEmail    String?
+  recruiterPhone    String?
+  companyContact    String?
+  
+  // Interview & Progress Tracking
+  phoneScreeningAt  DateTime?
+  firstInterviewAt  DateTime?
+  secondInterviewAt DateTime?
+  finalInterviewAt  DateTime?
+  offerReceivedAt   DateTime?
+  
+  // Additional Details
+  notes             String?
+  privateNotes      String?        // Private thoughts, salary expectations, etc.
+  companyResearch   String?        // Research notes about the company
+  preparationNotes  String?        // Interview prep notes
+  followUpDate      DateTime?      // When to follow up next
+  rejectionFeedback String?        // Feedback received if rejected
+  
+  // Metadata
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  extractedAt       DateTime       @default(now())
+  
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ratings           Rating[]
+  activities        JobActivity[]
+  
+  @@index([userId])
+  @@index([company])
+  @@index([workMode])
+  @@index([matchScore])
+  @@index([applicationStatus])
+  @@index([priority])
+}
+
+model JobActivity {
+  id          String         @id @default(cuid())
+  jobId       String
+  userId      String
+  type        String         // applied, interview_scheduled, interview_completed, offer_received, etc.
+  title       String
+  description String?
+  date        DateTime       @default(now())
+  metadata    String?        // JSON for additional data
+  
+  job         Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  
+  @@index([jobId])
+  @@index([userId])
+  @@index([date])
+}
+
+model Rating {
+  id            String         @id @default(cuid())
+  userId        String
+  jobId         String
+  rating        Int           // 1-5 stars
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job           Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, jobId])
+  @@index([userId])
+  @@index([jobId])
+}
+
+model Resume {
+  id            String         @id @default(cuid())
+  userId        String
+  fileName      String
+  fileUrl       String
+  content       String?        // Extracted text content
+  skills        String?        // JSON array of skills
+  experience    String?        // JSON array of experience
+  education     String?        // JSON array of education
+  embedding     String?        // JSON array for vector embedding
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([isActive])
+}
+
+model Session {
+  id            String         @id @default(cuid())
+  userId        String
+  token         String         @unique
+  expiresAt     DateTime
+  createdAt     DateTime       @default(now())
+  
+  @@index([token])
+  @@index([userId])
+}

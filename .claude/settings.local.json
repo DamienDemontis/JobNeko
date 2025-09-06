@@ -7,7 +7,16 @@
       "Bash(npm run test:*)",
       "Bash(del test-n8n.js)",
       "Bash(curl:*)",
-      "Bash(cmd /c:*)"
+      "Bash(cmd /c:*)",
+      "Bash(npm install:*)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(npx prisma init:*)",
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(npm test)",
+      "Bash(npm test:*)",
+      "Bash(node:*)",
+      "Bash(npx prisma db push:*)",
+      "Bash(sed:*)"
     ],
     "deny": [],
     "ask": []

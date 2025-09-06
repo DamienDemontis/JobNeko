@@ -30,7 +30,7 @@ export async function PUT(request: NextRequest) {
       const existingUser = await prisma.user.findUnique({
         where: { 
           email: updateData.email,
-          NOT: { id: session.userId }
+          NOT: { id: session.id }
         },
       });
 
@@ -43,7 +43,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const user = await prisma.user.update({
-      where: { id: session.userId },
+      where: { id: session.id },
       data: updateData,
       select: {
         id: true,

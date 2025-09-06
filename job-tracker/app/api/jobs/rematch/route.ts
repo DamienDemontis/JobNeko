@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
     // Get user's latest resume
     const resume = await prisma.resume.findFirst({
-      where: { userId: session.userId },
+      where: { userId: session.id },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     // Get all user's jobs
     const jobs = await prisma.job.findMany({
-      where: { userId: session.userId },
+      where: { userId: session.id },
     });
 
     let updatedCount = 0;
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
           company: job.company,
           description: job.description || '',
           requirements: job.requirements || '',
-        }, resume.content);
+        }, resume.content || '');
 
         await prisma.job.update({
           where: { id: job.id },

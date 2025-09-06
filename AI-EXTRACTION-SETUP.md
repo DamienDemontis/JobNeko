@@ -1,8 +1,12 @@
-# 🤖 AI-Powered Job Extraction Setup Guide
+# 🤖 AI-Only Job Extraction System
 
-The job tracker now uses **advanced AI extraction** instead of basic scraping. This provides much better job descriptions, summaries, and consistent formatting across all job postings.
+The job tracker uses **AI-powered extraction exclusively**. No fallbacks are available - this ensures consistently high-quality, AI-processed job data.
 
-## 🚀 AI Services Available
+## ⚡ IMPORTANT: AI Service Required
+
+**⚠️ You MUST configure at least one AI service to extract jobs. The system will not work without AI.**
+
+## 🚀 Available AI Services
 
 ### Option 1: OpenAI API (Recommended)
 **Best quality** - Uses GPT-3.5-turbo for superior extraction and formatting
@@ -30,7 +34,7 @@ ollama pull llama3.1:8b
 ```bash
 ollama serve
 ```
-4. Update `.env` file:
+4. Update `.env` file (optional, uses default):
 ```bash
 OLLAMA_API_URL="http://localhost:11434"
 ```
@@ -38,13 +42,13 @@ OLLAMA_API_URL="http://localhost:11434"
 **Pros:** Free, private, no API costs  
 **Cons:** Requires local computing resources, slower than OpenAI
 
-### Option 3: Enhanced Fallback
-**No setup required** - Uses smart pattern matching and NLP techniques
+## 🔄 AI Service Priority
 
-The system automatically uses the best available option in this order:
-1. OpenAI (if API key provided)
-2. Ollama (if service running)
-3. Enhanced fallback extraction
+The system automatically uses AI services in this order:
+1. **OpenAI** (if API key provided)
+2. **Ollama** (if service running)
+
+**If no AI service is available, job extraction will fail with an error.**
 
 ## ✨ What's Enhanced in AI Extraction
 
@@ -86,12 +90,12 @@ When AI services are available:
 - Consistency rules for standardization
 ```
 
-### Smart Fallback
+### Error Handling
 When no AI service is available:
-- Uses enhanced pattern matching
-- Leverages pre-extracted Chrome extension data
-- Creates intelligent summaries from available information
-- Maintains data quality standards
+- **Job extraction will fail** with a clear error message
+- Users will be prompted to configure an AI service
+- No data will be stored without AI processing
+- Ensures all jobs maintain high quality standards
 
 ## 🚀 Getting Started
 

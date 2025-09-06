@@ -34,6 +34,7 @@ interface Job {
   contractType?: string;
   appliedAt?: string;
   applicationDeadline?: string;
+  summary?: string;
 }
 
 // Application status configuration with beautiful colors and icons

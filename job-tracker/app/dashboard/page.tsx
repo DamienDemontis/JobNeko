@@ -603,24 +603,27 @@ export default function DashboardPage() {
                         </div>
                         
                         {/* Salary Intelligence */}
-                        {job.salaryAnalysis && (
+                        {job.salaryAnalysis && job.salaryAnalysis.normalizedSalaryUSD && (
                           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-3 mt-3 border border-blue-100">
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-semibold text-blue-900">Salary Intelligence</span>
-                                <Badge className={`text-xs ${getComfortColor(job.salaryAnalysis.comfortLevel)}`}>
-                                  {getComfortIcon(job.salaryAnalysis.comfortLevel)} {job.salaryAnalysis.comfortLevel}
+                                <Badge className={`text-xs ${getComfortColor(job.salaryAnalysis.comfortLevel || 'comfortable')}`}>
+                                  {getComfortIcon(job.salaryAnalysis.comfortLevel || 'comfortable')} {job.salaryAnalysis.comfortLevel || 'analyzing'}
                                 </Badge>
                               </div>
                               <div className="text-sm font-bold text-blue-700">
-                                {job.salaryAnalysis.comfortScore}/100
+                                {job.salaryAnalysis.comfortScore || 0}/100
                               </div>
                             </div>
                             <div className="grid grid-cols-2 gap-2 text-xs text-blue-600">
-                              <div>💰 {formatSalaryRange(job.salaryAnalysis.normalizedSalaryUSD.min, job.salaryAnalysis.normalizedSalaryUSD.max)} USD</div>
-                              <div>📊 Top {Math.round(100 - job.salaryAnalysis.betterThanPercent)}% of jobs</div>
-                              <div>💡 {job.salaryAnalysis.savingsPotential.toFixed(0)}% savings potential</div>
-                              <div>⚡ {job.salaryAnalysis.purchasingPower.toFixed(1)}x purchasing power</div>
+                              <div>💰 {formatSalaryRange(
+                                job.salaryAnalysis.normalizedSalaryUSD?.min || 0, 
+                                job.salaryAnalysis.normalizedSalaryUSD?.max || 0
+                              )} USD</div>
+                              <div>📊 Top {Math.round(100 - (job.salaryAnalysis.betterThanPercent || 0))}% of jobs</div>
+                              <div>💡 {(job.salaryAnalysis.savingsPotential || 0).toFixed(0)}% savings potential</div>
+                              <div>⚡ {(job.salaryAnalysis.purchasingPower || 1.0).toFixed(1)}x purchasing power</div>
                             </div>
                           </div>
                         )}
@@ -654,9 +657,9 @@ export default function DashboardPage() {
                             {job.salaryAnalysis && (
                               <Badge 
                                 variant="outline" 
-                                className={`text-xs ${getComfortColor(job.salaryAnalysis.comfortLevel)} border`}
+                                className={`text-xs ${getComfortColor(job.salaryAnalysis.comfortLevel || 'comfortable')} border`}
                               >
-                                {getComfortIcon(job.salaryAnalysis.comfortLevel)} {job.salaryAnalysis.comfortLevel}
+                                {getComfortIcon(job.salaryAnalysis.comfortLevel || 'comfortable')} {job.salaryAnalysis.comfortLevel || 'analyzing'}
                               </Badge>
                             )}
                           </div>

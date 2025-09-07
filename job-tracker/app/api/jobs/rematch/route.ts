@@ -40,12 +40,15 @@ export async function POST(request: NextRequest) {
     // Recalculate match score for each job
     for (const job of jobs) {
       try {
-        const matchScore = await calculateJobMatch({
-          title: job.title,
-          company: job.company,
-          description: job.description || '',
-          requirements: job.requirements || '',
-        }, resume.content || '');
+        const matchScore = await calculateJobMatch(
+          { content: resume.content || '' },
+          {
+            title: job.title,
+            company: job.company,
+            description: job.description || '',
+            requirements: job.requirements || '',
+          }
+        );
 
         await prisma.job.update({
           where: { id: job.id },

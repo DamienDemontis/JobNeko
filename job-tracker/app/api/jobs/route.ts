@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { validateToken } from '@/lib/auth';
-import { analyzeSalary, convertToUSD } from '@/lib/salary-intelligence';
+import { analyzeSalarySync, convertToUSDSync } from '@/lib/salary-intelligence';
 
 const querySchema = z.object({
   search: z.string().optional(),
@@ -59,14 +59,14 @@ export async function GET(request: NextRequest) {
         userId: user.id,
         ...(query.search && {
           OR: [
-            { title: { contains: query.search, mode: 'insensitive' } },
-            { company: { contains: query.search, mode: 'insensitive' } },
-            { description: { contains: query.search, mode: 'insensitive' } },
-            { skills: { contains: query.search, mode: 'insensitive' } },
+            { title: { contains: query.search } },
+            { company: { contains: query.search } },
+            { description: { contains: query.search } },
+            { skills: { contains: query.search } },
           ],
         }),
         ...(query.company && {
-          company: { contains: query.company, mode: 'insensitive' },
+          company: { contains: query.company },
         }),
         ...(workModes.length > 0 && {
           workMode: { in: workModes },
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
 
     // Enhance jobs with salary analysis and apply advanced filters
     let filteredJobs = allJobs.map(job => {
-      const salaryAnalysis = analyzeSalary(job.salary, job.location);
+      const salaryAnalysis = analyzeSalarySync(job.salary ?? undefined, job.location ?? undefined);
       return {
         ...job,
         rating: job.ratings[0]?.rating || null,
@@ -113,12 +113,12 @@ export async function GET(request: NextRequest) {
         let passesMax = true;
         
         if (query.salaryMin !== undefined) {
-          const minThreshold = convertToUSD(query.salaryMin, currency);
+          const minThreshold = convertToUSDSync(query.salaryMin, currency);
           passesMin = maxUSD >= minThreshold;
         }
         
         if (query.salaryMax !== undefined) {
-          const maxThreshold = convertToUSD(query.salaryMax, currency);
+          const maxThreshold = convertToUSDSync(query.salaryMax, currency);
           passesMax = minUSD <= maxThreshold;
         }
         

@@ -7,16 +7,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import SalaryIntelligence from '@/components/ui/salary-intelligence';
+import InteractiveSalaryCalculator from '@/components/ui/interactive-salary-calculator';
 import { toast } from 'sonner';
 import {
   ArrowTopRightOnSquareIcon as ExternalLinkIcon,
-  CalendarIcon,
   MapPinIcon,
   BuildingOffice2Icon as BuildingIcon,
   CurrencyDollarIcon,
@@ -26,12 +23,10 @@ import {
   TrashIcon,
   ArrowLeftIcon,
   PhoneIcon,
-  EnvelopeIcon as MailIcon,
   UserIcon,
   BriefcaseIcon,
   CheckCircleIcon,
   XCircleIcon,
-  ExclamationCircleIcon as AlertCircleIcon,
   PlayCircleIcon,
 } from '@heroicons/react/24/outline';
 
@@ -332,8 +327,9 @@ export default function JobDetailPage() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="salary">💰 Salary</TabsTrigger>
             <TabsTrigger value="application">Application</TabsTrigger>
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
             <TabsTrigger value="contacts">Contacts</TabsTrigger>
@@ -472,6 +468,12 @@ export default function JobDetailPage() {
                 )}
               </div>
             </div>
+          </TabsContent>
+
+          {/* Salary Intelligence Tab */}
+          <TabsContent value="salary" className="space-y-6">
+            <SalaryIntelligence job={job} />
+            <InteractiveSalaryCalculator job={job} />
           </TabsContent>
 
           {/* Other tabs will be implemented similarly... */}

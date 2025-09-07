@@ -17,7 +17,10 @@
       "Bash(node:*)",
       "Bash(npx prisma db push:*)",
       "Bash(sed:*)",
-      "Bash(npx jest:*)"
+      "Bash(npx jest:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.numbeo.com)",
+      "Bash(npx prisma generate:*)"
     ],
     "deny": [],
     "ask": []

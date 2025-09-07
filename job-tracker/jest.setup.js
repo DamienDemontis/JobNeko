@@ -24,10 +24,14 @@ process.env = {
 // Mock Next.js Request/Response
 global.Request = class MockRequest {
   constructor(input, init) {
-    this.url = input;
+    this._url = input;
     this.method = init?.method || 'GET';
     this.headers = new Map(Object.entries(init?.headers || {}));
     this.body = init?.body;
+  }
+  
+  get url() {
+    return this._url;
   }
   
   json() {

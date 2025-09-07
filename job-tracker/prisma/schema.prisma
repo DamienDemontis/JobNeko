@@ -21,6 +21,7 @@ model User {
   jobs          Job[]
   ratings       Rating[]
   resumes       Resume[]
+  profile       UserProfile?
   
   @@index([email])
 }
@@ -35,7 +36,17 @@ model Job {
   salary            String?
   salaryMin         Float?
   salaryMax         Float?
+  salaryCurrency    String?        // Currency code (USD, EUR, etc.)
+  salaryFrequency   String?        // annual/monthly/hourly
   contractType      String?
+  
+  // Enhanced Compensation Details
+  bonusStructure    String?        // JSON: {type, percentage/amount, frequency}
+  equityOffered     String?        // JSON: {type: RSU/options, amount, vestingPeriod}
+  totalCompMin      Float?         // Total compensation min in USD
+  totalCompMax      Float?         // Total compensation max in USD
+  isNegotiable      Boolean        @default(true)
+  remotePayAdjustment Boolean      @default(false)
   skills            String?
   description       String?
   requirements      String?
@@ -151,4 +162,82 @@ model Session {
   
   @@index([token])
   @@index([userId])
+}
+
+model UserProfile {
+  id                String         @id @default(cuid())
+  userId            String         @unique
+  
+  // Personal Context
+  currentLocation   String?        // User's current city for remote jobs
+  currentCountry    String?        // User's current country
+  familySize        Int            @default(1)
+  dependents        Int            @default(0)
+  maritalStatus     String?        // single/married/partnered
+  
+  // Financial Expectations
+  expectedSalaryMin Float?         // Minimum acceptable in USD
+  expectedSalaryMax Float?         // Ideal salary in USD
+  currentSalary     Float?         // Current salary for comparison
+  preferredCurrency String         @default("USD")
+  
+  // Lifestyle Preferences
+  housingPreference String?        // rent/buy/either
+  commuteToleranceMinutes Int?     // Max minutes willing to commute
+  openToRelocation  Boolean        @default(false)
+  preferredCountries String?       // JSON array of preferred countries
+  
+  // Career Preferences
+  yearsOfExperience Int?
+  industryPreferences String?      // JSON array of preferred industries
+  
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+}
+
+model CityData {
+  id                String         @id @default(cuid())
+  city              String
+  country           String
+  state             String?
+  
+  // Cost indices (NYC = 100 baseline)
+  costOfLivingIndex Float
+  rentIndex         Float
+  groceriesIndex    Float
+  restaurantIndex   Float
+  transportIndex    Float
+  utilitiesIndex    Float
+  
+  // Quality of Life indices (0-100)
+  qualityOfLifeIndex Float?
+  safetyIndex       Float?
+  healthcareIndex   Float?
+  educationIndex    Float?
+  trafficTimeIndex  Float?        // Average commute time
+  pollutionIndex    Float?
+  climateIndex      Float?
+  
+  // Salary Data
+  avgNetSalaryUSD   Float?        // Average monthly net salary in USD
+  medianHousePriceUSD Float?      // Median house price in USD
+  
+  // Tax Information
+  incomeTaxRate     Float?        // Average income tax rate %
+  salesTaxRate      Float?        // Sales tax rate %
+  
+  // Additional Metadata
+  population        Int?
+  lastUpdated       DateTime
+  source            String         // numbeo/manual/api
+  dataPoints        Int?           // Number of data contributions
+  
+  @@unique([city, country, state])
+  @@index([city])
+  @@index([country])
+  @@index([lastUpdated])
 }

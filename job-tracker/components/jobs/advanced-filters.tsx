@@ -1,578 +1,525 @@
 'use client';
 
 import { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
-  SlidersHorizontal, 
-  DollarSign, 
-  MapPin, 
-  Briefcase, 
-  Calendar,
-  Heart,
-  Code2,
-  Building2,
-  Clock,
-  Sparkles,
-  TrendingUp,
-  Globe,
-  Home,
-  Users,
-  Target,
-  Award,
   Filter,
-  X
+  DollarSign,
+  MapPin,
+  Users,
+  Building,
+  TrendingUp,
+  RotateCcw
 } from 'lucide-react';
-import { analyzeSalary, getComfortColor, getComfortIcon } from '@/lib/salary-intelligence';
 
-export interface JobFilters {
-  // Salary & Compensation
+export interface FilterCriteria {
+  // Salary Filters
   salaryMin?: number;
   salaryMax?: number;
-  currency?: string;
-  comfortLevel?: string[];
-  includeEquity?: boolean;
+  currency: string;
+  comfortLevel: string[];
+  salaryConfidence: number; // 0-100, minimum confidence in salary data
   
-  // Location & Work Mode
-  workMode?: ('remote' | 'hybrid' | 'onsite')[];
-  locations?: string[];
-  visaSponsorship?: boolean;
-  relocationAssistance?: boolean;
+  // Location Filters
+  location: string;
+  workMode: string[];
+  remoteOnly: boolean;
+  maxCommute?: number;
   
-  // Experience & Level
-  experienceLevel?: ('entry' | 'mid' | 'senior' | 'lead' | 'principal' | 'executive')[];
-  yearsOfExperience?: { min: number; max: number };
+  // Company & Role Filters
+  experienceLevel: string[];
+  companySize: string[];
+  industry: string[];
+  contractType: string[];
   
-  // Company
-  companySize?: ('startup' | 'small' | 'medium' | 'large' | 'enterprise')[];
-  industries?: string[];
-  companyStage?: ('seed' | 'series-a' | 'series-b' | 'series-c' | 'public' | 'profitable')[];
+  // Family-Adjusted Filters
+  familyFriendly: boolean;
+  parentalLeave: boolean;
+  healthInsurance: boolean;
+  childcare: boolean;
   
-  // Job Type & Status
-  contractType?: ('full-time' | 'part-time' | 'contract' | 'internship')[];
-  applicationStatus?: string[];
-  priority?: ('low' | 'medium' | 'high')[];
+  // Match Filters
+  minMatchScore?: number;
+  hasRating: boolean;
+  applicationStatus: string[];
   
-  // Dates
-  postedWithin?: number; // days
-  applicationDeadline?: { from: Date; to: Date };
+  // Date Filters
+  dateRange: string;
   
-  // Skills & Match
-  requiredSkills?: string[];
-  preferredSkills?: string[];
-  matchScoreMin?: number;
-  
-  // Benefits & Culture
-  benefitsScore?: number; // 0-100
-  workLifeBalance?: ('flexible' | 'standard' | 'demanding')[];
-  ptoMin?: number; // days
-  hasRemoteStipend?: boolean;
-  has401k?: boolean;
-  hasHealthInsurance?: boolean;
-  
-  // Smart Filters
-  onlyShowBetterThanCurrent?: boolean;
-  hideApplied?: boolean;
-  hideRejected?: boolean;
-  onlyFavorites?: boolean;
+  // Skills & Requirements
+  requiredSkills: string[];
+  excludeSkills: string[];
 }
 
 interface AdvancedFiltersProps {
-  filters: JobFilters;
-  onFiltersChange: (filters: JobFilters) => void;
-  jobCount?: number;
-  currentSalary?: number;
-  skills?: string[];
+  filters: FilterCriteria;
+  onFiltersChange: (filters: FilterCriteria) => void;
+  onApplyFilters: () => void;
+  resultsCount?: number;
 }
 
-export default function AdvancedFilters({ 
-  filters, 
-  onFiltersChange, 
-  jobCount = 0,
-  currentSalary,
-  skills = []
+const defaultFilters: FilterCriteria = {
+  currency: 'USD',
+  comfortLevel: [],
+  salaryConfidence: 50,
+  location: '',
+  workMode: [],
+  remoteOnly: false,
+  experienceLevel: [],
+  companySize: [],
+  industry: [],
+  contractType: [],
+  familyFriendly: false,
+  parentalLeave: false,
+  healthInsurance: false,
+  childcare: false,
+  hasRating: false,
+  applicationStatus: [],
+  dateRange: 'all',
+  requiredSkills: [],
+  excludeSkills: []
+};
+
+const comfortLevels = [
+  { value: 'struggling', label: 'Struggling', color: 'bg-red-100 text-red-800' },
+  { value: 'tight', label: 'Tight Budget', color: 'bg-orange-100 text-orange-800' },
+  { value: 'comfortable', label: 'Comfortable', color: 'bg-green-100 text-green-800' },
+  { value: 'thriving', label: 'Thriving', color: 'bg-blue-100 text-blue-800' },
+  { value: 'luxurious', label: 'Luxurious', color: 'bg-purple-100 text-purple-800' }
+];
+
+const experienceLevels = [
+  { value: 'entry', label: 'Entry Level' },
+  { value: 'mid', label: 'Mid Level' },
+  { value: 'senior', label: 'Senior Level' },
+  { value: 'lead', label: 'Lead/Principal' },
+  { value: 'executive', label: 'Executive' }
+];
+
+const companySizes = [
+  { value: 'startup', label: 'Startup (1-10)' },
+  { value: 'small', label: 'Small (11-50)' },
+  { value: 'medium', label: 'Medium (51-200)' },
+  { value: 'large', label: 'Large (201-1000)' },
+  { value: 'enterprise', label: 'Enterprise (1000+)' }
+];
+
+const workModes = [
+  { value: 'remote', label: 'Remote' },
+  { value: 'hybrid', label: 'Hybrid' },
+  { value: 'onsite', label: 'On-site' }
+];
+
+const currencies = [
+  { value: 'USD', label: 'USD ($)' },
+  { value: 'EUR', label: 'EUR (€)' },
+  { value: 'GBP', label: 'GBP (£)' },
+  { value: 'CAD', label: 'CAD (C$)' },
+  { value: 'AUD', label: 'AUD (A$)' }
+];
+
+const applicationStatuses = [
+  { value: 'not_applied', label: 'Not Applied' },
+  { value: 'applied', label: 'Applied' },
+  { value: 'interview', label: 'Interview Stage' },
+  { value: 'offer', label: 'Offer Received' },
+  { value: 'rejected', label: 'Rejected' }
+];
+
+export default function AdvancedFilters({
+  filters = defaultFilters,
+  onFiltersChange,
+  onApplyFilters,
+  resultsCount
 }: AdvancedFiltersProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState('salary');
+  const [localFilters, setLocalFilters] = useState<FilterCriteria>(filters);
+  const [activeSection, setActiveSection] = useState<string>('salary');
 
-  const updateFilter = (key: keyof JobFilters, value: any) => {
-    onFiltersChange({ ...filters, [key]: value });
+  const updateFilter = <K extends keyof FilterCriteria>(key: K, value: FilterCriteria[K]) => {
+    const updated = { ...localFilters, [key]: value };
+    setLocalFilters(updated);
+    onFiltersChange(updated);
   };
 
-  const clearFilters = () => {
-    onFiltersChange({});
+  const toggleArrayValue = <K extends keyof FilterCriteria>(
+    key: K,
+    value: string,
+    currentArray: string[]
+  ) => {
+    const newArray = currentArray.includes(value)
+      ? currentArray.filter(item => item !== value)
+      : [...currentArray, value];
+    updateFilter(key, newArray as FilterCriteria[K]);
   };
 
-  const activeFilterCount = Object.keys(filters).filter(key => 
-    filters[key as keyof JobFilters] !== undefined && 
-    filters[key as keyof JobFilters] !== null
-  ).length;
+  const resetFilters = () => {
+    setLocalFilters(defaultFilters);
+    onFiltersChange(defaultFilters);
+  };
 
-  // Salary comfort levels
-  const comfortLevels = [
-    { value: 'struggling', label: 'Struggling', icon: '😰', color: 'bg-red-100 text-red-700 border-red-300' },
-    { value: 'tight', label: 'Tight', icon: '😓', color: 'bg-orange-100 text-orange-700 border-orange-300' },
-    { value: 'comfortable', label: 'Comfortable', icon: '😊', color: 'bg-blue-100 text-blue-700 border-blue-300' },
-    { value: 'thriving', label: 'Thriving', icon: '😄', color: 'bg-green-100 text-green-700 border-green-300' },
-    { value: 'luxurious', label: 'Luxurious', icon: '🤩', color: 'bg-purple-100 text-purple-700 border-purple-300' },
-  ];
+  const getActiveFiltersCount = () => {
+    let count = 0;
+    if (localFilters.salaryMin || localFilters.salaryMax) count++;
+    if (localFilters.comfortLevel.length > 0) count++;
+    if (localFilters.location) count++;
+    if (localFilters.workMode.length > 0) count++;
+    if (localFilters.experienceLevel.length > 0) count++;
+    if (localFilters.companySize.length > 0) count++;
+    if (localFilters.familyFriendly || localFilters.parentalLeave || localFilters.healthInsurance || localFilters.childcare) count++;
+    if (localFilters.minMatchScore) count++;
+    if (localFilters.applicationStatus.length > 0) count++;
+    return count;
+  };
 
-  // Experience levels
-  const experienceLevels = [
-    { value: 'entry', label: 'Entry Level', years: '0-2' },
-    { value: 'mid', label: 'Mid Level', years: '2-5' },
-    { value: 'senior', label: 'Senior', years: '5-8' },
-    { value: 'lead', label: 'Lead/Staff', years: '8-12' },
-    { value: 'principal', label: 'Principal', years: '12+' },
-    { value: 'executive', label: 'Executive', years: '15+' },
-  ];
+  const FilterSection = ({ id, title, icon: Icon, children }: {
+    id: string;
+    title: string;
+    icon: any;
+    children: React.ReactNode;
+  }) => (
+    <div className="border rounded-lg">
+      <button
+        onClick={() => setActiveSection(activeSection === id ? '' : id)}
+        className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50"
+      >
+        <div className="flex items-center gap-2">
+          <Icon className="w-4 h-4" />
+          <span className="font-medium">{title}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {getActiveSectionFiltersCount(id) > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              {getActiveSectionFiltersCount(id)}
+            </Badge>
+          )}
+        </div>
+      </button>
+      {activeSection === id && (
+        <div className="px-4 pb-4 border-t">
+          {children}
+        </div>
+      )}
+    </div>
+  );
 
-  // Company sizes
-  const companySizes = [
-    { value: 'startup', label: 'Startup', employees: '1-50', icon: '🚀' },
-    { value: 'small', label: 'Small', employees: '50-200', icon: '🏢' },
-    { value: 'medium', label: 'Medium', employees: '200-1000', icon: '🏛️' },
-    { value: 'large', label: 'Large', employees: '1000-5000', icon: '🏙️' },
-    { value: 'enterprise', label: 'Enterprise', employees: '5000+', icon: '🌆' },
-  ];
+  const getActiveSectionFiltersCount = (sectionId: string): number => {
+    switch (sectionId) {
+      case 'salary':
+        return (localFilters.salaryMin || localFilters.salaryMax ? 1 : 0) +
+               localFilters.comfortLevel.length;
+      case 'location':
+        return (localFilters.location ? 1 : 0) + localFilters.workMode.length + (localFilters.remoteOnly ? 1 : 0);
+      case 'company':
+        return localFilters.experienceLevel.length + localFilters.companySize.length;
+      case 'family':
+        return [localFilters.familyFriendly, localFilters.parentalLeave, localFilters.healthInsurance, localFilters.childcare]
+          .filter(Boolean).length;
+      case 'match':
+        return (localFilters.minMatchScore ? 1 : 0) + (localFilters.hasRating ? 1 : 0) + localFilters.applicationStatus.length;
+      default:
+        return 0;
+    }
+  };
 
   return (
-    <Card className="border-2 border-gray-100 shadow-lg">
-      <CardHeader className="pb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
-              <SlidersHorizontal className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <CardTitle className="text-xl">Smart Filters</CardTitle>
-              <CardDescription>
-                {activeFilterCount > 0 ? (
-                  <span className="text-blue-600 font-medium">
-                    {activeFilterCount} active filters • {jobCount} matching jobs
-                  </span>
-                ) : (
-                  `${jobCount} total jobs`
-                )}
-              </CardDescription>
-            </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Filter className="w-5 h-5" />
+            Advanced Filters
+            {getActiveFiltersCount() > 0 && (
+              <Badge className="bg-blue-100 text-blue-800">
+                {getActiveFiltersCount()} active
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-2">
-            {activeFilterCount > 0 && (
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={clearFilters}
-                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-              >
-                <X className="w-4 h-4 mr-1" />
-                Clear all
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsExpanded(!isExpanded)}
-            >
-              {isExpanded ? 'Hide' : 'Show'} Filters
+            <Button variant="outline" size="sm" onClick={resetFilters}>
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Reset
+            </Button>
+            <Button size="sm" onClick={onApplyFilters}>
+              Apply {resultsCount !== undefined ? `(${resultsCount})` : ''}
             </Button>
           </div>
-        </div>
+        </CardTitle>
       </CardHeader>
-
-      {isExpanded && (
-        <CardContent className="space-y-6">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid grid-cols-5 w-full">
-              <TabsTrigger value="salary" className="flex items-center gap-1">
-                <DollarSign className="w-4 h-4" />
-                <span className="hidden sm:inline">Salary</span>
-              </TabsTrigger>
-              <TabsTrigger value="location" className="flex items-center gap-1">
-                <MapPin className="w-4 h-4" />
-                <span className="hidden sm:inline">Location</span>
-              </TabsTrigger>
-              <TabsTrigger value="experience" className="flex items-center gap-1">
-                <Award className="w-4 h-4" />
-                <span className="hidden sm:inline">Level</span>
-              </TabsTrigger>
-              <TabsTrigger value="company" className="flex items-center gap-1">
-                <Building2 className="w-4 h-4" />
-                <span className="hidden sm:inline">Company</span>
-              </TabsTrigger>
-              <TabsTrigger value="benefits" className="flex items-center gap-1">
-                <Heart className="w-4 h-4" />
-                <span className="hidden sm:inline">Benefits</span>
-              </TabsTrigger>
-            </TabsList>
-
-            {/* Salary & Compensation Tab */}
-            <TabsContent value="salary" className="space-y-4 mt-6">
+      <CardContent className="space-y-4">
+        {/* Salary & Comfort Level Filters */}
+        <FilterSection id="salary" title="Salary & Living Comfort" icon={DollarSign}>
+          <div className="space-y-4 mt-4">
+            <div className="grid grid-cols-3 gap-3">
               <div>
-                <Label className="text-sm font-medium mb-3 flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-green-600" />
-                  Salary Comfort Level
-                </Label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {comfortLevels.map(level => (
-                    <button
-                      key={level.value}
-                      onClick={() => {
-                        const current = filters.comfortLevel || [];
-                        if (current.includes(level.value)) {
-                          updateFilter('comfortLevel', current.filter(l => l !== level.value));
-                        } else {
-                          updateFilter('comfortLevel', [...current, level.value]);
-                        }
-                      }}
-                      className={`
-                        p-3 rounded-lg border-2 transition-all text-sm font-medium
-                        ${filters.comfortLevel?.includes(level.value) 
-                          ? level.color + ' border-current shadow-md scale-105' 
-                          : 'border-gray-200 hover:border-gray-300 bg-white'
-                        }
-                      `}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">{level.icon}</span>
-                        <span>{level.label}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <Label className="text-sm font-medium mb-3">
-                  Salary Range (USD equivalent)
-                </Label>
-                <div className="px-2">
-                  <Slider
-                    value={[filters.salaryMin || 0, filters.salaryMax || 500000]}
-                    onValueChange={([min, max]) => {
-                      updateFilter('salaryMin', min);
-                      updateFilter('salaryMax', max);
-                    }}
-                    max={500000}
-                    step={10000}
-                    className="mb-2"
-                  />
-                  <div className="flex justify-between text-sm text-gray-600">
-                    <span>${(filters.salaryMin || 0).toLocaleString()}</span>
-                    <span>${(filters.salaryMax || 500000).toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
-
-              {currentSalary && (
-                <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
-                  <Target className="w-5 h-5 text-blue-600" />
-                  <Label className="text-sm font-medium cursor-pointer">
-                    Only show jobs better than current (${currentSalary.toLocaleString()})
-                  </Label>
-                  <Switch
-                    checked={filters.onlyShowBetterThanCurrent || false}
-                    onCheckedChange={(checked) => updateFilter('onlyShowBetterThanCurrent', checked)}
-                  />
-                </div>
-              )}
-
-              <div className="flex items-center gap-3">
-                <Switch
-                  checked={filters.includeEquity || false}
-                  onCheckedChange={(checked) => updateFilter('includeEquity', checked)}
-                />
-                <Label className="text-sm cursor-pointer">Include equity compensation</Label>
-              </div>
-            </TabsContent>
-
-            {/* Location Tab */}
-            <TabsContent value="location" className="space-y-4 mt-6">
-              <div>
-                <Label className="text-sm font-medium mb-3">Work Mode</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { value: 'remote', label: 'Remote', icon: <Globe className="w-4 h-4" /> },
-                    { value: 'hybrid', label: 'Hybrid', icon: <Home className="w-4 h-4" /> },
-                    { value: 'onsite', label: 'On-site', icon: <Building2 className="w-4 h-4" /> },
-                  ].map(mode => (
-                    <button
-                      key={mode.value}
-                      onClick={() => {
-                        const current = filters.workMode || [];
-                        if (current.includes(mode.value as any)) {
-                          updateFilter('workMode', current.filter(m => m !== mode.value));
-                        } else {
-                          updateFilter('workMode', [...current, mode.value]);
-                        }
-                      }}
-                      className={`
-                        p-3 rounded-lg border-2 transition-all
-                        ${filters.workMode?.includes(mode.value as any)
-                          ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md' 
-                          : 'border-gray-200 hover:border-gray-300 bg-white'
-                        }
-                      `}
-                    >
-                      <div className="flex flex-col items-center gap-2">
-                        {mode.icon}
-                        <span className="text-sm font-medium">{mode.label}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={filters.visaSponsorship || false}
-                    onCheckedChange={(checked) => updateFilter('visaSponsorship', checked)}
-                  />
-                  <Label className="text-sm cursor-pointer">Visa sponsorship available</Label>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={filters.relocationAssistance || false}
-                    onCheckedChange={(checked) => updateFilter('relocationAssistance', checked)}
-                  />
-                  <Label className="text-sm cursor-pointer">Relocation assistance</Label>
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* Experience Level Tab */}
-            <TabsContent value="experience" className="space-y-4 mt-6">
-              <div>
-                <Label className="text-sm font-medium mb-3">Experience Level</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {experienceLevels.map(level => (
-                    <button
-                      key={level.value}
-                      onClick={() => {
-                        const current = filters.experienceLevel || [];
-                        if (current.includes(level.value as any)) {
-                          updateFilter('experienceLevel', current.filter(l => l !== level.value));
-                        } else {
-                          updateFilter('experienceLevel', [...current, level.value]);
-                        }
-                      }}
-                      className={`
-                        p-3 rounded-lg border-2 transition-all text-left
-                        ${filters.experienceLevel?.includes(level.value as any)
-                          ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-md' 
-                          : 'border-gray-200 hover:border-gray-300 bg-white'
-                        }
-                      `}
-                    >
-                      <div className="font-medium text-sm">{level.label}</div>
-                      <div className="text-xs text-gray-500 mt-1">{level.years} years</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <Label className="text-sm font-medium mb-3">Years of Experience</Label>
-                <div className="px-2">
-                  <Slider
-                    value={[
-                      filters.yearsOfExperience?.min || 0,
-                      filters.yearsOfExperience?.max || 20
-                    ]}
-                    onValueChange={([min, max]) => {
-                      updateFilter('yearsOfExperience', { min, max });
-                    }}
-                    max={20}
-                    step={1}
-                    className="mb-2"
-                  />
-                  <div className="flex justify-between text-sm text-gray-600">
-                    <span>{filters.yearsOfExperience?.min || 0} years</span>
-                    <span>{filters.yearsOfExperience?.max || 20}+ years</span>
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* Company Tab */}
-            <TabsContent value="company" className="space-y-4 mt-6">
-              <div>
-                <Label className="text-sm font-medium mb-3">Company Size</Label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {companySizes.map(size => (
-                    <button
-                      key={size.value}
-                      onClick={() => {
-                        const current = filters.companySize || [];
-                        if (current.includes(size.value as any)) {
-                          updateFilter('companySize', current.filter(s => s !== size.value));
-                        } else {
-                          updateFilter('companySize', [...current, size.value]);
-                        }
-                      }}
-                      className={`
-                        p-3 rounded-lg border-2 transition-all text-left
-                        ${filters.companySize?.includes(size.value as any)
-                          ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-md' 
-                          : 'border-gray-200 hover:border-gray-300 bg-white'
-                        }
-                      `}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-lg">{size.icon}</span>
-                        <span className="font-medium text-sm">{size.label}</span>
-                      </div>
-                      <div className="text-xs text-gray-500">{size.employees}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <Label className="text-sm font-medium mb-3">Company Stage</Label>
-                <div className="flex flex-wrap gap-2">
-                  {['seed', 'series-a', 'series-b', 'series-c', 'public', 'profitable'].map(stage => (
-                    <Badge
-                      key={stage}
-                      variant={filters.companyStage?.includes(stage as any) ? 'default' : 'outline'}
-                      className="cursor-pointer py-1.5 px-3"
-                      onClick={() => {
-                        const current = filters.companyStage || [];
-                        if (current.includes(stage as any)) {
-                          updateFilter('companyStage', current.filter(s => s !== stage));
-                        } else {
-                          updateFilter('companyStage', [...current, stage]);
-                        }
-                      }}
-                    >
-                      {stage.charAt(0).toUpperCase() + stage.slice(1).replace('-', ' ')}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* Benefits Tab */}
-            <TabsContent value="benefits" className="space-y-4 mt-6">
-              <div>
-                <Label className="text-sm font-medium mb-3">Work-Life Balance</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { value: 'flexible', label: 'Flexible', icon: '😌', color: 'text-green-600 bg-green-50' },
-                    { value: 'standard', label: 'Standard', icon: '🙂', color: 'text-blue-600 bg-blue-50' },
-                    { value: 'demanding', label: 'Demanding', icon: '😤', color: 'text-orange-600 bg-orange-50' },
-                  ].map(balance => (
-                    <button
-                      key={balance.value}
-                      onClick={() => {
-                        const current = filters.workLifeBalance || [];
-                        if (current.includes(balance.value as any)) {
-                          updateFilter('workLifeBalance', current.filter(b => b !== balance.value));
-                        } else {
-                          updateFilter('workLifeBalance', [...current, balance.value]);
-                        }
-                      }}
-                      className={`
-                        p-3 rounded-lg border-2 transition-all
-                        ${filters.workLifeBalance?.includes(balance.value as any)
-                          ? `border-current ${balance.color} shadow-md` 
-                          : 'border-gray-200 hover:border-gray-300 bg-white'
-                        }
-                      `}
-                    >
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="text-xl">{balance.icon}</span>
-                        <span className="text-xs font-medium">{balance.label}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={filters.hasHealthInsurance || false}
-                    onCheckedChange={(checked) => updateFilter('hasHealthInsurance', checked)}
-                  />
-                  <Label className="text-sm cursor-pointer">Health insurance</Label>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={filters.has401k || false}
-                    onCheckedChange={(checked) => updateFilter('has401k', checked)}
-                  />
-                  <Label className="text-sm cursor-pointer">401(k) matching</Label>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={filters.hasRemoteStipend || false}
-                    onCheckedChange={(checked) => updateFilter('hasRemoteStipend', checked)}
-                  />
-                  <Label className="text-sm cursor-pointer">Remote work stipend</Label>
-                </div>
-              </div>
-
-              <div>
-                <Label className="text-sm font-medium mb-3">
-                  Minimum PTO Days: {filters.ptoMin || 15}
-                </Label>
-                <Slider
-                  value={[filters.ptoMin || 15]}
-                  onValueChange={([value]) => updateFilter('ptoMin', value)}
-                  max={40}
-                  step={5}
-                  className="mb-2"
+                <Label htmlFor="salaryMin">Min Salary</Label>
+                <Input
+                  id="salaryMin"
+                  type="number"
+                  value={localFilters.salaryMin || ''}
+                  onChange={(e) => updateFilter('salaryMin', parseFloat(e.target.value) || undefined)}
+                  placeholder="50000"
                 />
               </div>
-            </TabsContent>
-          </Tabs>
-
-          {/* Quick Filters */}
-          <div className="pt-4 border-t">
-            <Label className="text-sm font-medium mb-3 block">Quick Filters</Label>
-            <div className="flex flex-wrap gap-2">
-              <Badge
-                variant={filters.hideApplied ? 'default' : 'outline'}
-                className="cursor-pointer"
-                onClick={() => updateFilter('hideApplied', !filters.hideApplied)}
-              >
-                Hide Applied
-              </Badge>
-              <Badge
-                variant={filters.hideRejected ? 'default' : 'outline'}
-                className="cursor-pointer"
-                onClick={() => updateFilter('hideRejected', !filters.hideRejected)}
-              >
-                Hide Rejected
-              </Badge>
-              <Badge
-                variant={filters.onlyFavorites ? 'default' : 'outline'}
-                className="cursor-pointer"
-                onClick={() => updateFilter('onlyFavorites', !filters.onlyFavorites)}
-              >
-                <Heart className="w-3 h-3 mr-1" />
-                Favorites Only
-              </Badge>
-              <Badge
-                variant={filters.matchScoreMin ? 'default' : 'outline'}
-                className="cursor-pointer"
-                onClick={() => updateFilter('matchScoreMin', filters.matchScoreMin ? undefined : 70)}
-              >
-                <Sparkles className="w-3 h-3 mr-1" />
-                High Match (70%+)
-              </Badge>
+              <div>
+                <Label htmlFor="salaryMax">Max Salary</Label>
+                <Input
+                  id="salaryMax"
+                  type="number"
+                  value={localFilters.salaryMax || ''}
+                  onChange={(e) => updateFilter('salaryMax', parseFloat(e.target.value) || undefined)}
+                  placeholder="150000"
+                />
+              </div>
+              <div>
+                <Label htmlFor="currency">Currency</Label>
+                <Select value={localFilters.currency} onValueChange={(value) => updateFilter('currency', value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {currencies.map(curr => (
+                      <SelectItem key={curr.value} value={curr.value}>{curr.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            <div>
+              <Label className="mb-3 block">Comfort Level (Family-Adjusted)</Label>
+              <div className="flex flex-wrap gap-2">
+                {comfortLevels.map(level => {
+                  const isSelected = localFilters.comfortLevel.includes(level.value);
+                  return (
+                    <button
+                      key={level.value}
+                      onClick={() => toggleArrayValue('comfortLevel', level.value, localFilters.comfortLevel)}
+                      className={`px-3 py-2 text-sm rounded-md border transition-colors ${
+                        isSelected
+                          ? `${level.color} border-current`
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {level.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Comfort levels are calculated based on family size, dependents, and local cost of living
+              </p>
+            </div>
+            
+            <div>
+              <Label className="mb-2 block">Salary Data Confidence: {localFilters.salaryConfidence}%</Label>
+              <Slider
+                value={[localFilters.salaryConfidence]}
+                onValueChange={([value]) => updateFilter('salaryConfidence', value)}
+                max={100}
+                min={0}
+                step={10}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <span>Any confidence</span>
+                <span>High confidence only</span>
+              </div>
             </div>
           </div>
-        </CardContent>
-      )}
+        </FilterSection>
+
+        {/* Location & Work Mode */}
+        <FilterSection id="location" title="Location & Work Mode" icon={MapPin}>
+          <div className="space-y-4 mt-4">
+            <div>
+              <Label htmlFor="location">Location</Label>
+              <Input
+                id="location"
+                value={localFilters.location}
+                onChange={(e) => updateFilter('location', e.target.value)}
+                placeholder="San Francisco, CA"
+              />
+            </div>
+            
+            <div>
+              <Label className="mb-3 block">Work Mode</Label>
+              <div className="flex flex-wrap gap-2">
+                {workModes.map(mode => {
+                  const isSelected = localFilters.workMode.includes(mode.value);
+                  return (
+                    <button
+                      key={mode.value}
+                      onClick={() => toggleArrayValue('workMode', mode.value, localFilters.workMode)}
+                      className={`px-3 py-2 text-sm rounded-md border transition-colors ${
+                        isSelected
+                          ? 'bg-blue-100 text-blue-800 border-blue-200'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {mode.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="remoteOnly"
+                checked={localFilters.remoteOnly}
+                onCheckedChange={(checked) => updateFilter('remoteOnly', !!checked)}
+              />
+              <Label htmlFor="remoteOnly">Remote opportunities only</Label>
+            </div>
+          </div>
+        </FilterSection>
+
+        {/* Company & Role */}
+        <FilterSection id="company" title="Company & Role" icon={Building}>
+          <div className="space-y-4 mt-4">
+            <div>
+              <Label className="mb-3 block">Experience Level</Label>
+              <div className="flex flex-wrap gap-2">
+                {experienceLevels.map(level => {
+                  const isSelected = localFilters.experienceLevel.includes(level.value);
+                  return (
+                    <button
+                      key={level.value}
+                      onClick={() => toggleArrayValue('experienceLevel', level.value, localFilters.experienceLevel)}
+                      className={`px-3 py-2 text-sm rounded-md border transition-colors ${
+                        isSelected
+                          ? 'bg-green-100 text-green-800 border-green-200'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {level.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            
+            <div>
+              <Label className="mb-3 block">Company Size</Label>
+              <div className="flex flex-wrap gap-2">
+                {companySizes.map(size => {
+                  const isSelected = localFilters.companySize.includes(size.value);
+                  return (
+                    <button
+                      key={size.value}
+                      onClick={() => toggleArrayValue('companySize', size.value, localFilters.companySize)}
+                      className={`px-3 py-2 text-sm rounded-md border transition-colors ${
+                        isSelected
+                          ? 'bg-purple-100 text-purple-800 border-purple-200'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {size.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </FilterSection>
+
+        {/* Family-Friendly Benefits */}
+        <FilterSection id="family" title="Family-Friendly Benefits" icon={Users}>
+          <div className="space-y-3 mt-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="familyFriendly"
+                checked={localFilters.familyFriendly}
+                onCheckedChange={(checked) => updateFilter('familyFriendly', !!checked)}
+              />
+              <Label htmlFor="familyFriendly">Family-friendly culture</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="parentalLeave"
+                checked={localFilters.parentalLeave}
+                onCheckedChange={(checked) => updateFilter('parentalLeave', !!checked)}
+              />
+              <Label htmlFor="parentalLeave">Generous parental leave</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="healthInsurance"
+                checked={localFilters.healthInsurance}
+                onCheckedChange={(checked) => updateFilter('healthInsurance', !!checked)}
+              />
+              <Label htmlFor="healthInsurance">Comprehensive health insurance</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="childcare"
+                checked={localFilters.childcare}
+                onCheckedChange={(checked) => updateFilter('childcare', !!checked)}
+              />
+              <Label htmlFor="childcare">Childcare support/benefits</Label>
+            </div>
+            <p className="text-xs text-gray-500 mt-3">
+              These filters help identify opportunities that better support work-life balance for families
+            </p>
+          </div>
+        </FilterSection>
+
+        {/* Match & Application Status */}
+        <FilterSection id="match" title="Match & Application Status" icon={TrendingUp}>
+          <div className="space-y-4 mt-4">
+            <div>
+              <Label htmlFor="minMatchScore">Minimum Match Score (%)</Label>
+              <Input
+                id="minMatchScore"
+                type="number"
+                min="0"
+                max="100"
+                value={localFilters.minMatchScore || ''}
+                onChange={(e) => updateFilter('minMatchScore', parseFloat(e.target.value) || undefined)}
+                placeholder="70"
+              />
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="hasRating"
+                checked={localFilters.hasRating}
+                onCheckedChange={(checked) => updateFilter('hasRating', !!checked)}
+              />
+              <Label htmlFor="hasRating">Only rated opportunities</Label>
+            </div>
+            
+            <div>
+              <Label className="mb-3 block">Application Status</Label>
+              <div className="flex flex-wrap gap-2">
+                {applicationStatuses.map(status => {
+                  const isSelected = localFilters.applicationStatus.includes(status.value);
+                  return (
+                    <button
+                      key={status.value}
+                      onClick={() => toggleArrayValue('applicationStatus', status.value, localFilters.applicationStatus)}
+                      className={`px-3 py-2 text-sm rounded-md border transition-colors ${
+                        isSelected
+                          ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {status.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </FilterSection>
+      </CardContent>
     </Card>
   );
 }

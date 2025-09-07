@@ -26,21 +26,164 @@ const COST_OF_LIVING_DATA: Record<string, CostOfLivingData> = {
   'remote': { city: 'Remote', country: 'Global', costIndex: 60, rentIndex: 50, purchasingPowerIndex: 100 },
 };
 
-// Currency conversion rates (in production, use a real-time API)
-const CURRENCY_RATES: Record<string, number> = {
-  'USD': 1.0,
-  'EUR': 1.08,
-  'GBP': 1.27,
-  'CAD': 0.74,
-  'AUD': 0.65,
-  'JPY': 0.0067,
-  'INR': 0.012,
-  'CHF': 1.11,
-  'SGD': 0.74,
-  'CNY': 0.14,
-  'BRL': 0.20,
-  'MXN': 0.059,
-};
+// Currency cache with TTL
+interface CurrencyCache {
+  rates: Record<string, number>;
+  lastUpdated: Date;
+}
+
+let currencyCache: CurrencyCache | null = null;
+const CURRENCY_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+// Fetch live currency rates from free API
+async function fetchCurrencyRates(): Promise<Record<string, number>> {
+  try {
+    // Check cache first
+    if (currencyCache && 
+        (new Date().getTime() - currencyCache.lastUpdated.getTime()) < CURRENCY_CACHE_TTL) {
+      return currencyCache.rates;
+    }
+
+    // Fetch from free API (fawazahmed0/exchange-api)
+    const response = await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json');
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch currency rates');
+    }
+
+    const data = await response.json();
+    const usdRates = data.usd;
+    
+    // Convert to our format (value = how many USD per 1 unit of currency)
+    const rates: Record<string, number> = { USD: 1.0 };
+    
+    // Map common currencies
+    const currencyMap: Record<string, string> = {
+      'EUR': 'eur',
+      'GBP': 'gbp', 
+      'CAD': 'cad',
+      'AUD': 'aud',
+      'JPY': 'jpy',
+      'INR': 'inr',
+      'CHF': 'chf',
+      'SGD': 'sgd',
+      'CNY': 'cny',
+      'BRL': 'brl',
+      'MXN': 'mxn',
+      'NZD': 'nzd',
+      'SEK': 'sek',
+      'NOK': 'nok',
+      'DKK': 'dkk',
+      'PLN': 'pln',
+      'ZAR': 'zar',
+      'KRW': 'krw',
+      'HKD': 'hkd',
+      'THB': 'thb',
+      'MYR': 'myr',
+      'PHP': 'php',
+      'IDR': 'idr',
+      'CZK': 'czk',
+      'HUF': 'huf',
+      'RON': 'ron',
+      'BGN': 'bgn',
+      'HRK': 'hrk',
+      'RUB': 'rub',
+      'TRY': 'try',
+      'AED': 'aed',
+      'SAR': 'sar',
+      'QAR': 'qar',
+      'KWD': 'kwd',
+      'EGP': 'egp',
+      'ILS': 'ils',
+      'NGN': 'ngn',
+      'KES': 'kes',
+      'GHS': 'ghs',
+      'MAD': 'mad',
+      'CLP': 'clp',
+      'COP': 'cop',
+      'PEN': 'pen',
+      'ARS': 'ars',
+      'UYU': 'uyu',
+      'VND': 'vnd',
+      'PKR': 'pkr',
+      'BDT': 'bdt',
+      'LKR': 'lkr',
+      'TWD': 'twd',
+    };
+    
+    for (const [code, apiCode] of Object.entries(currencyMap)) {
+      if (usdRates[apiCode]) {
+        // API gives USD to X rate, we need to invert for X to USD
+        rates[code] = 1 / usdRates[apiCode];
+      }
+    }
+    
+    // Update cache
+    currencyCache = {
+      rates,
+      lastUpdated: new Date(),
+    };
+    
+    return rates;
+  } catch (error) {
+    console.warn('Failed to fetch live currency rates, using fallback:', error);
+    
+    // Fallback to approximate rates if API fails
+    return {
+      'USD': 1.0,
+      'EUR': 1.08,
+      'GBP': 1.27,
+      'CAD': 0.74,
+      'AUD': 0.65,
+      'JPY': 0.0067,
+      'INR': 0.012,
+      'CHF': 1.11,
+      'SGD': 0.74,
+      'CNY': 0.14,
+      'BRL': 0.20,
+      'MXN': 0.059,
+      'NZD': 0.62,
+      'SEK': 0.092,
+      'NOK': 0.089,
+      'DKK': 0.14,
+      'PLN': 0.24,
+      'ZAR': 0.053,
+      'KRW': 0.00075,
+      'HKD': 0.13,
+      'THB': 0.028,
+      'MYR': 0.22,
+      'PHP': 0.018,
+      'IDR': 0.000064,
+      'CZK': 0.044,
+      'HUF': 0.0027,
+      'RON': 0.21,
+      'BGN': 0.54,
+      'HRK': 0.14,
+      'RUB': 0.011,
+      'TRY': 0.031,
+      'AED': 0.27,
+      'SAR': 0.27,
+      'QAR': 0.27,
+      'KWD': 3.25,
+      'EGP': 0.032,
+      'ILS': 0.27,
+      'NGN': 0.0013,
+      'KES': 0.0078,
+      'GHS': 0.083,
+      'MAD': 0.10,
+      'CLP': 0.0011,
+      'COP': 0.00025,
+      'PEN': 0.27,
+      'ARS': 0.001,
+      'UYU': 0.025,
+      'VND': 0.000041,
+      'PKR': 0.0036,
+      'BDT': 0.0091,
+      'LKR': 0.0031,
+      'TWD': 0.031,
+    };
+  }
+}
 
 export interface SalaryAnalysis {
   originalSalary: {
@@ -119,8 +262,38 @@ export function parseSalaryString(salaryStr: string): { min: number; max: number
   };
 }
 
-export function convertToUSD(amount: number, currency: string): number {
-  const rate = CURRENCY_RATES[currency] || 1.0;
+export async function convertToUSD(amount: number, currency: string): Promise<number> {
+  const rates = await fetchCurrencyRates();
+  const rate = rates[currency] || 1.0;
+  return amount * rate;
+}
+
+// Synchronous version with fallback rates for immediate calculations
+export function convertToUSDSync(amount: number, currency: string): number {
+  // Use cached rates if available
+  if (currencyCache && 
+      (new Date().getTime() - currencyCache.lastUpdated.getTime()) < CURRENCY_CACHE_TTL) {
+    const rate = currencyCache.rates[currency] || 1.0;
+    return amount * rate;
+  }
+  
+  // Fallback to static rates for sync operations
+  const fallbackRates: Record<string, number> = {
+    'USD': 1.0,
+    'EUR': 1.08,
+    'GBP': 1.27,
+    'CAD': 0.74,
+    'AUD': 0.65,
+    'JPY': 0.0067,
+    'INR': 0.012,
+    'CHF': 1.11,
+    'SGD': 0.74,
+    'CNY': 0.14,
+    'BRL': 0.20,
+    'MXN': 0.059,
+  };
+  
+  const rate = fallbackRates[currency] || 1.0;
   return amount * rate;
 }
 
@@ -209,7 +382,28 @@ export function calculateSavingsPotential(
   }
 }
 
-export function analyzeSalary(
+export async function analyzeSalary(
+  salaryStr: string | undefined,
+  location: string | undefined
+): Promise<SalaryAnalysis | null> {
+  if (!salaryStr) return null;
+  
+  const parsed = parseSalaryString(salaryStr);
+  if (!parsed) return null;
+  
+  const costData = getCostOfLivingData(location || 'remote');
+  
+  // Convert to USD with live rates
+  const minUSD = await convertToUSD(parsed.min, parsed.currency);
+  const maxUSD = await convertToUSD(parsed.max, parsed.currency);
+  const avgUSD = (minUSD + maxUSD) / 2;
+
+  // Rest of the function remains the same
+  return analyzeSalaryCore(parsed, minUSD, maxUSD, avgUSD, costData);
+}
+
+// Synchronous version for immediate UI updates
+export function analyzeSalarySync(
   salaryStr: string | undefined,
   location: string | undefined
 ): SalaryAnalysis | null {
@@ -220,10 +414,22 @@ export function analyzeSalary(
   
   const costData = getCostOfLivingData(location || 'remote');
   
-  // Convert to USD
-  const minUSD = convertToUSD(parsed.min, parsed.currency);
-  const maxUSD = convertToUSD(parsed.max, parsed.currency);
+  // Convert to USD with cached/fallback rates
+  const minUSD = convertToUSDSync(parsed.min, parsed.currency);
+  const maxUSD = convertToUSDSync(parsed.max, parsed.currency);
   const avgUSD = (minUSD + maxUSD) / 2;
+
+  return analyzeSalaryCore(parsed, minUSD, maxUSD, avgUSD, costData);
+}
+
+// Core analysis logic extracted to avoid duplication
+function analyzeSalaryCore(
+  parsed: { min: number; max: number; currency: string },
+  minUSD: number,
+  maxUSD: number,
+  avgUSD: number,
+  costData: CostOfLivingData
+): SalaryAnalysis {
   
   // Calculate adjusted values
   const adjustmentFactor = 100 / costData.costIndex;
@@ -260,6 +466,12 @@ export function analyzeSalary(
     savingsPotential,
     betterThanPercent,
   };
+}
+
+// Initialize currency cache on module load
+if (typeof window === 'undefined') {
+  // Server-side: pre-fetch rates
+  fetchCurrencyRates().catch(console.warn);
 }
 
 export function formatSalaryRange(min: number, max: number, currency: string = 'USD'): string {

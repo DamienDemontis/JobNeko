@@ -50,6 +50,17 @@ const mockJobs = [
     rating: 4,
     createdAt: '2024-01-15T10:00:00Z',
     applicationStatus: 'not_applied',
+    salaryAnalysis: {
+      normalizedSalaryUSD: {
+        min: 110000,
+        max: 130000
+      },
+      comfortLevel: 'comfortable',
+      comfortScore: 85,
+      betterThanPercent: 20,
+      savingsPotential: 25.5,
+      purchasingPower: 1.2
+    }
   },
   {
     id: 'job2',
@@ -62,6 +73,17 @@ const mockJobs = [
     rating: null,
     createdAt: '2024-01-14T10:00:00Z',
     applicationStatus: 'applied',
+    salaryAnalysis: {
+      normalizedSalaryUSD: {
+        min: 95000,
+        max: 105000
+      },
+      comfortLevel: 'tight',
+      comfortScore: 65,
+      betterThanPercent: 40,
+      savingsPotential: 15.0,
+      purchasingPower: 0.9
+    }
   },
 ];
 

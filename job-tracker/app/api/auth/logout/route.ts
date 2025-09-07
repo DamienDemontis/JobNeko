@@ -6,7 +6,7 @@ export async function POST(request: NextRequest) {
     const token = request.headers.get('authorization')?.replace('Bearer ', '');
 
     if (token) {
-      await deleteSession(token);
+      await deleteSession();
     }
 
     // Create response

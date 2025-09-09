@@ -194,9 +194,15 @@ export default function DashboardPage() {
   });
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<Record<string, unknown>>({});
   const [sortBy, setSortBy] = useState<string>('createdAt');
+
+  // Hydration safety - only render after client-side mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     console.log('Dashboard useEffect triggered:', { authLoading, user: !!user, token: !!token });
@@ -324,6 +330,11 @@ export default function DashboardPage() {
       </div>
     );
   };
+
+  // Prevent hydration mismatch by not rendering loading state until mounted
+  if (!mounted) {
+    return null;
+  }
 
   if (loading) {
     return (

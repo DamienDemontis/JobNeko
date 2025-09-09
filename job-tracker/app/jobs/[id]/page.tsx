@@ -9,8 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import SalaryIntelligence from '@/components/ui/salary-intelligence';
-import InteractiveSalaryCalculator from '@/components/ui/interactive-salary-calculator';
+import IntelligentSalaryHub from '@/components/ui/intelligent-salary-hub';
+import JobEditForm from '@/components/ui/job-edit-form';
 import { toast } from 'sonner';
 import {
   ArrowTopRightOnSquareIcon as ExternalLinkIcon,
@@ -116,6 +116,7 @@ export default function JobDetailPage() {
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
 
   const fetchJob = async () => {
@@ -235,6 +236,34 @@ export default function JobDetailPage() {
   const statusInfo = applicationStatusLabels[job.applicationStatus] || applicationStatusLabels.not_applied;
   const StatusIcon = statusInfo.icon;
 
+  // Show edit form if in editing mode
+  if (isEditing) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <Button 
+            variant="ghost" 
+            onClick={() => router.push('/dashboard')}
+            className="mb-4"
+          >
+            <ArrowLeftIcon className="h-4 w-4 mr-2" />
+            Back to Dashboard
+          </Button>
+          
+          <JobEditForm
+            job={job}
+            onSave={(updatedJob) => {
+              setJob(updatedJob);
+              setIsEditing(false);
+              toast.success('Job updated successfully!');
+            }}
+            onCancel={() => setIsEditing(false)}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -306,7 +335,11 @@ export default function JobDetailPage() {
                     </a>
                   </Button>
                 )}
-                <Button variant="outline" size="sm">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setIsEditing(true)}
+                >
                   <PencilIcon className="h-4 w-4 mr-2" />
                   Edit
                 </Button>
@@ -470,10 +503,15 @@ export default function JobDetailPage() {
             </div>
           </TabsContent>
 
-          {/* Salary Intelligence Tab */}
+          {/* Intelligent Salary Hub Tab */}
           <TabsContent value="salary" className="space-y-6">
-            <SalaryIntelligence job={job} />
-            <InteractiveSalaryCalculator job={job} />
+            <IntelligentSalaryHub 
+              job={job} 
+              onJobUpdate={(updatedJob) => {
+                setJob(updatedJob);
+                toast.success('Job updated successfully');
+              }} 
+            />
           </TabsContent>
 
           {/* Other tabs will be implemented similarly... */}

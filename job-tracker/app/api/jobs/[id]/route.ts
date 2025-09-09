@@ -7,6 +7,22 @@ import { validateToken } from '@/lib/auth';
 export const runtime = 'nodejs';
 
 const updateSchema = z.object({
+  // Basic job information
+  title: z.string().optional(),
+  company: z.string().optional(),
+  location: z.string().optional(),
+  salary: z.string().optional(),
+  salaryMin: z.number().optional(),
+  salaryMax: z.number().optional(),
+  contractType: z.string().optional(),
+  workMode: z.enum(['remote', 'hybrid', 'onsite']).optional(),
+  description: z.string().optional(),
+  requirements: z.string().optional(),
+  skills: z.string().optional(),
+  perks: z.string().optional(),
+  url: z.string().url().optional(),
+  
+  // Application tracking
   applicationStatus: z.enum([
     'not_applied', 'applied', 'phone_screening', 'phone_screening_completed', 
     'technical_assessment', 'first_interview', 'second_interview', 'final_interview',

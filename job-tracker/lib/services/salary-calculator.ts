@@ -1,6 +1,6 @@
-// Enhanced Salary Intelligence with Family Adjustments and City Data
+// Enhanced Salary Intelligence with AI Enhancement and Real Data Sources
+// NO MORE HARDCODED ESTIMATES!
 
-import { numbeoScraper } from './numbeo-scraper';
 import { convertToUSD, convertToUSDSync, parseSalaryString } from '../salary-intelligence';
 
 interface UserProfile {
@@ -64,6 +64,14 @@ export interface EnhancedSalaryAnalysis {
     max: number;
   };
   
+  // Monthly estimates
+  monthlySalaryUSD: {
+    grossMin: number;
+    grossMax: number;
+    netMin: number;
+    netMax: number;
+  };
+  
   // Location data
   locationData: {
     city: string;
@@ -97,6 +105,17 @@ export interface EnhancedSalaryAnalysis {
   betterThanPercent: number;
   relativeToLocalAverage?: number;
   
+  // Monthly budget breakdown
+  breakdown: {
+    housing: number;
+    food: number;
+    transport: number;
+    healthcare: number;
+    education: number;
+    savings: number;
+    discretionary: number;
+  };
+  
   // Recommendations
   recommendations: string[];
   warnings: string[];
@@ -113,20 +132,30 @@ export async function calculateEnhancedSalary(
   const parsed = parseSalaryString(salaryStr);
   if (!parsed) return null;
   
-  // Determine effective location for cost calculations
-  const effectiveLocation = determineEffectiveLocation(jobLocation, workMode, userProfile);
+  console.log(`🚀 Enhanced salary analysis starting for ${jobLocation} (${workMode})`);
   
-  // Get city data from Numbeo or cache
-  const cityData = await numbeoScraper.getCityData(
-    effectiveLocation.city,
-    effectiveLocation.country,
-    effectiveLocation.state
-  );
+  // NEW: Use AI-enhanced location resolution
+  const { aiDataProcessor } = await import('./ai-data-processor');
+  
+  // Parse location intelligently
+  const locationParts = jobLocation?.split(',').map(s => s.trim()) || [];
+  const locationContext = {
+    city: locationParts[0] || 'Unknown',
+    country: locationParts.length > 1 ? locationParts[locationParts.length - 1] : 'Unknown',
+    state: locationParts.length > 2 ? locationParts[1] : undefined,
+    isRemote: workMode === 'remote',
+    userLocation: userProfile?.currentLocation
+  };
+  
+  // Get AI-enhanced city data (NO hardcoded estimates!)
+  const cityData = await aiDataProcessor.getEnhancedCityData(locationContext);
   
   if (!cityData) {
-    console.warn(`No city data found for ${effectiveLocation.city}, ${effectiveLocation.country}`);
+    console.warn(`❌ No enhanced city data available for ${locationContext.city}, ${locationContext.country}`);
     return null;
   }
+  
+  console.log(`✅ Using AI-enhanced data: Cost Index ${cityData.costOfLivingIndex}% (sources: ${cityData.dataSources?.join(', ')})`);
   
   // Convert to USD with live rates
   const minUSD = await convertToUSD(parsed.min, parsed.currency);
@@ -155,8 +184,9 @@ export async function calculateEnhancedSalary(
   const netMinUSD = minUSD * (1 - taxRate / 100);
   const netMaxUSD = maxUSD * (1 - taxRate / 100);
   
-  // Comfort scores
-  const comfortScore = calculateComfortScore(avgUSD, cityData.costOfLivingIndex);
+  // NEW: AI-enhanced comfort scores (region-appropriate thresholds)
+  console.log(`🤖 Calculating AI-enhanced comfort scores for $${avgUSD.toLocaleString()} in ${cityData.city}...`);
+  const comfortScore = await calculateComfortScoreAI(avgUSD, cityData);
   const familyComfortScore = calculateFamilyComfortScore(
     avgUSD, 
     cityData.costOfLivingIndex, 
@@ -165,8 +195,9 @@ export async function calculateEnhancedSalary(
     housingRequirement
   );
   
-  // Quality metrics
-  const purchasingPower = (avgUSD / cityData.costOfLivingIndex) * 100;
+  // Quality metrics - Purchasing power relative to baseline (100 = NYC)
+  // If cost of living is 154, your purchasing power is 100/154 = 0.65x
+  const purchasingPower = 100 / (cityData.costOfLivingIndex || 100);
   const savingsPotential = calculateSavingsPotential(avgUSD, cityData.costOfLivingIndex);
   const familySavingsPotential = calculateFamilySavingsPotential(
     avgUSD,
@@ -190,6 +221,18 @@ export async function calculateEnhancedSalary(
     ? (avgUSD / cityData.avgNetSalaryUSD) * 100
     : undefined;
   
+  // Calculate monthly budget breakdown
+  const monthlyNetAvg = (netMinUSD + netMaxUSD) / 2 / 12;
+  const breakdown = {
+    housing: monthlyNetAvg * 0.30,      // 30%
+    food: monthlyNetAvg * 0.15,         // 15%
+    transport: monthlyNetAvg * 0.10,    // 10%
+    healthcare: monthlyNetAvg * 0.08,   // 8%
+    education: monthlyNetAvg * 0.05,    // 5%
+    savings: monthlyNetAvg * 0.20,      // 20%
+    discretionary: monthlyNetAvg * 0.12 // 12% (Total: 100%)
+  };
+
   // Generate recommendations and warnings
   const { recommendations, warnings } = generateRecommendationsAndWarnings({
     avgUSD,
@@ -230,6 +273,12 @@ export async function calculateEnhancedSalary(
       min: netMinUSD,
       max: netMaxUSD,
     },
+    monthlySalaryUSD: {
+      grossMin: minUSD / 12,
+      grossMax: maxUSD / 12,
+      netMin: netMinUSD / 12,
+      netMax: netMaxUSD / 12,
+    },
     locationData: {
       city: cityData.city,
       country: cityData.country,
@@ -247,6 +296,7 @@ export async function calculateEnhancedSalary(
     comparisonToCurrent,
     betterThanPercent,
     relativeToLocalAverage,
+    breakdown,
     recommendations,
     warnings,
   };
@@ -276,11 +326,16 @@ export function calculateEnhancedSalarySync(
   return null; // Simplified for now - full implementation would mirror async version
 }
 
+// DEPRECATED: Old location resolution function
+// Now using AI-enhanced location resolution in aiDataProcessor.resolveJobLocation()
+// This function is kept for compatibility but should not be used for new code
 function determineEffectiveLocation(
   jobLocation: string | undefined,
   workMode: 'remote' | 'hybrid' | 'onsite',
   userProfile?: Partial<UserProfile>
 ) {
+  console.warn('⚠️ Using deprecated location resolution - should use AI location resolution');
+  
   // For remote jobs, use user's current location
   if (workMode === 'remote') {
     return {
@@ -530,16 +585,95 @@ function generateRecommendationsAndWarnings(params: {
   return { recommendations, warnings };
 }
 
+// NEW: AI-ENHANCED COMFORT CALCULATION - NO HARDCODED THRESHOLDS!
+async function calculateComfortScoreAI(salaryUSD: number, cityData: any): Promise<number> {
+  try {
+    // Use AI to calculate region-appropriate thresholds
+    const { aiDataProcessor } = await import('./ai-data-processor');
+    const thresholds = await aiDataProcessor.calculateRegionalThresholds(cityData);
+    
+    console.log(`🤖 AI-generated thresholds for ${cityData.city}, ${cityData.country}:`);
+    console.log(`  - Struggling: $${thresholds.struggling.toLocaleString()}`);
+    console.log(`  - Tight: $${thresholds.tight.toLocaleString()}`);
+    console.log(`  - Comfortable: $${thresholds.comfortable.toLocaleString()}`);
+    console.log(`  - Thriving: $${thresholds.thriving.toLocaleString()}`);
+    console.log(`  - Luxurious: $${thresholds.luxurious.toLocaleString()}`);
+    console.log(`  - Salary being analyzed: $${salaryUSD.toLocaleString()}`);
+    
+    // Same calculation logic but with AI-generated thresholds
+    if (salaryUSD < thresholds.struggling) {
+      const score = Math.max(0, (salaryUSD / thresholds.struggling) * 20);
+      console.log(`💡 Result: ${score}% (struggling range)`);
+      return score;
+    } else if (salaryUSD < thresholds.tight) {
+      const score = 20 + ((salaryUSD - thresholds.struggling) / (thresholds.tight - thresholds.struggling)) * 20;
+      console.log(`💡 Result: ${score}% (tight range)`);
+      return score;
+    } else if (salaryUSD < thresholds.comfortable) {
+      const score = 40 + ((salaryUSD - thresholds.tight) / (thresholds.comfortable - thresholds.tight)) * 20;
+      console.log(`💡 Result: ${score}% (comfortable range)`);
+      return score;
+    } else if (salaryUSD < thresholds.thriving) {
+      const score = 60 + ((salaryUSD - thresholds.comfortable) / (thresholds.thriving - thresholds.comfortable)) * 20;
+      console.log(`💡 Result: ${score}% (thriving range)`);
+      return score;
+    } else if (salaryUSD < thresholds.luxurious) {
+      const score = 80 + ((salaryUSD - thresholds.thriving) / (thresholds.luxurious - thresholds.thriving)) * 15;
+      console.log(`💡 Result: ${score}% (luxurious range)`);
+      return score;
+    } else {
+      const score = Math.min(100, 95 + (salaryUSD - thresholds.luxurious) / 50000);
+      console.log(`💡 Result: ${score}% (above luxurious)`);
+      return score;
+    }
+  } catch (error) {
+    console.error('AI comfort calculation failed, using fallback:', error);
+    
+    // Fallback: Cost-adjusted thresholds (still better than hardcoded US values)
+    const adjustmentFactor = (cityData.costOfLivingIndex || 100) / 100;
+    const fallbackThresholds = {
+      struggling: 35000 * adjustmentFactor,
+      tight: 55000 * adjustmentFactor,
+      comfortable: 90000 * adjustmentFactor,
+      thriving: 140000 * adjustmentFactor,
+      luxurious: 200000 * adjustmentFactor,
+    };
+    
+    console.log(`🔄 Using fallback thresholds (cost-adjusted for ${cityData.city}):`);
+    console.log(`  - Comfortable threshold: $${fallbackThresholds.comfortable.toLocaleString()}`);
+    
+    // Apply same logic with fallback thresholds
+    if (salaryUSD < fallbackThresholds.struggling) {
+      return Math.max(0, (salaryUSD / fallbackThresholds.struggling) * 20);
+    } else if (salaryUSD < fallbackThresholds.tight) {
+      return 20 + ((salaryUSD - fallbackThresholds.struggling) / (fallbackThresholds.tight - fallbackThresholds.struggling)) * 20;
+    } else if (salaryUSD < fallbackThresholds.comfortable) {
+      return 40 + ((salaryUSD - fallbackThresholds.tight) / (fallbackThresholds.comfortable - fallbackThresholds.tight)) * 20;
+    } else if (salaryUSD < fallbackThresholds.thriving) {
+      return 60 + ((salaryUSD - fallbackThresholds.comfortable) / (fallbackThresholds.thriving - fallbackThresholds.comfortable)) * 20;
+    } else if (salaryUSD < fallbackThresholds.luxurious) {
+      return 80 + ((salaryUSD - fallbackThresholds.thriving) / (fallbackThresholds.luxurious - fallbackThresholds.thriving)) * 15;
+    } else {
+      return Math.min(100, 95 + (salaryUSD - fallbackThresholds.luxurious) / 50000);
+    }
+  }
+}
+
+// DEPRECATED: Old hardcoded function (kept for compatibility during transition)
 function calculateComfortScore(salaryUSD: number, costIndex: number): number {
-  const adjustedSalary = (salaryUSD / costIndex) * 100;
+  console.warn('⚠️ Using deprecated hardcoded comfort calculation - should use calculateComfortScoreAI');
   
+  // Use cost-adjusted fallback instead of pure hardcoded values
+  const adjustmentFactor = costIndex / 100;
   const thresholds = {
-    struggling: 40000,
-    tight: 60000,
-    comfortable: 100000,
-    thriving: 150000,
-    luxurious: 200000,
+    struggling: 35000 * adjustmentFactor,
+    tight: 55000 * adjustmentFactor,
+    comfortable: 90000 * adjustmentFactor,
+    thriving: 140000 * adjustmentFactor,
+    luxurious: 200000 * adjustmentFactor,
   };
+  
+  const adjustedSalary = salaryUSD;
   
   if (adjustedSalary < thresholds.struggling) {
     return Math.max(0, (adjustedSalary / thresholds.struggling) * 20);

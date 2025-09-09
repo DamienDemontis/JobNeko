@@ -5,6 +5,14 @@ import { calculateEnhancedSalary } from '@/lib/services/salary-calculator';
 import { parseSalaryString, convertToUSDSync } from '@/lib/salary-intelligence';
 import { numbeoScraper } from '@/lib/services/numbeo-scraper';
 import { findCountry, findRegionDefault, isMajorCity, NUMBEO_COUNTRIES } from '@/lib/numbeo-countries';
+import { 
+  withErrorHandling, 
+  AuthenticationError, 
+  NotFoundError, 
+  ValidationError,
+  ExternalServiceError,
+  validateId 
+} from '@/lib/error-handling';
 
 interface LocationResolution {
   city: string;
@@ -152,71 +160,84 @@ function parseJobSalary(salaryString: string) {
   };
 }
 
-export async function GET(
+export const GET = withErrorHandling(async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
+  // Extract and validate token
+  const token = request.headers.get('authorization')?.replace('Bearer ', '');
+  if (!token) {
+    throw new AuthenticationError('Authorization token required');
+  }
+
+  const user = await validateToken(token);
+  if (!user) {
+    throw new AuthenticationError('Invalid or expired token');
+  }
+
+  // Validate job ID parameter
+  const resolvedParams = await params;
+  validateId(resolvedParams.id, 'Job ID');
+  const jobId = resolvedParams.id;
+
+  // Fetch job data with proper error handling
+  const job = await prisma.job.findUnique({
+    where: { id: jobId, userId: user.id },
+  });
+
+  if (!job) {
+    throw new NotFoundError('Job');
+  }
+
+  // Fetch user profile for enhanced calculations
+  const userProfile = await prisma.userProfile.findUnique({
+    where: { userId: user.id }
+  });
+
+  // Resolve location intelligently
+  const locationResolution = await resolveLocation(job.location || '', userProfile);
+  
+  // Parse salary with enhanced handling
+  const salaryData = parseJobSalary(job.salary || '');
+  
+  if (!salaryData) {
+    return NextResponse.json({
+      error: 'No salary data available',
+      hasData: false,
+      suggestion: 'Add salary information to get detailed analysis'
+    }, { status: 200 });
+  }
+
+  // Get cost of living data for resolved location with error handling
+  let costOfLivingData;
   try {
-    const token = request.headers.get('authorization')?.replace('Bearer ', '');
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    costOfLivingData = await numbeoScraper.getCityData(
+      locationResolution.city,
+      locationResolution.country,
+      locationResolution.state
+    );
+  } catch (error) {
+    console.warn('Cost of living data unavailable, using fallback estimates:', error);
+    // Continue with analysis using default estimates
+  }
 
-    const user = await validateToken(token);
-    if (!user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-    }
+  // Convert salary to USD
+  let minUSD: number, maxUSD: number, midpointUSD: number;
+  try {
+    minUSD = convertToUSDSync(salaryData.min, salaryData.currency);
+    maxUSD = convertToUSDSync(salaryData.max, salaryData.currency);
+    midpointUSD = (minUSD + maxUSD) / 2;
+  } catch (error) {
+    console.warn('Currency conversion failed, using original values:', error);
+    minUSD = salaryData.min;
+    maxUSD = salaryData.max;
+    midpointUSD = (minUSD + maxUSD) / 2;
+  }
 
-    const resolvedParams = await params;
-    const jobId = resolvedParams.id;
-
-    // Fetch job data
-    const job = await prisma.job.findUnique({
-      where: { id: jobId, userId: user.id },
-    });
-
-    if (!job) {
-      return NextResponse.json({ error: 'Job not found' }, { status: 404 });
-    }
-
-    // Fetch user profile for enhanced calculations
-    const userProfile = await prisma.userProfile.findUnique({
-      where: { userId: user.id }
-    });
-
-    // Resolve location intelligently
-    const locationResolution = await resolveLocation(job.location || '', userProfile);
-    
-    // Parse salary with enhanced handling
-    const salaryData = parseJobSalary(job.salary || '');
-    
-    if (!salaryData) {
-      return NextResponse.json({
-        error: 'No salary data available',
-        hasData: false,
-        suggestion: 'Add salary information to get detailed analysis'
-      }, { status: 200 });
-    }
-
-    // Get cost of living data for resolved location
-    let costOfLivingData;
-    try {
-      costOfLivingData = await numbeoScraper.getCityData(
-        locationResolution.city,
-        locationResolution.country,
-        locationResolution.state
-      );
-    } catch (error) {
-      console.warn('Failed to get cost of living data, using defaults');
-    }
-
-    // Convert salary to USD
-    const minUSD = convertToUSDSync(salaryData.min, salaryData.currency);
-    const maxUSD = convertToUSDSync(salaryData.max, salaryData.currency);
-    const midpointUSD = (minUSD + maxUSD) / 2;
-
-    // Calculate enhanced salary analysis
-    const salaryAnalysis = await calculateEnhancedSalary(
+  // Calculate enhanced salary analysis with error handling
+  let salaryAnalysis;
+  try {
+    salaryAnalysis = await calculateEnhancedSalary(
       job.salary || '',
       `${locationResolution.city}, ${locationResolution.country}`,
       (job.workMode as 'remote' | 'hybrid' | 'onsite') || 'hybrid',
@@ -230,80 +251,77 @@ export async function GET(
         currentSalary: userProfile?.currentSalary || 0,
       }
     );
-
-    // Build comprehensive response
-    const response = {
-      hasData: true,
-      originalSalary: {
-        min: salaryData.min,
-        max: salaryData.max,
-        midpoint: salaryData.midpoint,
-        currency: salaryData.currency,
-        frequency: 'yearly',
-        confidence: salaryData.confidence,
-        rangeWidth: salaryData.rangeWidth,
-        rangePercent: Math.round(salaryData.rangePercent)
-      },
-      normalizedSalaryUSD: {
-        min: minUSD,
-        max: maxUSD,
-        midpoint: midpointUSD
-      },
-      locationData: {
-        original: job.location,
-        resolved: {
-          city: locationResolution.city,
-          country: locationResolution.country,
-          state: locationResolution.state
-        },
-        isRemote: locationResolution.isRemote,
-        confidence: locationResolution.confidence,
-        costOfLiving: costOfLivingData ? {
-          costOfLivingIndex: costOfLivingData.costOfLivingIndex,
-          rentIndex: costOfLivingData.rentIndex,
-          qualityOfLifeIndex: costOfLivingData.qualityOfLifeIndex,
-          safetyIndex: costOfLivingData.safetyIndex,
-          healthcareIndex: costOfLivingData.healthcareIndex,
-          educationIndex: costOfLivingData.educationIndex
-        } : null
-      },
-      analysis: salaryAnalysis || {
-        comfortLevel: 'analyzing',
-        comfortScore: 0,
-        netSalaryUSD: { min: minUSD * 0.73, max: maxUSD * 0.73 }, // Rough tax estimate
-        purchasingPower: 1.0,
-        savingsPotential: 0,
-        betterThanPercent: 50
-      },
-      familyContext: userProfile ? {
-        familySize: userProfile.familySize || 1,
-        dependents: userProfile.dependents || 0,
-        maritalStatus: userProfile.maritalStatus || 'single',
-        hasExpectedSalary: !!userProfile.expectedSalaryMin,
-        comparisonToExpected: userProfile.expectedSalaryMin ? {
-          percentage: Math.round(((midpointUSD - userProfile.expectedSalaryMin) / userProfile.expectedSalaryMin) * 100),
-          verdict: midpointUSD > userProfile.expectedSalaryMin ? 'above expected' : 'below expected'
-        } : null
-      } : null,
-      confidence: {
-        overall: Math.min(salaryData.confidence, locationResolution.confidence),
-        salary: salaryData.confidence,
-        location: locationResolution.confidence,
-        costOfLiving: costOfLivingData ? 0.9 : 0.5
-      },
-      recommendations: generateRecommendations(salaryData, locationResolution, userProfile)
-    };
-
-    return NextResponse.json(response);
-
   } catch (error) {
-    console.error('Salary analysis error:', error);
-    return NextResponse.json(
-      { error: 'Failed to analyze salary', hasData: false },
-      { status: 500 }
-    );
+    console.warn('Enhanced salary calculation failed, using basic analysis:', error);
+    // Provide fallback analysis
+    salaryAnalysis = {
+      comfortLevel: 'analyzing',
+      comfortScore: Math.min(Math.max((midpointUSD / 1000), 20), 90),
+      netSalaryUSD: { min: minUSD * 0.73, max: maxUSD * 0.73 },
+      purchasingPower: 1.0,
+      savingsPotential: 15,
+      betterThanPercent: 50
+    };
   }
-}
+
+  // Build comprehensive response
+  const response = {
+    hasData: true,
+    originalSalary: {
+      min: salaryData.min,
+      max: salaryData.max,
+      midpoint: salaryData.midpoint,
+      currency: salaryData.currency,
+      frequency: 'yearly',
+      confidence: salaryData.confidence,
+      rangeWidth: salaryData.rangeWidth,
+      rangePercent: Math.round(salaryData.rangePercent)
+    },
+    normalizedSalaryUSD: {
+      min: minUSD,
+      max: maxUSD,
+      midpoint: midpointUSD
+    },
+    locationData: {
+      original: job.location,
+      resolved: {
+        city: locationResolution.city,
+        country: locationResolution.country,
+        state: locationResolution.state
+      },
+      isRemote: locationResolution.isRemote,
+      confidence: locationResolution.confidence,
+      costOfLiving: costOfLivingData ? {
+        costOfLivingIndex: costOfLivingData.costOfLivingIndex,
+        rentIndex: costOfLivingData.rentIndex,
+        qualityOfLifeIndex: costOfLivingData.qualityOfLifeIndex,
+        safetyIndex: costOfLivingData.safetyIndex,
+        healthcareIndex: costOfLivingData.healthcareIndex,
+        educationIndex: costOfLivingData.educationIndex
+      } : null
+    },
+    analysis: salaryAnalysis,
+    familyContext: userProfile ? {
+      familySize: userProfile.familySize || 1,
+      dependents: userProfile.dependents || 0,
+      maritalStatus: userProfile.maritalStatus || 'single',
+      hasExpectedSalary: !!userProfile.expectedSalaryMin,
+      comparisonToExpected: userProfile.expectedSalaryMin ? {
+        percentage: Math.round(((midpointUSD - userProfile.expectedSalaryMin) / userProfile.expectedSalaryMin) * 100),
+        verdict: midpointUSD > userProfile.expectedSalaryMin ? 'above expected' : 'below expected'
+      } : null
+    } : null,
+    confidence: {
+      overall: Math.min(salaryData.confidence, locationResolution.confidence),
+      salary: salaryData.confidence,
+      location: locationResolution.confidence,
+      costOfLiving: costOfLivingData ? 0.9 : 0.5
+    },
+    recommendations: generateRecommendations(salaryData, locationResolution, userProfile)
+  };
+
+  return NextResponse.json(response);
+});
 
 function generateRecommendations(salaryData: any, location: LocationResolution, userProfile: any) {
   const recommendations = [];

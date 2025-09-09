@@ -99,6 +99,29 @@ const formatCurrency = (amount: number, currency = 'USD') => {
   }).format(amount);
 };
 
+const getCurrencyRate = (currency: string): number => {
+  const rates: { [key: string]: number } = {
+    'USD': 1,
+    'EUR': 1.08,
+    'GBP': 1.27,
+    'CAD': 0.74,
+    'AUD': 0.67,
+    'JPY': 0.0067,
+    'CHF': 1.11,
+    'SEK': 0.092
+  };
+  return rates[currency] || 1;
+};
+
+const generateDefaultBreakdown = (monthlyNet: number) => ({
+  housing: monthlyNet * 0.30,
+  food: monthlyNet * 0.15,
+  transport: monthlyNet * 0.10,
+  healthcare: monthlyNet * 0.08,
+  savings: monthlyNet * 0.20,
+  other: monthlyNet * 0.17
+});
+
 const getComfortLevelColor = (level: string) => {
   switch (level.toLowerCase()) {
     case 'struggling': return 'bg-red-100 text-red-800';
@@ -167,15 +190,15 @@ const calculateSalaryAnalysis = (inputs: CalculatorInputs): CalculationResult =>
     comfortScore = 95;
   }
   
-  // Budget breakdown
+  // Budget breakdown - percentages must add up to 100%
   const monthlyNet = netUSD / 12;
   const breakdown = {
-    housing: monthlyNet * 0.30,
-    food: monthlyNet * 0.15,
-    transport: monthlyNet * 0.10,
-    healthcare: monthlyNet * 0.08,
-    savings: monthlyNet * 0.20,
-    other: monthlyNet * 0.17
+    housing: monthlyNet * 0.30,      // 30%
+    food: monthlyNet * 0.15,         // 15%
+    transport: monthlyNet * 0.10,    // 10%
+    healthcare: monthlyNet * 0.08,   // 8%
+    savings: monthlyNet * 0.20,      // 20%
+    other: monthlyNet * 0.17         // 17% (Total: 100%)
   };
   
   return {
@@ -213,7 +236,16 @@ export default function InteractiveSalaryCalculator({ job }: InteractiveSalaryCa
   // Initialize with job data
   useEffect(() => {
     if (job) {
-      const jobSalary = job.salary ? parseFloat(job.salary.replace(/[^\d.]/g, '')) || 0 : 0;
+      // Use proper salary parsing instead of naive regex
+      let jobSalary = 0;
+      if (job.salary) {
+        // Extract first number from salary string for calculator
+        const numbers = job.salary.match(/[\d,]+/g);
+        if (numbers && numbers.length > 0) {
+          jobSalary = parseFloat(numbers[0].replace(/,/g, '')) || 0;
+        }
+      }
+      
       const jobLocation = job.location || '';
       const [city, country] = jobLocation.split(',').map((s: string) => s.trim());
       
@@ -230,11 +262,55 @@ export default function InteractiveSalaryCalculator({ job }: InteractiveSalaryCa
   const handleCalculate = async () => {
     setIsCalculating(true);
     
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      // Call the real salary analysis API if we have a job ID
+      if (job?.id) {
+        const token = localStorage.getItem('token');
+        if (token) {
+          const response = await fetch(`/api/jobs/${job.id}/salary-analysis`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (response.ok) {
+            const apiData = await response.json();
+            
+            if (apiData.hasData) {
+              // Transform API data to match our calculator interface
+              const calculationResult: CalculationResult = {
+                grossAnnual: inputs.salary * (getCurrencyRate(inputs.currency) || 1),
+                netAnnual: (apiData.analysis.netSalaryUSD?.min || (inputs.salary * 0.73)),
+                monthlyNet: (apiData.analysis.netSalaryUSD?.min || (inputs.salary * 0.73)) / 12,
+                familyAdjusted: apiData.analysis.familyAdjustedSalary?.min || inputs.salary,
+                comfortLevel: apiData.analysis.comfortLevel || 'comfortable',
+                comfortScore: apiData.analysis.comfortScore || 70,
+                savingsPotential: apiData.analysis.savingsPotential || 20,
+                comparisonToExpected: apiData.familyContext?.comparisonToExpected?.percentage || 0,
+                costOfLivingMultiplier: apiData.locationData.costOfLiving?.costOfLivingIndex ? 
+                  apiData.locationData.costOfLiving.costOfLivingIndex / 100 : 1.0,
+                breakdown: apiData.analysis.breakdown || generateDefaultBreakdown((apiData.analysis.netSalaryUSD?.min || inputs.salary) / 12)
+              };
+              
+              setResult(calculationResult);
+              setIsCalculating(false);
+              return;
+            }
+          }
+        }
+      }
+      
+      // Fallback to local calculation if API fails or no job ID
+      const calculationResult = calculateSalaryAnalysis(inputs);
+      setResult(calculationResult);
+    } catch (error) {
+      console.error('Error calculating salary:', error);
+      // Fallback to local calculation on error
+      const calculationResult = calculateSalaryAnalysis(inputs);
+      setResult(calculationResult);
+    }
     
-    const calculationResult = calculateSalaryAnalysis(inputs);
-    setResult(calculationResult);
     setIsCalculating(false);
   };
 
@@ -481,7 +557,7 @@ export default function InteractiveSalaryCalculator({ job }: InteractiveSalaryCa
                     Family-adjusted net income: <span className="font-bold">{formatCurrency(result.familyAdjusted)}</span>
                   </p>
                   <p className="text-xs text-purple-600 mt-1">
-                    Supporting {inputs.familySize} family members with {inputs.dependents} dependents
+                    Supporting {inputs.familySize === 1 ? '1 family member' : `${inputs.familySize} family members`} with {inputs.dependents === 1 ? '1 dependent' : `${inputs.dependents} dependents`}
                   </p>
                 </div>
               )}

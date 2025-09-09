@@ -1,6 +1,7 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import SalarySpeculation from './salary-speculation';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
@@ -24,6 +25,7 @@ import { useEffect, useState } from 'react';
 
 interface SalaryIntelligenceProps {
   job: any; // Job object with salary and location data
+  onJobUpdate?: (updatedJob: any) => void; // Optional callback for job updates
 }
 
 interface EnhancedSalaryAnalysis {
@@ -117,7 +119,7 @@ const formatSalaryRange = (min: number, max: number, currency = 'USD') => {
   return `${formatCurrency(min, currency)} - ${formatCurrency(max, currency)}`;
 };
 
-export default function SalaryIntelligence({ job }: SalaryIntelligenceProps) {
+export default function SalaryIntelligence({ job, onJobUpdate }: SalaryIntelligenceProps) {
   const [analysis, setAnalysis] = useState<EnhancedSalaryAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -246,23 +248,50 @@ export default function SalaryIntelligence({ job }: SalaryIntelligenceProps) {
   }
 
   if (!analysis) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSignIcon className="w-5 h-5" />
-            Salary Intelligence
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8 text-gray-500">
-            <InfoIcon className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-            <p>No salary information available for analysis.</p>
-            <p className="text-sm mt-2">Add salary details to see comprehensive intelligence.</p>
-          </div>
-        </CardContent>
-      </Card>
-    );
+    return <SalarySpeculation job={job} onSalaryAdd={async (salaryData) => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          console.error('No authentication token found');
+          return;
+        }
+
+        // Update the job with salary information
+        const response = await fetch(`/api/jobs/${job.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            salary: salaryData.type === 'fixed' 
+              ? `${salaryData.fixedAmount} ${salaryData.currency}` 
+              : salaryData.type === 'hourly'
+                ? `${salaryData.hourlyRate}/hr ${salaryData.currency}`
+                : `${salaryData.minAmount}-${salaryData.maxAmount} ${salaryData.currency}`,
+            salaryMin: salaryData.type === 'range' ? salaryData.minAmount : salaryData.type === 'fixed' ? salaryData.fixedAmount : undefined,
+            salaryMax: salaryData.type === 'range' ? salaryData.maxAmount : salaryData.type === 'fixed' ? salaryData.fixedAmount : undefined,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to update job with salary information');
+        }
+
+        const { job: updatedJob } = await response.json();
+        
+        // Call the parent component's update callback if provided
+        if (onJobUpdate) {
+          onJobUpdate(updatedJob);
+        }
+        
+        // Trigger a re-fetch of the analysis with the new salary data
+        setLoading(true);
+        
+      } catch (error) {
+        console.error('Error updating job with salary data:', error);
+      }
+    }} />;
   }
 
   return (

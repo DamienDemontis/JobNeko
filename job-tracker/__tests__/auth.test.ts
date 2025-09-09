@@ -19,21 +19,21 @@ describe('Authentication', () => {
 
   describe('JWT tokens', () => {
     it('should generate and verify tokens correctly', () => {
-      const payload = { id: 'user123', email: 'test@example.com' };
-      const token = generateToken(payload);
+      const userId = 'user123';
+      const email = 'test@example.com';
+      const token = generateToken(userId, email);
       
       expect(token).toBeDefined();
       expect(typeof token).toBe('string');
       
       const decoded = verifyToken(token);
-      expect(decoded.id).toBe(payload.id);
-      expect(decoded.email).toBe(payload.email);
+      expect(decoded?.id).toBe(userId);
+      expect(decoded?.email).toBe(email);
     });
 
-    it('should throw error for invalid tokens', () => {
-      expect(() => {
-        verifyToken('invalid.token.here');
-      }).toThrow();
+    it('should return null for invalid tokens', () => {
+      const result = verifyToken('invalid.token.here');
+      expect(result).toBeNull();
     });
   });
 });

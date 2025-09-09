@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { validateToken } from '@/lib/auth';
 import { extractJobDataWithAI } from '@/lib/ai-service';
+import { 
+  withErrorHandling, 
+  AuthenticationError, 
+  ConflictError,
+  ExternalServiceError 
+} from '@/lib/error-handling';
 
 // Force this API route to use Node.js runtime instead of Edge Runtime
 export const runtime = 'nodejs';
@@ -15,8 +21,7 @@ const extractSchema = z.object({
   structured: z.any().optional(),
 });
 
-export async function POST(request: NextRequest) {
-  try {
+export const POST = withErrorHandling(async (request: NextRequest) => {
     // Validate authentication - check both header and cookie
     const authHeader = request.headers.get('authorization')?.replace('Bearer ', '');
     const cookieToken = request.cookies.get('token')?.value;
@@ -27,13 +32,13 @@ export async function POST(request: NextRequest) {
     console.log('Job extraction: Using token:', token ? token.substring(0, 20) + '...' : 'None');
     
     if (!token) {
-      return NextResponse.json({ error: 'Unauthorized - No token provided' }, { status: 401 });
+      throw new AuthenticationError('Authentication token required');
     }
 
     const user = await validateToken(token);
     if (!user) {
       console.log('Job extraction: Token validation failed for token:', token.substring(0, 20) + '...');
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      throw new AuthenticationError('Invalid or expired token');
     }
     
     console.log('Job extraction: Token validated for user:', user.email);
@@ -99,22 +104,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({
-      job,
-      message: 'Job extracted successfully',
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'Invalid input', details: error.errors },
-        { status: 400 }
-      );
-    }
-
-    console.error('Job extraction error:', error);
-    return NextResponse.json(
-      { error: 'Failed to extract job' },
-      { status: 500 }
-    );
-  }
-}
+  return NextResponse.json({
+    job,
+    message: 'Job extracted successfully',
+  });
+});

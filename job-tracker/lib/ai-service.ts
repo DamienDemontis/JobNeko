@@ -312,6 +312,76 @@ export async function calculateJobMatch(resumeData: Record<string, any>, jobData
   return Math.min(100, Math.max(0, score));
 }
 
+/**
+ * General-purpose AI completion function for various AI tasks
+ */
+export async function generateCompletion(
+  prompt: string, 
+  options: {
+    max_tokens?: number;
+    temperature?: number;
+  } = {}
+): Promise<{ content: string } | null> {
+  // Try AI services in order of preference
+  const aiServices = [
+    { name: 'openai', available: !!openai },
+    { name: 'ollama', available: await isOllamaAvailable() },
+  ];
+
+  const availableService = aiServices.find(service => service.available);
+  
+  if (!availableService) {
+    console.warn('No AI services configured for completion generation');
+    return null;
+  }
+
+  try {
+    if (availableService.name === 'openai') {
+      const response = await openai!.chat.completions.create({
+        model: AI_MODELS.openai,
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        max_tokens: options.max_tokens || 800,
+        temperature: options.temperature || 0.3,
+      });
+
+      return {
+        content: response.choices[0].message.content || ''
+      };
+    } else if (availableService.name === 'ollama') {
+      const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: AI_MODELS.ollama,
+          prompt: prompt,
+          stream: false,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Ollama API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return {
+        content: data.response || ''
+      };
+    }
+  } catch (error) {
+    console.error(`AI completion failed with ${availableService.name}:`, error);
+    return null;
+  }
+
+  return null;
+}
+
 // AI-only extraction - no fallbacks allowed
 
 function normalizeJobData(data: Record<string, any>): ExtractedJobData {

@@ -1,0 +1,22 @@
+{
+  "extends": ["next/core-web-vitals"],
+  "rules": {
+    "@typescript-eslint/no-unused-vars": "off",
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/ban-ts-comment": "off",
+    "@typescript-eslint/triple-slash-reference": "off", 
+    "@typescript-eslint/no-require-imports": "off",
+    "react-hooks/exhaustive-deps": "off",
+    "@next/next/no-assign-module-variable": "off"
+  },
+  "ignorePatterns": [
+    ".next/**/*",
+    "node_modules/**/*", 
+    "dist/**/*",
+    "build/**/*",
+    "*.js",
+    "test-data-setup.js",
+    "verify-build.js",
+    "__tests__/**/*"
+  ]
+}

@@ -16,10 +16,10 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import SalaryIntelligenceWidget from '@/components/ui/salary-intelligence-widget';
 // import { AdvancedFilters, type JobFilters } from '@/components/jobs/advanced-filters';
 import { 
   analyzeSalary, 
-  formatSalaryRange, 
   getComfortColor, 
   getComfortIcon,
   type SalaryAnalysis 
@@ -179,6 +179,32 @@ const workModeConfig: Record<string, { icon: string; color: string }> = {
   remote: { icon: '🏠', color: 'bg-blue-100 text-blue-800' },
   hybrid: { icon: '🏢', color: 'bg-purple-100 text-purple-800' },
   onsite: { icon: '🏬', color: 'bg-orange-100 text-orange-800' },
+};
+
+// Smart salary display - replaces generic terms with meaningful information
+const getSmartSalaryDisplay = (rawSalary: string | null | undefined): { display: string; isGeneric: boolean } => {
+  if (!rawSalary?.trim()) {
+    return { display: 'Salary not disclosed', isGeneric: true };
+  }
+
+  // Check for generic/unhelpful terms
+  const genericTerms = [
+    'variable', 'competitive', 'negotiable', 'doe', 'dependent on experience',
+    'tbd', 'to be discussed', 'market rate', 'based on experience',
+    'commensurate', 'attractive', 'excellent', 'fair', 'open'
+  ];
+  
+  const isGenericSalary = genericTerms.some(term => 
+    rawSalary.toLowerCase().includes(term.toLowerCase())
+  ) || !(/\d/.test(rawSalary)); // Must contain at least one digit to be considered specific
+
+  if (isGenericSalary) {
+    // Generic salary term detected, show more meaningful message
+    return { display: 'Salary to be determined', isGeneric: true };
+  }
+
+  // Salary appears to be specific, return as-is
+  return { display: rawSalary, isGeneric: false };
 };
 
 export default function DashboardPage() {
@@ -613,31 +639,15 @@ export default function DashboardPage() {
                           )}
                         </div>
                         
-                        {/* Salary Intelligence */}
-                        {job.salaryAnalysis && job.salaryAnalysis.normalizedSalaryUSD && (
-                          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-3 mt-3 border border-blue-100">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-semibold text-blue-900">Salary Intelligence</span>
-                                <Badge className={`text-xs ${getComfortColor(job.salaryAnalysis.comfortLevel || 'comfortable')}`}>
-                                  {getComfortIcon(job.salaryAnalysis.comfortLevel || 'comfortable')} {job.salaryAnalysis.comfortLevel || 'analyzing'}
-                                </Badge>
-                              </div>
-                              <div className="text-sm font-bold text-blue-700">
-                                {job.salaryAnalysis.comfortScore || 0}/100
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 text-xs text-blue-600">
-                              <div>💰 {formatSalaryRange(
-                                job.salaryAnalysis.normalizedSalaryUSD?.min || 0, 
-                                job.salaryAnalysis.normalizedSalaryUSD?.max || 0
-                              )} USD</div>
-                              <div>📊 Top {Math.round(100 - (job.salaryAnalysis.betterThanPercent || 0))}% of jobs</div>
-                              <div>💡 {(job.salaryAnalysis.savingsPotential || 0).toFixed(0)}% savings potential</div>
-                              <div>⚡ {(job.salaryAnalysis.purchasingPower || 1.0).toFixed(1)}x purchasing power</div>
-                            </div>
-                          </div>
-                        )}
+                        {/* New Salary Intelligence */}
+                        <div className="mt-3">
+                          <SalaryIntelligenceWidget 
+                            job={job} 
+                            compact={true}
+                            autoAnalyze={true}
+                            className="border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50"
+                          />
+                        </div>
 
                         {/* Job Summary */}
                         {job.summary && (
@@ -659,21 +669,27 @@ export default function DashboardPage() {
                             {job.contractType}
                           </Badge>
                         )}
-                        {job.salary && (
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-xs text-green-700 border-green-200 bg-green-50">
-                              <DollarSign className="w-3 h-3 mr-1" />
-                              {job.salary}
-                            </Badge>
-                            {job.salaryAnalysis && (
+                        {(() => {
+                          const salaryInfo = getSmartSalaryDisplay(job.salary);
+                          return salaryInfo.display !== 'Salary not disclosed' && (
+                            <div className="flex items-center gap-2">
                               <Badge 
                                 variant="outline" 
-                                className={`text-xs ${getComfortColor(job.salaryAnalysis.comfortLevel || 'comfortable')} border`}
+                                className={`text-xs border-green-200 ${salaryInfo.isGeneric ? 'text-gray-600 bg-gray-50' : 'text-green-700 bg-green-50'}`}
                               >
-                                {getComfortIcon(job.salaryAnalysis.comfortLevel || 'comfortable')} {job.salaryAnalysis.comfortLevel || 'analyzing'}
+                                <DollarSign className="w-3 h-3 mr-1" />
+                                {salaryInfo.display}
                               </Badge>
-                            )}
-                          </div>
+                            </div>
+                          );
+                        })()}
+                        {job.salaryAnalysis && (
+                          <Badge 
+                            variant="outline" 
+                            className={`text-xs ${getComfortColor(job.salaryAnalysis.comfortLevel || 'comfortable')} border`}
+                          >
+                            {getComfortIcon(job.salaryAnalysis.comfortLevel || 'comfortable')} {job.salaryAnalysis.comfortLevel || 'analyzing'}
+                          </Badge>
                         )}
                       </div>
 

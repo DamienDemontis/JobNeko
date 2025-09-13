@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import IntelligentSalaryHub from '@/components/ui/intelligent-salary-hub';
+import SalaryIntelligenceHubV2 from '@/components/ui/salary-intelligence-hub-v2';
 import JobEditForm from '@/components/ui/job-edit-form';
 import { toast } from 'sonner';
 import {
@@ -107,6 +107,52 @@ const workModeIcons: Record<string, string> = {
   remote: '🏠 Remote',
   hybrid: '🏢 Hybrid', 
   onsite: '🏬 On-site',
+};
+
+// Smart salary display - replaces generic terms with meaningful information
+const getSmartSalaryDisplay = (rawSalary: string | null | undefined, aiAnalysis?: any): { display: string; isGeneric: boolean } => {
+  if (!rawSalary?.trim()) {
+    // No salary provided, check if we have AI analysis
+    if (aiAnalysis?.expected_salary_range?.min && aiAnalysis?.expected_salary_range?.max) {
+      const min = Math.round(aiAnalysis.expected_salary_range.min).toLocaleString();
+      const max = Math.round(aiAnalysis.expected_salary_range.max).toLocaleString();
+      const currency = aiAnalysis.currency || 'USD';
+      return { 
+        display: `${currency === 'USD' ? '$' : currency + ' '}${min} - ${currency === 'USD' ? '$' : ''}${max}`, 
+        isGeneric: false 
+      };
+    }
+    return { display: 'Salary not disclosed', isGeneric: true };
+  }
+
+  // Check for generic/unhelpful terms
+  const genericTerms = [
+    'variable', 'competitive', 'negotiable', 'doe', 'dependent on experience',
+    'tbd', 'to be discussed', 'market rate', 'based on experience',
+    'commensurate', 'attractive', 'excellent', 'fair', 'open'
+  ];
+  
+  const isGenericSalary = genericTerms.some(term => 
+    rawSalary.toLowerCase().includes(term.toLowerCase())
+  ) || !(/\d/.test(rawSalary)); // Must contain at least one digit to be considered specific
+
+  if (isGenericSalary) {
+    // Generic salary term detected, use AI analysis if available
+    if (aiAnalysis?.expected_salary_range?.min && aiAnalysis?.expected_salary_range?.max) {
+      const min = Math.round(aiAnalysis.expected_salary_range.min).toLocaleString();
+      const max = Math.round(aiAnalysis.expected_salary_range.max).toLocaleString();
+      const currency = aiAnalysis.currency || 'USD';
+      return { 
+        display: `${currency === 'USD' ? '$' : currency + ' '}${min} - ${currency === 'USD' ? '$' : ''}${max}`, 
+        isGeneric: false 
+      };
+    }
+    // No AI analysis available, show more meaningful generic message
+    return { display: 'Salary to be determined', isGeneric: true };
+  }
+
+  // Salary appears to be specific, return as-is
+  return { display: rawSalary, isGeneric: false };
 };
 
 export default function JobDetailPage() {
@@ -311,12 +357,18 @@ export default function JobDetailPage() {
                     <StatusIcon className="h-4 w-4" />
                     {statusInfo.label}
                   </div>
-                  {job.salary && (
-                    <div className="flex items-center gap-2 text-green-600 font-semibold">
-                      <CurrencyDollarIcon className="h-5 w-5" />
-                      {job.salary}
-                    </div>
-                  )}
+                  {(() => {
+                    const salaryInfo = getSmartSalaryDisplay(job.salary, null);
+                    return salaryInfo.display !== 'Salary not disclosed' && (
+                      <div className={`flex items-center gap-2 font-semibold ${salaryInfo.isGeneric ? 'text-gray-500' : 'text-green-600'}`}>
+                        <CurrencyDollarIcon className="h-5 w-5" />
+                        {salaryInfo.display}
+                        {salaryInfo.isGeneric && (
+                          <span className="text-xs text-gray-400 ml-1">(estimate available below)</span>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {job.matchScore && (
                     <div className="flex items-center gap-2">
                       <StarIcon className="h-5 w-5 text-yellow-500" />
@@ -505,7 +557,7 @@ export default function JobDetailPage() {
 
           {/* Intelligent Salary Hub Tab */}
           <TabsContent value="salary" className="space-y-6">
-            <IntelligentSalaryHub 
+            <SalaryIntelligenceHubV2 
               job={job} 
               onJobUpdate={(updatedJob) => {
                 setJob(updatedJob);

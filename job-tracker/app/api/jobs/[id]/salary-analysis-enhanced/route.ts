@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { validateToken } from '@/lib/auth'
-import { calculateEnhancedSalary } from '@/lib/services/salary-calculator'
-import { parseSalaryString } from '@/lib/salary-intelligence'
-import { numbeoScraper } from '@/lib/services/numbeo-scraper'
-import { locationResolver } from '@/lib/services/location-resolver'
-import { marketIntelligence } from '@/lib/services/market-intelligence-real'
+import { aiSalaryIntelligence } from '@/lib/services/ai-salary-intelligence'
 import { 
   withErrorHandling, 
   AuthenticationError, 
@@ -13,121 +9,57 @@ import {
   validateId 
 } from '@/lib/error-handling'
 
-interface EnhancedSalaryAnalysis {
+interface AIEnhancedSalaryAnalysis {
   jobId: string
   scenario: 'has_salary' | 'no_salary' | 'remote_job'
   hasData: boolean
   
-  // Original job data
+  // AI Analysis Results
+  aiAnalysis: {
+    normalized_role: string
+    level: string
+    experience_years: number | null
+    location: {
+      city: string | null
+      country: string
+      iso_country_code: string
+    }
+    currency: string
+    expected_salary_range: {
+      min: number | null
+      max: number | null
+      period: string
+      basis: string
+    }
+    monthly_net_income: number | null
+    monthly_core_expenses: number | null
+    affordability_score: number | null
+    affordability_label: string
+    explanations: string[]
+    confidence: {
+      level: string
+      reasons: string[]
+    }
+  }
+  
+  // Original job data (simplified)
   originalSalary?: {
     raw: string
     parsed?: {
-      min: number
-      max: number
-      midpoint: number
+      min: number | null
+      max: number | null
       currency: string
-      confidence: number
-      rangeWidth: number
-      rangePercent: number
     }
   }
   
-  // Location analysis
-  locationAnalysis: {
-    original: string
-    resolved: {
-      city: string
-      country: string
-      state?: string
-      isRemote: boolean
-      confidence: number
-      resolvedBy: string
-      warnings?: string[]
-      alternatives?: any[]
-    }
-    costOfLiving?: {
-      costOfLivingIndex: number
-      rentIndex: number
-      qualityOfLifeIndex?: number
-      safetyIndex?: number
-      healthcareIndex?: number
-      educationIndex?: number
-    }
-  }
-  
-  // Market intelligence
-  marketIntelligence: {
-    roleMatch: {
-      matchedRole: string
-      confidence: number
-      keywords: string[]
-    }
-    salaryEstimates: {
-      junior: { min: number; max: number; median: number }
-      mid: { min: number; max: number; median: number }
-      senior: { min: number; max: number; median: number }
-      confidence: number
-    }
-    locationMultiplier: number
-    negotiationInsights: {
-      leverage: 'low' | 'medium' | 'high'
-      factors: string[]
-      recommendations: string[]
-    }
-  }
-  
-  // Living wage analysis
-  livingWage: {
-    survival: {
-      grossAnnual: number
-      netMonthly: number
-      breakdown: Record<string, number>
-    }
-    comfortable: {
-      grossAnnual: number
-      netMonthly: number
-      breakdown: Record<string, number>
-    }
-    optimal: {
-      grossAnnual: number
-      netMonthly: number
-      breakdown: Record<string, number>
-    }
-    recommendedLevel: 'survival' | 'comfortable' | 'optimal'
-  }
-  
-  // Enhanced calculations
-  enhancedCalculations: {
-    netSalaryUSD?: { min: number; max: number }
-    purchasingPower?: number
-    savingsPotential?: number
-    comfortLevel?: string
-    comfortScore?: number
-    betterThanPercent?: number
-  }
-  
-  // Recommendations
+  // Simple recommendations
   recommendations: {
-    salaryTargets: {
-      minimum: number
-      comfortable: number
-      stretch: number
-    }
-    negotiationRange: { min: number; max: number }
     keyInsights: string[]
     actionItems: string[]
+    negotiationAdvice: string[]
   }
   
-  // Confidence and metadata
-  confidence: {
-    overall: number
-    salary: number
-    location: number
-    market: number
-    costOfLiving: number
-  }
-  
-  // Comparison to user profile
+  // User comparison (if profile available)
   userComparison?: {
     vsExpectedSalary?: {
       percentage: number
@@ -137,7 +69,6 @@ interface EnhancedSalaryAnalysis {
       percentage: number
       verdict: string
     }
-    profileCompleteness: number
     suggestions: string[]
   }
 }
@@ -177,519 +108,246 @@ export const GET = withErrorHandling(async (
   })
 
   try {
-    // 1. Determine scenario
-    const scenario = determineScenario(job)
-    
-    // 2. Resolve location using enhanced service
-    const locationResolution = await locationResolver.resolveLocation(
-      {
-        jobLocation: job.location || '',
-        workMode: (job.workMode as 'remote' | 'hybrid' | 'onsite') || 'onsite',
-        company: job.company || '',
-        jobTitle: job.title || ''
-      },
-      userProfile ? {
-        currentLocation: userProfile.currentLocation || undefined,
-        currentCountry: userProfile.currentCountry || undefined
-      } : undefined
-    )
+    // Use AI to analyze the job salary with full context
+    const aiResult = await aiSalaryIntelligence.analyzeJobSalary({
+      jobTitle: job.title,
+      company: job.company || undefined,
+      location: job.location || undefined,
+      description: job.description || undefined,
+      requirements: job.requirements || undefined,
+      salaryInfo: job.salary || undefined,
+      workMode: (job.workMode as 'onsite' | 'hybrid' | 'remote_country' | 'remote_global') || 'onsite',
+      userId: user.id
+    })
 
-    // 3. Get market intelligence
-    const marketAnalysis = await marketIntelligence.getMarketAnalysis(
-      job.title || '',
-      `${locationResolution.city}, ${locationResolution.country}`
-    )
+    // Determine scenario
+    const scenario = determineScenario(job, aiResult)
 
-    // 4. Calculate living wage
-    const livingWageEstimate = await calculateLivingWage(
-      locationResolution,
-      userProfile
-    )
-
-    // 5. Parse salary if available
-    let originalSalaryData = null
-    let enhancedCalculations = null
-    
-    if (scenario === 'has_salary' && job.salary) {
-      const parsedSalary = parseSalaryString(job.salary)
-      if (parsedSalary) {
-        originalSalaryData = {
-          raw: job.salary,
-          parsed: {
-            min: parsedSalary.min,
-            max: parsedSalary.max,
-            midpoint: (parsedSalary.min + parsedSalary.max) / 2,
-            currency: parsedSalary.currency,
-            confidence: calculateSalaryConfidence(parsedSalary),
-            rangeWidth: parsedSalary.max - parsedSalary.min,
-            rangePercent: ((parsedSalary.max - parsedSalary.min) / ((parsedSalary.min + parsedSalary.max) / 2)) * 100
-          }
-        }
-
-        // Enhanced calculations
-        try {
-          const enhancedResult = await calculateEnhancedSalary(
-            job.salary,
-            `${locationResolution.city}, ${locationResolution.country}`,
-            (job.workMode as 'remote' | 'hybrid' | 'onsite') || 'hybrid',
-            {
-              currentLocation: userProfile?.currentLocation || undefined,
-              currentCountry: userProfile?.currentCountry || undefined,
-              familySize: userProfile?.familySize || 1,
-              dependents: userProfile?.dependents || 0,
-              maritalStatus: userProfile?.maritalStatus || 'single',
-              expectedSalaryMin: userProfile?.expectedSalaryMin || 0,
-              currentSalary: userProfile?.currentSalary || 0,
-            }
-          )
-
-          enhancedCalculations = enhancedResult
-        } catch (error) {
-          console.warn('Enhanced salary calculation failed:', error)
+    // Parse original salary if available
+    let originalSalary: any = undefined
+    if (job.salary && aiResult.listed_salary) {
+      originalSalary = {
+        raw: job.salary,
+        parsed: {
+          min: aiResult.listed_salary.min,
+          max: aiResult.listed_salary.max,
+          currency: aiResult.currency
         }
       }
     }
 
-    // 6. Get cost of living data
-    let costOfLivingData = null
-    try {
-      if (locationResolution.city !== 'Remote' && locationResolution.city !== 'Global') {
-        costOfLivingData = await numbeoScraper.getCityData(
-          locationResolution.city,
-          locationResolution.country,
-          locationResolution.state
-        )
-      }
-    } catch (error) {
-      console.warn('Cost of living data unavailable:', error)
-    }
+    // Generate recommendations based on AI analysis
+    const recommendations = generateAIRecommendations(aiResult, userProfile)
 
-    // 7. Generate recommendations
-    const recommendations = generateRecommendations(
+    // Generate user comparison if profile exists
+    const userComparison = generateUserComparison(aiResult, userProfile)
+
+    // Build enhanced analysis response
+    const analysis: AIEnhancedSalaryAnalysis = {
+      jobId: job.id,
       scenario,
-      originalSalaryData,
-      marketAnalysis,
-      livingWageEstimate,
-      locationResolution,
-      userProfile
-    )
-
-    // 8. Calculate confidence scores
-    const confidence = calculateConfidenceScores(
-      originalSalaryData,
-      locationResolution,
-      marketAnalysis,
-      costOfLivingData
-    )
-
-    // 9. User profile comparison
-    const userComparison = generateUserComparison(
-      originalSalaryData,
-      marketAnalysis,
-      userProfile
-    )
-
-    // 10. Build comprehensive response
-    const analysis: EnhancedSalaryAnalysis = {
-      jobId,
-      scenario,
-      hasData: scenario === 'has_salary' && originalSalaryData !== null,
+      hasData: aiResult.schema_valid,
       
-      originalSalary: originalSalaryData || undefined,
-      
-      locationAnalysis: {
-        original: job.location || '',
-        resolved: locationResolution,
-        costOfLiving: costOfLivingData ? {
-          costOfLivingIndex: costOfLivingData.costOfLivingIndex,
-          rentIndex: costOfLivingData.rentIndex,
-          qualityOfLifeIndex: costOfLivingData.qualityOfLifeIndex || undefined,
-          safetyIndex: costOfLivingData.safetyIndex || undefined,
-          healthcareIndex: costOfLivingData.healthcareIndex || undefined,
-          educationIndex: costOfLivingData.educationIndex || undefined
-        } : undefined
-      },
-      
-      marketIntelligence: {
-        roleMatch: {
-          matchedRole: marketAnalysis.roleIntelligence?.title || job.title || 'Software Engineer',
-          confidence: marketAnalysis.roleIntelligence?.matchConfidence || 0.7,
-          keywords: marketAnalysis.roleIntelligence?.matchedKeywords || []
+      aiAnalysis: {
+        normalized_role: aiResult.normalized_role,
+        level: aiResult.level,
+        experience_years: aiResult.experience_years,
+        location: {
+          city: aiResult.location.city,
+          country: aiResult.location.country,
+          iso_country_code: aiResult.location.iso_country_code
         },
-        salaryEstimates: {
-          junior: {
-            min: Math.round(marketAnalysis.salaryEstimate.min * 0.6),
-            max: Math.round(marketAnalysis.salaryEstimate.max * 0.6),
-            median: Math.round(marketAnalysis.salaryEstimate.median * 0.6)
-          },
-          mid: {
-            min: marketAnalysis.salaryEstimate.min,
-            max: marketAnalysis.salaryEstimate.max,
-            median: marketAnalysis.salaryEstimate.median
-          },
-          senior: {
-            min: Math.round(marketAnalysis.salaryEstimate.min * 1.5),
-            max: Math.round(marketAnalysis.salaryEstimate.max * 1.5),
-            median: Math.round(marketAnalysis.salaryEstimate.median * 1.5)
-          },
-          confidence: marketAnalysis.confidenceScore || 0.75
+        currency: aiResult.currency,
+        expected_salary_range: {
+          min: aiResult.expected_salary_range.min,
+          max: aiResult.expected_salary_range.max,
+          period: aiResult.expected_salary_range.period,
+          basis: aiResult.expected_salary_range.basis
         },
-        locationMultiplier: marketAnalysis.locationData?.multiplier || 1.0,
-        negotiationInsights: {
-          leverage: marketAnalysis.confidenceScore > 0.8 ? 'high' as const : 
-                   marketAnalysis.confidenceScore > 0.6 ? 'medium' as const : 'low' as const,
-          factors: [
-            `Market demand for ${marketAnalysis.roleIntelligence?.title || job.title}`,
-            `Location competitiveness in ${marketAnalysis.locationData?.city}`,
-            marketAnalysis.salaryEstimate.source === 'market_calculation' ? 
-              'Real market data available' : 'Estimated market data'
-          ],
-          recommendations: [
-            'Research similar positions in your area',
-            'Highlight relevant skills and experience',
-            marketAnalysis.salaryEstimate.confidence > 0.8 ? 
-              'Strong market position for negotiation' : 'Consider additional skill development'
-          ]
+        monthly_net_income: aiResult.monthly_net_income,
+        monthly_core_expenses: aiResult.monthly_core_expenses,
+        affordability_score: aiResult.affordability_score,
+        affordability_label: aiResult.affordability_label,
+        explanations: aiResult.explanations,
+        confidence: {
+          level: aiResult.confidence.level,
+          reasons: aiResult.confidence.reasons
         }
       },
       
-      livingWage: livingWageEstimate,
-      
-      enhancedCalculations: enhancedCalculations || {},
-      
+      originalSalary,
       recommendations,
-      
-      confidence,
-      
       userComparison
     }
 
-    return NextResponse.json(analysis)
-    
+    // Log successful analysis
+    console.log(`AI Enhanced Salary Analysis completed for job ${jobId}`, {
+      userId: user.id,
+      jobTitle: job.title,
+      company: job.company || 'unspecified',
+      location: job.location || 'unspecified',
+      scenario,
+      confidenceLevel: aiResult.confidence.level,
+      hasUserProfile: !!userProfile,
+      methodology: 'ai_powered'
+    })
+
+    return NextResponse.json(analysis, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      }
+    })
+
   } catch (error) {
-    console.error('Salary analysis failed:', error)
+    console.error(`Enhanced salary analysis failed for job ${jobId}:`, error)
     
-    // Return minimal analysis on failure
-    return NextResponse.json({
-      jobId,
+    // Return minimal error response
+    const errorAnalysis: AIEnhancedSalaryAnalysis = {
+      jobId: job.id,
       scenario: 'no_salary',
       hasData: false,
-      error: 'Analysis temporarily unavailable',
-      locationAnalysis: {
-        original: job.location || '',
-        resolved: {
-          city: 'Unknown',
+      
+      aiAnalysis: {
+        normalized_role: job.title,
+        level: 'unknown',
+        experience_years: null,
+        location: {
+          city: null,
           country: 'Unknown',
-          isRemote: false,
-          confidence: 0,
-          resolvedBy: 'fallback'
-        }
-      },
-      marketIntelligence: {
-        roleMatch: { matchedRole: 'Unknown', confidence: 0, keywords: [] },
-        salaryEstimates: {
-          junior: { min: 0, max: 0, median: 0 },
-          mid: { min: 0, max: 0, median: 0 },
-          senior: { min: 0, max: 0, median: 0 },
-          confidence: 0
+          iso_country_code: 'XX'
         },
-        locationMultiplier: 1,
-        negotiationInsights: {
-          leverage: 'low' as const,
-          factors: [],
-          recommendations: []
+        currency: 'USD',
+        expected_salary_range: {
+          min: null,
+          max: null,
+          period: 'year',
+          basis: 'gross'
+        },
+        monthly_net_income: null,
+        monthly_core_expenses: null,
+        affordability_score: null,
+        affordability_label: 'unaffordable',
+        explanations: [`AI analysis failed: ${(error as Error).message}`],
+        confidence: {
+          level: 'low',
+          reasons: ['AI processing error occurred']
         }
       },
-      livingWage: {
-        survival: { grossAnnual: 0, netMonthly: 0, breakdown: {} },
-        comfortable: { grossAnnual: 0, netMonthly: 0, breakdown: {} },
-        optimal: { grossAnnual: 0, netMonthly: 0, breakdown: {} },
-        recommendedLevel: 'comfortable' as const
-      },
-      enhancedCalculations: {},
+      
       recommendations: {
-        salaryTargets: { minimum: 0, comfortable: 0, stretch: 0 },
-        negotiationRange: { min: 0, max: 0 },
-        keyInsights: ['Analysis temporarily unavailable'],
-        actionItems: ['Please try again later']
-      },
-      confidence: {
-        overall: 0,
-        salary: 0,
-        location: 0,
-        market: 0,
-        costOfLiving: 0
+        keyInsights: ['Analysis unavailable due to processing error'],
+        actionItems: ['Please try again later'],
+        negotiationAdvice: ['Manual salary research recommended']
       }
-    }, { status: 200 })
+    }
+
+    return NextResponse.json(errorAnalysis, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
   }
 })
 
-function determineScenario(job: any): 'has_salary' | 'no_salary' | 'remote_job' {
-  const hasValidSalary = job.salary && 
-    job.salary.trim() && 
-    !job.salary.toLowerCase().includes('competitive') &&
-    !job.salary.toLowerCase().includes('negotiable')
-    
-  const isRemote = job.location?.toLowerCase().includes('remote') || 
-                   job.workMode === 'remote' ||
-                   job.location?.toLowerCase().includes('worldwide')
-
-  if (hasValidSalary) return 'has_salary'
-  if (isRemote) return 'remote_job' 
+/**
+ * Determine analysis scenario based on job and AI results
+ */
+function determineScenario(job: any, aiResult: any): 'has_salary' | 'no_salary' | 'remote_job' {
+  if (job.salary || aiResult.listed_salary) {
+    return 'has_salary'
+  }
+  
+  if (job.workMode === 'remote' || 
+      job.location?.toLowerCase().includes('remote') || 
+      aiResult.job_location_mode?.includes('remote')) {
+    return 'remote_job'
+  }
+  
   return 'no_salary'
 }
 
-function calculateSalaryConfidence(parsedSalary: any): number {
-  const rangeWidth = parsedSalary.max - parsedSalary.min
-  const midpoint = (parsedSalary.min + parsedSalary.max) / 2
-  const rangePercent = (rangeWidth / midpoint) * 100
-  
-  let confidence = 0.8
-  if (rangePercent > 100) confidence = 0.4 // Very wide range
-  else if (rangePercent > 50) confidence = 0.6 // Wide range
-  else if (rangePercent > 20) confidence = 0.7 // Medium range
-  
-  return confidence
-}
-
-async function calculateLivingWage(locationResolution: any, userProfile: any) {
-  const familySize = userProfile?.familySize || 1
-  const savingsRate = userProfile?.targetSavingsRate || 15
-  const lifestyle = userProfile?.lifestyle || 'comfortable'
-  
-  // Get real cost of living data
-  let costData = null;
-  try {
-    if (locationResolution.city !== 'Remote' && locationResolution.city !== 'Global') {
-      const response = await fetch(`/api/cost-of-living?city=${encodeURIComponent(locationResolution.city)}&country=${encodeURIComponent(locationResolution.country)}`);
-      if (response.ok) {
-        costData = await response.json();
-      }
-    }
-  } catch (error) {
-    console.log('Could not fetch cost of living data');
+/**
+ * Generate AI-powered recommendations
+ */
+function generateAIRecommendations(aiResult: any, userProfile: any) {
+  const recommendations = {
+    keyInsights: [...aiResult.explanations] as string[],
+    actionItems: [] as string[],
+    negotiationAdvice: [] as string[]
   }
 
-  // Base costs derived from US Bureau of Labor Statistics Consumer Expenditure Survey
-  const usBLSBaseCosts = {
-    housing: 1784, // Average US housing cost (2023)
-    food: 473,     // Average US food cost
-    transportation: 483, // Average US transportation
-    utilities: 298,      // Average US utilities
-    healthcare: 414,     // Average US healthcare
-    discretionary: 650   // Other expenses
-  };
-
-  // Apply real location multiplier
-  const locationMultiplier = costData ? (costData.costOfLivingIndex / 100) : (locationResolution.multiplier || 1.0);
-  
-  // Family size adjustments based on USDA data
-  const familySizeAdjustments = {
-    1: 1.0,
-    2: 1.6,  // Adults typically share housing costs
-    3: 1.9,  // Economies of scale
-    4: 2.2,
-    5: 2.5
-  };
-  
-  const familyMultiplier = familySizeAdjustments[Math.min(familySize, 5) as keyof typeof familySizeAdjustments] || 2.5;
-  
-  // Lifestyle adjustments
-  const lifestyleMultipliers = {
-    'minimal': { housing: 0.75, food: 0.7, discretionary: 0.4 },
-    'comfortable': { housing: 1.0, food: 1.0, discretionary: 1.0 },
-    'luxury': { housing: 1.4, food: 1.3, discretionary: 2.0 }
-  };
-  
-  const lifestyleAdjust = lifestyleMultipliers[lifestyle as keyof typeof lifestyleMultipliers] || lifestyleMultipliers.comfortable;
-
-  const calculateLevel = (levelMultiplier: number) => {
-    // Apply all multipliers to base costs
-    const housing = usBLSBaseCosts.housing * locationMultiplier * (familySize === 1 ? 1.0 : familyMultiplier * 0.6) * lifestyleAdjust.housing * levelMultiplier;
-    const food = usBLSBaseCosts.food * locationMultiplier * familyMultiplier * lifestyleAdjust.food * levelMultiplier;
-    const transportation = usBLSBaseCosts.transportation * locationMultiplier * (1 + (familySize - 1) * 0.2) * levelMultiplier;
-    const utilities = usBLSBaseCosts.utilities * locationMultiplier * (1 + (familySize - 1) * 0.15) * levelMultiplier;
-    const healthcare = usBLSBaseCosts.healthcare * locationMultiplier * familyMultiplier * levelMultiplier;
-    const discretionary = usBLSBaseCosts.discretionary * locationMultiplier * lifestyleAdjust.discretionary * levelMultiplier;
-    
-    const totalMonthly = housing + food + transportation + utilities + healthcare + discretionary;
-    
-    // Calculate savings and taxes
-    const savings = (totalMonthly * savingsRate) / (100 - savingsRate);
-    
-    // Progressive tax calculation (simplified)
-    const grossMonthly = totalMonthly + savings;
-    const annualGross = grossMonthly * 12;
-    let taxes = 0;
-    
-    if (annualGross <= 20000) taxes = annualGross * 0.10;
-    else if (annualGross <= 50000) taxes = 2000 + (annualGross - 20000) * 0.15;
-    else if (annualGross <= 100000) taxes = 6500 + (annualGross - 50000) * 0.22;
-    else taxes = 17500 + (annualGross - 100000) * 0.28;
-    
-    const monthlyTaxes = taxes / 12;
-    const finalGrossMonthly = grossMonthly + monthlyTaxes;
-    
-    return {
-      grossAnnual: finalGrossMonthly * 12,
-      netMonthly: grossMonthly,
-      breakdown: {
-        housing: Math.round(housing),
-        food: Math.round(food),
-        transportation: Math.round(transportation),
-        utilities: Math.round(utilities),
-        healthcare: Math.round(healthcare),
-        discretionary: Math.round(discretionary),
-        savings: Math.round(savings),
-        taxes: Math.round(monthlyTaxes)
-      }
+  // Add specific insights based on AI analysis
+  if (aiResult.affordability_score !== null) {
+    if (aiResult.affordability_score < 0) {
+      recommendations.actionItems.push('Consider negotiating for higher compensation or additional benefits')
+      recommendations.actionItems.push('Look for roles in lower cost-of-living areas if remote work is possible')
+    } else if (aiResult.affordability_score > 0.6) {
+      recommendations.actionItems.push('This role offers excellent financial comfort for your situation')
     }
   }
 
-  // Calculate different comfort levels
-  const survival = calculateLevel(0.65);   // Bare minimum
-  const comfortable = calculateLevel(1.0); // Standard living
-  const optimal = calculateLevel(1.4);     // High quality of life
-  
-  // Determine recommended level based on user profile
-  let recommendedLevel: 'survival' | 'comfortable' | 'optimal' = 'comfortable';
-  if (userProfile?.currentSalary) {
-    if (userProfile.currentSalary < comfortable.grossAnnual * 0.9) {
-      recommendedLevel = 'survival';
-    } else if (userProfile.currentSalary > optimal.grossAnnual * 0.8) {
-      recommendedLevel = 'optimal';
-    }
+  // Add negotiation advice based on experience level
+  if (aiResult.level === 'senior' || aiResult.level === 'lead') {
+    recommendations.negotiationAdvice.push('As a senior professional, focus on total compensation including equity and bonuses')
+    recommendations.negotiationAdvice.push('Emphasize your leadership and impact in salary negotiations')
+  } else if (aiResult.level === 'junior') {
+    recommendations.negotiationAdvice.push('Focus on learning opportunities and career growth potential')
+    recommendations.negotiationAdvice.push('Consider non-salary benefits like training budget and mentorship')
   }
 
-  return {
-    survival,
-    comfortable,
-    optimal,
-    recommendedLevel
+  // Add salary range advice
+  if (aiResult.expected_salary_range.min && aiResult.expected_salary_range.max) {
+    const midpoint = (aiResult.expected_salary_range.min + aiResult.expected_salary_range.max) / 2
+    recommendations.negotiationAdvice.push(`Market range appears to be $${aiResult.expected_salary_range.min?.toLocaleString()} - $${aiResult.expected_salary_range.max?.toLocaleString()}`)
+    recommendations.negotiationAdvice.push(`Target around $${Math.round(midpoint).toLocaleString()} as a reasonable starting point`)
   }
+
+  return recommendations
 }
 
-function generateRecommendations(
-  scenario: string,
-  salaryData: any,
-  marketAnalysis: any,
-  livingWage: any,
-  locationResolution: any,
-  userProfile: any
-) {
-  const keyInsights: string[] = []
-  const actionItems: string[] = []
-  
-  // Market-based recommendations using real data
-  const marketMedian = marketAnalysis.salaryEstimate?.median || livingWage.comfortable.grossAnnual
-  const comfortable = livingWage.comfortable.grossAnnual
-  
-  const salaryTargets = {
-    minimum: Math.max(livingWage.survival.grossAnnual, marketMedian * 0.8),
-    comfortable: Math.max(comfortable, marketMedian),
-    stretch: Math.round(marketMedian * 1.5) // 50% above market median
-  }
-
-  if (scenario === 'has_salary' && salaryData?.parsed) {
-    const jobSalary = salaryData.parsed.midpoint
-    
-    if (jobSalary < salaryTargets.minimum) {
-      keyInsights.push('This salary may not cover basic living costs in this location')
-      actionItems.push('Consider negotiating based on living wage requirements')
-    } else if (jobSalary >= salaryTargets.comfortable) {
-      keyInsights.push('Salary is competitive for the location and role')
-    }
-  }
-
-  keyInsights.push('Market analysis provides negotiation guidance')
-  actionItems.push('Research similar positions in your area')
-
-  if (locationResolution.confidence < 0.7) {
-    actionItems.push('Clarify the exact work location for accurate analysis')
-  }
-
-  if (!userProfile?.currentLocation) {
-    actionItems.push('Add your location to profile for personalized analysis')
-  }
-
-  return {
-    salaryTargets,
-    negotiationRange: {
-      min: salaryTargets.comfortable * 0.9,
-      max: salaryTargets.stretch * 0.9
-    },
-    keyInsights,
-    actionItems
-  }
-}
-
-function calculateConfidenceScores(
-  salaryData: any,
-  locationResolution: any,
-  marketAnalysis: any,
-  costOfLivingData: any
-) {
-  const salaryConfidence = salaryData?.parsed?.confidence || 0
-  const locationConfidence = locationResolution.confidence
-  const marketConfidence = marketAnalysis.confidenceScore || 0.75
-  const costOfLivingConfidence = costOfLivingData ? 0.9 : 0.5
-
-  return {
-    salary: salaryConfidence,
-    location: locationConfidence,
-    market: marketConfidence,
-    costOfLiving: costOfLivingConfidence,
-    overall: (salaryConfidence + locationConfidence + marketConfidence + costOfLivingConfidence) / 4
-  }
-}
-
-function generateUserComparison(salaryData: any, marketAnalysis: any, userProfile: any) {
+/**
+ * Generate user profile comparison
+ */
+function generateUserComparison(aiResult: any, userProfile: any) {
   if (!userProfile) return undefined
 
-  const comparison: any = {}
-  const suggestions: string[] = []
-  let profileCompleteness = 0
-
-  // Check profile completeness
-  const profileFields = [
-    'currentLocation', 'currentCountry', 'currentSalary', 
-    'expectedSalaryMin', 'familySize', 'maritalStatus'
-  ]
-  
-  profileCompleteness = profileFields.reduce((count, field) => {
-    return userProfile[field] ? count + 1 : count
-  }, 0) / profileFields.length
-
-  if (profileCompleteness < 0.7) {
-    suggestions.push('Complete your profile for more personalized analysis')
+  const comparison: any = {
+    suggestions: []
   }
 
-  // Salary comparisons
-  if (salaryData?.parsed && userProfile.expectedSalaryMin) {
-    const jobSalary = salaryData.parsed.midpoint
-    const expectedSalary = userProfile.expectedSalaryMin
-    const percentage = Math.round(((jobSalary - expectedSalary) / expectedSalary) * 100)
-    
+  // Compare with expected salary
+  if (userProfile.expectedSalaryMin && aiResult.expected_salary_range.min) {
+    const percentage = ((aiResult.expected_salary_range.min - userProfile.expectedSalaryMin) / userProfile.expectedSalaryMin) * 100
     comparison.vsExpectedSalary = {
-      percentage,
-      verdict: percentage > 0 ? 'above expected' : 'below expected'
+      percentage: Math.round(percentage),
+      verdict: percentage >= 0 ? 
+        `${Math.round(percentage)}% above your minimum expectation` : 
+        `${Math.round(Math.abs(percentage))}% below your minimum expectation`
     }
   }
 
-  if (salaryData?.parsed && userProfile.currentSalary) {
-    const jobSalary = salaryData.parsed.midpoint
-    const currentSalary = userProfile.currentSalary
-    const percentage = Math.round(((jobSalary - currentSalary) / currentSalary) * 100)
-    
+  // Compare with current salary
+  if (userProfile.currentSalary && aiResult.expected_salary_range.min) {
+    const percentage = ((aiResult.expected_salary_range.min - userProfile.currentSalary) / userProfile.currentSalary) * 100
     comparison.vsCurrentSalary = {
-      percentage,
-      verdict: percentage > 0 ? 'salary increase' : 'salary decrease'
+      percentage: Math.round(percentage),
+      verdict: percentage >= 0 ? 
+        `${Math.round(percentage)}% increase from current salary` : 
+        `${Math.round(Math.abs(percentage))}% decrease from current salary`
     }
   }
 
-  return {
-    ...comparison,
-    profileCompleteness,
-    suggestions
+  // Add personalized suggestions
+  if (userProfile.familySize > 1) {
+    comparison.suggestions.push(`Family size of ${userProfile.familySize} considered in cost analysis`)
   }
+
+  if (userProfile.currentLocation) {
+    comparison.suggestions.push(`Location analysis includes your current location: ${userProfile.currentLocation}`)
+  }
+
+  return comparison
 }

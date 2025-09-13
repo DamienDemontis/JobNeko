@@ -245,6 +245,14 @@ CRITICAL INSTRUCTIONS:
 - Don't generic-ize - keep company-specific and role-specific details
 - If information seems important to a job seeker, include it
 
+SALARY EXTRACTION RULES:
+- ONLY extract salary if it contains specific numbers or ranges
+- DO NOT extract generic terms like: "Variable", "Competitive", "Negotiable", "DOE", "TBD", "Market rate", "Attractive", "Excellent", "Fair", "Open", "Commensurate with experience"
+- If salary field contains only generic terms without numbers, leave salary field empty/null
+- Examples of VALID salaries: "$80,000 - $120,000", "€50k per year", "£40-60K", "$75/hour"
+- Examples of INVALID salaries (leave empty): "Variable salary", "Competitive compensation", "Salary DOE", "TBD based on experience"
+- If you see both generic terms AND numbers, extract the numbers: "Competitive salary $90K" → "$90K"
+
 JOB POSTING CONTENT:
 URL: ${pageData.url}
 Title: ${pageData.title}

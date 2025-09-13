@@ -162,16 +162,26 @@ const getMarketIntelligence = async (
   jobDescription?: string
 ): Promise<MarketEstimate> => {
   try {
-    // Use the real market intelligence service
-    const { marketIntelligence } = await import('@/lib/services/market-intelligence-real');
-    const analysis = await marketIntelligence.getMarketAnalysis(title, location, actualSalary, companyName, jobDescription);
+    // Use the AI salary intelligence service
+    const { aiSalaryIntelligence } = await import('@/lib/services/ai-salary-intelligence');
+    const analysis = await aiSalaryIntelligence.analyzeJobSalary({
+      jobTitle: title,
+      company: companyName,
+      location: location,
+      description: jobDescription,
+      salaryInfo: actualSalary ? actualSalary.toString() : undefined,
+      userId: 'anonymous' // This might need to be passed from props
+    });
     
     return {
-      min: analysis.salaryEstimate.min,
-      max: analysis.salaryEstimate.max,
-      median: analysis.salaryEstimate.median,
-      confidence: analysis.salaryEstimate.confidence,
-      source: analysis.salaryEstimate.source
+      min: analysis.expected_salary_range.min || 0,
+      max: analysis.expected_salary_range.max || 0,
+      median: analysis.expected_salary_range.min && analysis.expected_salary_range.max 
+        ? (analysis.expected_salary_range.min + analysis.expected_salary_range.max) / 2 
+        : 0,
+      confidence: analysis.confidence.level === 'high' ? 0.9 : 
+                  analysis.confidence.level === 'medium' ? 0.7 : 0.5,
+      source: 'ai_analysis'
     };
   } catch (error) {
     console.error('Failed to get real market intelligence:', error);
@@ -400,12 +410,12 @@ export default function IntelligentSalaryHub({ job, onJobUpdate }: IntelligentSa
 
             if (response.ok) {
               const enhancedData = await response.json();
-              // Merge enhanced real data
-              baseAnalysis.locationData.costOfLivingIndex = 
-                enhancedData.locationAnalysis?.costOfLiving?.costOfLivingIndex || baseAnalysis.locationData.costOfLivingIndex;
-              baseAnalysis.locationData.multiplier = 
-                enhancedData.locationAnalysis?.costOfLiving?.costOfLivingIndex ? 
-                  enhancedData.locationAnalysis.costOfLiving.costOfLivingIndex / 100 : baseAnalysis.locationData.multiplier;
+              // Merge enhanced AI data
+              if (enhancedData.aiAnalysis?.monthly_core_expenses) {
+                // Use AI data if available
+                baseAnalysis.locationData.costOfLivingIndex = 100; // Default since AI handles this internally
+                baseAnalysis.locationData.multiplier = 1.0; // AI handles cost adjustments
+              }
             }
           }
         } catch (error) {

@@ -13,6 +13,8 @@ interface MarketEstimate {
   median: number;
   confidence: number;
   source: string;
+  dataQuality?: string;
+  validationWarnings?: string[];
 }
 
 interface RoleIntelligence {
@@ -137,7 +139,7 @@ class MarketIntelligenceService {
       }
     }
 
-    // Role type detection
+    // Role type detection with enhanced AI/ML specializations
     const roleTypes = {
       'engineer': 1.0,
       'developer': 0.95,
@@ -157,7 +159,37 @@ class MarketIntelligenceService {
       'ml': 1.25,
       'ai': 1.3,
       'product': 1.1,
-      'scrum': 0.9
+      'scrum': 0.9,
+      // Enhanced AI/ML role detection
+      'llm': 1.4,              // Large Language Model Engineer
+      'gpt': 1.35,             // GPT Engineer/Specialist  
+      'transformer': 1.3,      // Transformer Architecture
+      'nlp': 1.25,             // Natural Language Processing
+      'computer vision': 1.25,
+      'deep learning': 1.3,
+      'machine learning': 1.25,
+      'ai research': 1.5,
+      'ai engineer': 1.35,
+      'machine learning engineer': 1.3,
+      'data scientist': 1.2,
+      'research scientist': 1.4,
+      'applied scientist': 1.35,
+      'principal scientist': 1.6,
+      'staff scientist': 1.5,
+      'neural network': 1.25,
+      'pytorch': 1.15,
+      'tensorflow': 1.15,
+      'hugging face': 1.2,
+      'openai': 1.4,
+      'anthropic': 1.4,
+      'generative ai': 1.35,
+      'chatbot': 1.15,
+      'recommendation': 1.1,
+      'personalization': 1.1,
+      'reinforcement learning': 1.3,
+      'computer vision engineer': 1.25,
+      'robotics': 1.2,
+      'autonomous': 1.25
     };
 
     for (const [keyword] of Object.entries(roleTypes)) {
@@ -231,7 +263,7 @@ class MarketIntelligenceService {
       'france': 0.82,
       'netherlands': 0.92,
       'switzerland': 1.35,
-      'spain': 0.65,
+      'spain': 0.75,  // Updated for tech industry premium
       'italy': 0.68,
       'poland': 0.45,
       'sweden': 0.95,
@@ -297,6 +329,13 @@ class MarketIntelligenceService {
       'zurich': 1.5,
       'tokyo': 1.1,
       'singapore': 1.2,
+      // Spanish tech hubs
+      'madrid': 1.1,          // Capital with strong tech scene
+      'barcelona': 1.05,      // Major tech hub
+      'san sebastian': 1.0,   // Growing tech presence, high quality of life
+      'valencia': 0.9,        // Emerging tech scene
+      'bilbao': 0.95,         // Industrial + tech mix
+      'seville': 0.85,        // Growing startup scene
       'sydney': 1.15,
       'toronto': 1.05,
       'vancouver': 1.15,
@@ -407,6 +446,22 @@ class MarketIntelligenceService {
     // Calculate adjusted salary with all factors
     const adjustedSalary = baseSalary * seniorityMultiplier * roleMultiplier * 
                           location.multiplier * companyMultiplier * remoteMultiplier;
+
+    // Debug logging for salary calculation
+    console.log('💰 Salary Calculation Debug:', {
+      jobTitle: role.title,
+      baseSalary: baseSalary,
+      seniorityLevel: role.seniorityLevel,
+      seniorityMultiplier: seniorityMultiplier,
+      matchedKeywords: role.matchedKeywords,
+      roleMultiplier: roleMultiplier,
+      locationCity: location.city,
+      locationMultiplier: location.multiplier,
+      companyMultiplier: companyMultiplier,
+      remoteMultiplier: remoteMultiplier,
+      finalSalary: adjustedSalary,
+      calculationBreakdown: `${baseSalary} * ${seniorityMultiplier} * ${roleMultiplier} * ${location.multiplier} * ${companyMultiplier} * ${remoteMultiplier} = ${adjustedSalary}`
+    });
     
     // Calculate range (±20% for mid-level, wider for junior/senior)
     const rangeMultiplier = role.seniorityLevel === 'junior' ? 0.3 : 
@@ -436,17 +491,105 @@ class MarketIntelligenceService {
       }
     }
     
+    // Salary validation and sanity checks
+    const salaryValidation = this.validateSalaryRange(min, max, median, role);
+    
     // Calculate final confidence score
     let finalConfidence = location.costOfLivingIndex > 0 ? 0.85 : 0.7;
     finalConfidence += confidenceAdjustment;
     finalConfidence = Math.min(0.95, Math.max(0.3, finalConfidence));
     
+    // Reduce confidence if salary seems unrealistic
+    if (!salaryValidation.isRealistic) {
+      finalConfidence = Math.min(finalConfidence, 0.4);
+    }
+    
     return {
-      min,
-      max,
-      median,
+      min: salaryValidation.adjustedMin,
+      max: salaryValidation.adjustedMax,
+      median: salaryValidation.adjustedMedian,
       confidence: finalConfidence,
-      source
+      source,
+      dataQuality: salaryValidation.dataQuality,
+      validationWarnings: salaryValidation.warnings
+    };
+  }
+
+  /**
+   * Validate salary range and apply sanity checks
+   */
+  private validateSalaryRange(min: number, max: number, median: number, role: RoleIntelligence) {
+    const minimumsByLevel = {
+      'entry': 35000,
+      'junior': 45000, 
+      'mid': 60000,
+      'senior': 85000,
+      'lead': 120000,
+      'principal': 150000,
+      'executive': 200000
+    };
+    
+    const maximumsByLevel = {
+      'entry': 80000,
+      'junior': 100000,
+      'mid': 150000,
+      'senior': 250000,
+      'lead': 350000,
+      'principal': 500000,
+      'executive': 1000000
+    };
+    
+    const minExpected = minimumsByLevel[role.seniorityLevel];
+    const maxExpected = maximumsByLevel[role.seniorityLevel];
+    
+    let adjustedMin = min;
+    let adjustedMax = max;
+    let adjustedMedian = median;
+    let isRealistic = true;
+    let dataQuality = 'high';
+    const warnings: string[] = [];
+    
+    // Check if salary is unrealistically low
+    if (median < minExpected) {
+      adjustedMin = Math.max(adjustedMin, minExpected * 0.8);
+      adjustedMax = Math.max(adjustedMax, minExpected * 1.3);
+      adjustedMedian = Math.max(adjustedMedian, minExpected);
+      isRealistic = false;
+      dataQuality = 'low';
+      warnings.push(`Calculated salary below expected range for ${role.seniorityLevel} level`);
+    }
+    
+    // Check if salary is unrealistically high
+    if (median > maxExpected) {
+      adjustedMin = Math.min(adjustedMin, maxExpected * 0.7);
+      adjustedMax = Math.min(adjustedMax, maxExpected);
+      adjustedMedian = Math.min(adjustedMedian, maxExpected * 0.9);
+      isRealistic = false;
+      dataQuality = 'low';
+      warnings.push(`Calculated salary above expected range for ${role.seniorityLevel} level`);
+    }
+    
+    // Check for unrealistic range width
+    const rangeWidth = (adjustedMax - adjustedMin) / adjustedMedian;
+    if (rangeWidth > 1.0) { // Range wider than 100% of median
+      const targetRange = adjustedMedian * 0.4; // ±20%
+      adjustedMin = Math.round(adjustedMedian - targetRange);
+      adjustedMax = Math.round(adjustedMedian + targetRange);
+      warnings.push('Adjusted salary range for realistic width');
+    }
+    
+    // Final sanity check - no negative salaries
+    adjustedMin = Math.max(adjustedMin, 25000);
+    adjustedMax = Math.max(adjustedMax, adjustedMin * 1.2);
+    adjustedMedian = Math.max(adjustedMedian, adjustedMin);
+    
+    return {
+      adjustedMin: Math.round(adjustedMin),
+      adjustedMax: Math.round(adjustedMax),
+      adjustedMedian: Math.round(adjustedMedian),
+      isRealistic,
+      dataQuality,
+      warnings
     };
   }
 

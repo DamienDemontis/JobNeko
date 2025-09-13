@@ -13,6 +13,40 @@ jest.mock('next/navigation', () => ({
   }),
 }));
 
+// Mock NextResponse
+jest.mock('next/server', () => ({
+  NextResponse: {
+    json: (data, init) => {
+      const allHeaders = {
+        'content-type': 'application/json',
+        ...(init?.headers || {})
+      };
+      
+      const response = new global.Response(JSON.stringify(data), {
+        status: init?.status || 200,
+        headers: allHeaders
+      });
+      
+      response.headers = {
+        get: (key) => {
+          const normalizedKey = key.toLowerCase();
+          const normalizedHeaders = {};
+          Object.keys(allHeaders).forEach(k => {
+            normalizedHeaders[k.toLowerCase()] = allHeaders[k];
+          });
+          return normalizedHeaders[normalizedKey] || null;
+        },
+        has: (key) => {
+          const normalizedKey = key.toLowerCase();
+          return Object.keys(allHeaders).some(k => k.toLowerCase() === normalizedKey);
+        }
+      };
+      return response;
+    }
+  },
+  NextRequest: global.Request
+}));
+
 // Mock environment variables for testing
 process.env = {
   ...process.env,
@@ -26,8 +60,22 @@ global.Request = class MockRequest {
   constructor(input, init) {
     this._url = input;
     this.method = init?.method || 'GET';
-    this.headers = new Map(Object.entries(init?.headers || {}));
+    this._headers = init?.headers || {};
     this.body = init?.body;
+    
+    // Create headers object with get method
+    this.headers = {
+      get: (name) => {
+        const key = Object.keys(this._headers).find(k => k.toLowerCase() === name.toLowerCase());
+        return key ? this._headers[key] : null;
+      },
+      has: (name) => {
+        return Object.keys(this._headers).some(k => k.toLowerCase() === name.toLowerCase());
+      },
+      forEach: (callback) => {
+        Object.entries(this._headers).forEach(([key, value]) => callback(value, key));
+      }
+    };
   }
   
   get url() {
@@ -44,10 +92,24 @@ global.Response = class MockResponse {
     this.body = body;
     this.status = init?.status || 200;
     this.headers = new Map(Object.entries(init?.headers || {}));
+    this.ok = this.status >= 200 && this.status < 300;
   }
   
   json() {
-    return Promise.resolve(JSON.parse(this.body || '{}'));
+    try {
+      if (typeof this.body === 'string') {
+        return Promise.resolve(JSON.parse(this.body));
+      } else if (typeof this.body === 'object') {
+        return Promise.resolve(this.body);
+      }
+      return Promise.resolve({});
+    } catch {
+      return Promise.resolve({});
+    }
+  }
+  
+  text() {
+    return Promise.resolve(typeof this.body === 'string' ? this.body : JSON.stringify(this.body || {}));
   }
 };
 

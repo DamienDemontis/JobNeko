@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import EnhancedSalaryHub from '@/components/ui/enhanced-salary-hub';
+import PerfectAISalaryHub from '@/components/ui/perfect-ai-salary-hub';
 import JobEditForm from '@/components/ui/job-edit-form';
 import { toast } from 'sonner';
 import {
@@ -30,6 +30,8 @@ import {
   PlayCircleIcon,
   SparklesIcon,
   InformationCircleIcon,
+  UsersIcon,
+  AwardIcon,
 } from '@heroicons/react/24/outline';
 
 interface Job {
@@ -68,6 +70,7 @@ interface Job {
   preparationNotes?: string;
   rejectionFeedback?: string;
   matchScore?: number;
+  extractedData?: string;  // JSON string of extracted job data
   extractedAt: string;
   createdAt: string;
   activities: JobActivity[];
@@ -167,6 +170,16 @@ export default function JobDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [userProfile, setUserProfile] = useState<any>(null);
+
+  // Parse extracted data from job
+  const extractedData = job?.extractedData ? (() => {
+    try {
+      return JSON.parse(job.extractedData);
+    } catch (error) {
+      console.error('Failed to parse extractedData:', error);
+      return {};
+    }
+  })() : {};
 
   const fetchUserProfile = async () => {
     if (!token || !user?.id) return;
@@ -568,20 +581,111 @@ export default function JobDetailPage() {
                   </Card>
                 )}
 
-                {/* Skills */}
-                {job.skills && (
+                {/* Enhanced Skills & Technologies */}
+                {(job.skills || extractedData?.programmingLanguages || extractedData?.frameworks) && (
                   <Card>
                     <CardHeader>
-                      <CardTitle>Required Skills</CardTitle>
+                      <CardTitle>Skills & Technologies</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* All Skills */}
+                      {job.skills && (
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 mb-2 block">Required Skills</Label>
+                          <div className="flex flex-wrap gap-2">
+                            {job.skills.split(',').map((skill, index) => (
+                              <Badge key={index} variant="outline" className="bg-blue-50">
+                                {skill.trim()}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Programming Languages */}
+                      {extractedData?.programmingLanguages?.length > 0 && (
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 mb-2 block">Programming Languages</Label>
+                          <div className="flex flex-wrap gap-2">
+                            {extractedData.programmingLanguages.map((lang: string, index: number) => (
+                              <Badge key={index} variant="outline" className="bg-green-50">
+                                {lang}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Frameworks */}
+                      {extractedData?.frameworks?.length > 0 && (
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 mb-2 block">Frameworks</Label>
+                          <div className="flex flex-wrap gap-2">
+                            {extractedData.frameworks.map((framework: string, index: number) => (
+                              <Badge key={index} variant="outline" className="bg-purple-50">
+                                {framework}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tools */}
+                      {extractedData?.tools?.length > 0 && (
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 mb-2 block">Tools & Platforms</Label>
+                          <div className="flex flex-wrap gap-2">
+                            {extractedData.tools.map((tool: string, index: number) => (
+                              <Badge key={index} variant="outline" className="bg-orange-50">
+                                {tool}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Responsibilities */}
+                {extractedData?.responsibilities?.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Key Responsibilities</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex flex-wrap gap-2">
-                        {job.skills.split(',').map((skill, index) => (
-                          <Badge key={index} variant="outline">
-                            {skill.trim()}
-                          </Badge>
+                      <ul className="space-y-2">
+                        {extractedData.responsibilities.map((responsibility: string, index: number) => (
+                          <li key={index} className="flex items-start gap-2">
+                            <CheckCircleIcon className="w-4 h-4 text-green-600 mt-1 flex-shrink-0" />
+                            <span className="text-gray-700">{responsibility}</span>
+                          </li>
                         ))}
-                      </div>
+                      </ul>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Benefits & Perks */}
+                {(job.perks || extractedData?.benefits?.length > 0) && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Benefits & Perks</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {job.perks && (
+                        <p className="text-gray-700 mb-4">{job.perks}</p>
+                      )}
+                      {extractedData?.benefits?.length > 0 && (
+                        <ul className="space-y-2">
+                          {extractedData.benefits.map((benefit: string, index: number) => (
+                            <li key={index} className="flex items-start gap-2">
+                              <StarIcon className="w-4 h-4 text-yellow-500 mt-1 flex-shrink-0" />
+                              <span className="text-gray-700">{benefit}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </CardContent>
                   </Card>
                 )}
@@ -669,84 +773,47 @@ export default function JobDetailPage() {
             </div>
           </TabsContent>
 
-          {/* Intelligent Salary Hub Tab */}
+          {/* Perfect AI RAG Salary Hub Tab */}
           <TabsContent value="salary" className="space-y-6">
-            <div className="bg-gradient-to-br from-white via-green-50/30 to-blue-50/30 rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-              {/* Header with visual enhancement */}
-              <div className="relative p-8 border-b border-gray-100/50 bg-gradient-to-r from-green-500/5 via-blue-500/5 to-purple-500/5">
-
+            <div className="bg-gradient-to-br from-white via-yellow-50/30 to-purple-50/30 rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+              {/* Header with perfect RAG branding */}
+              <div className="relative p-8 border-b border-gray-100/50 bg-gradient-to-r from-yellow-500/5 via-purple-500/5 to-blue-500/5">
                 <div className="relative z-10 flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-gradient-to-r from-green-500 via-blue-500 to-purple-500 rounded-xl flex items-center justify-center shadow-lg">
-                      <CurrencyDollarIcon className="w-7 h-7 text-white" />
+                    <div className="w-12 h-12 bg-gradient-to-r from-yellow-500 via-purple-500 to-blue-500 rounded-xl flex items-center justify-center shadow-lg animate-pulse">
+                      <SparklesIcon className="w-7 h-7 text-white" />
                     </div>
                     <div>
-                      <h2 className="text-3xl font-bold bg-gradient-to-r from-gray-900 via-gray-700 to-gray-800 bg-clip-text text-transparent">
-                        AI Salary Intelligence
+                      <h2 className="text-3xl font-bold bg-gradient-to-r from-yellow-600 via-purple-600 to-blue-600 bg-clip-text text-transparent">
+                        Perfect AI RAG Intelligence
                       </h2>
                       <p className="text-sm text-gray-600 mt-1 flex items-center gap-2">
-                        <SparklesIcon className="w-4 h-4 text-green-500" />
-                        Powered by market data, location intelligence & RAG technology
+                        <CurrencyDollarIcon className="w-4 h-4 text-yellow-500" />
+                        Zero hardcoded values • Live market data • Perfect RAG
                       </p>
                     </div>
                   </div>
 
-                  {/* Status badges */}
+                  {/* Perfect RAG status badges */}
                   <div className="hidden md:flex items-center gap-3">
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-white/80 backdrop-blur-sm rounded-full border border-green-200/50 shadow-sm">
-                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                      <span className="text-sm font-medium text-green-700">Live Analysis</span>
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-50/80 backdrop-blur-sm rounded-full border border-yellow-200/50 shadow-sm">
+                      <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
+                      <span className="text-sm font-medium text-yellow-700">Live AI Analysis</span>
                     </div>
-                    {userProfile && (
-                      <div className="flex items-center gap-2 px-3 py-1.5 bg-white/80 backdrop-blur-sm rounded-full border border-blue-200/50 shadow-sm">
-                        <UserIcon className="w-4 h-4 text-blue-500" />
-                        <span className="text-sm font-medium text-blue-700">Personalized</span>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-50/80 backdrop-blur-sm rounded-full border border-purple-200/50 shadow-sm">
+                      <CheckCircleIcon className="w-4 h-4 text-purple-500" />
+                      <span className="text-sm font-medium text-purple-700">Zero Hardcoded</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Content area */}
+              {/* Perfect RAG content area */}
               <div className="relative">
-                {!userProfile && (
-                  <div className="absolute top-4 right-4 z-20">
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 shadow-sm">
-                      <p className="text-xs text-amber-700 flex items-center gap-1">
-                        <InformationCircleIcon className="w-3 h-3" />
-                        Complete your profile for personalized insights
-                      </p>
-                    </div>
-                  </div>
-                )}
-
                 <div className="p-6 md:p-8">
-                  <EnhancedSalaryHub
-                    job={{
-                      id: job.id,
-                      title: job.title,
-                      company: job.company,
-                      location: job.location,
-                      workMode: job.workMode,
-                      salary: job.salary || job.salaryMin || job.salaryMax ? {
-                        min: job.salaryMin,
-                        max: job.salaryMax,
-                        currency: 'USD',
-                        period: 'annual'
-                      } : undefined,
-                      description: job.description,
-                      skills: job.skills ? job.skills.split(',').map(s => s.trim()) : [],
-                      requirements: job.requirements ? job.requirements.split('\n').filter(r => r.trim()) : []
-                    }}
-                    userProfile={userProfile}
-                    onLocationChange={(location) => {
-                      console.log('Location changed:', location);
-                      // Optional: Update job location in database
-                    }}
-                    onExpenseProfileChange={(profile) => {
-                      console.log('Expense profile changed:', profile);
-                      // Optional: Save user's expense preferences
-                    }}
+                  <PerfectAISalaryHub
+                    jobId={job.id}
+                    token={token}
                     className="max-w-none"
                   />
                 </div>

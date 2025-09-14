@@ -45,13 +45,71 @@ export interface ExtractedJobData {
   totalCompMax?: number;
   isNegotiable?: boolean;
   remotePayAdjustment?: boolean;
-  
+
+  // Enhanced Job Details
+  department?: string;
+  teamSize?: string;
+  reportingStructure?: string;
+  experienceLevel?: string;
+  educationRequirements?: string;
+  industryFocus?: string;
+
+  // Comprehensive Skills and Technologies
   skills?: string[];
+  programmingLanguages?: string[];
+  frameworks?: string[];
+  tools?: string[];
+  softSkills?: string[];
+  certifications?: string[];
+
+  // Detailed Content
   description?: string;
+  responsibilities?: string[];
   requirements?: string;
+  qualifications?: string[];
+  preferredQualifications?: string[];
+
+  // Benefits and Compensation Details
   perks?: string;
+  benefits?: string[];
+  healthInsurance?: string;
+  retirement?: string;
+  vacation?: string;
+  flexibleSchedule?: boolean;
+  professionalDevelopment?: string;
+
+  // Company Culture and Environment
+  companySize?: string;
+  companyDescription?: string;
+  missionValues?: string;
+  workEnvironment?: string;
+  dresscode?: string;
+
+  // Application Process
+  applicationProcess?: string;
+  applicationDeadline?: string;
+  startDate?: string;
+  interviewProcess?: string;
+
+  // Project and Role Context
+  projectDetails?: string;
+  clientTypes?: string[];
+  travelRequirements?: string;
+  overtime?: string;
+
+  // Growth and Career
+  careerProgression?: string;
+  mentorship?: string;
+  trainingOpportunities?: string[];
+
+  // Work Mode and Flexibility
   workMode?: 'remote' | 'hybrid' | 'onsite';
+
+  // Summary and Insights
   summary?: string;
+  keyHighlights?: string[];
+  potentialChallenges?: string[];
+  uniqueSellingPoints?: string[];
 }
 
 export async function extractJobDataWithAI(
@@ -94,7 +152,7 @@ async function extractWithOpenAI(pageData: any): Promise<ExtractedJobData> {
     messages: [
       {
         role: 'system',
-        content: 'You are a professional job data extraction specialist. Your primary goal is to extract ALL relevant information from job postings comprehensively and accurately. Do NOT summarize or shorten content - preserve all important details that would be valuable to job seekers. Focus on completeness, accuracy, and maintaining all specific details about technologies, responsibilities, benefits, and requirements. Be thorough and comprehensive.',
+        content: 'You are an expert job data extraction specialist. Your primary goal is to extract ALL relevant information from job postings comprehensively and accurately. Do NOT summarize or shorten content - preserve all important details that would be valuable to job seekers. Focus on completeness, accuracy, and maintaining all specific details about technologies, responsibilities, benefits, and requirements. Be thorough and comprehensive. CRITICAL: Always return valid JSON only - no explanations or additional text.',
       },
       {
         role: 'user',
@@ -105,8 +163,14 @@ async function extractWithOpenAI(pageData: any): Promise<ExtractedJobData> {
     response_format: { type: 'json_object' },
   });
 
-  const extracted = JSON.parse(response.choices[0].message.content || '{}');
-  return normalizeJobData(extracted);
+  try {
+    const extracted = JSON.parse(response.choices[0].message.content || '{}');
+    return normalizeJobData(extracted);
+  } catch (error) {
+    console.error('Failed to parse OpenAI job extraction response:', error);
+    console.error('Response was:', response.choices[0].message.content?.substring(0, 200));
+    throw new Error('AI returned invalid JSON for job extraction. Please try again.');
+  }
 }
 
 async function extractWithOllama(pageData: any): Promise<ExtractedJobData> {
@@ -132,8 +196,14 @@ async function extractWithOllama(pageData: any): Promise<ExtractedJobData> {
     }
 
     const data = await response.json();
-    const extracted = JSON.parse(data.response);
-    return normalizeJobData(extracted);
+    try {
+      const extracted = JSON.parse(data.response);
+      return normalizeJobData(extracted);
+    } catch (parseError) {
+      console.error('Failed to parse Ollama job extraction response:', parseError);
+      console.error('Response was:', data.response?.substring(0, 200));
+      throw new Error('AI returned invalid JSON for job extraction. Please try again.');
+    }
   } catch (error) {
     console.error('Ollama extraction error:', error);
     throw error;
@@ -237,13 +307,24 @@ SPECIAL COMPENSATION PARSING INSTRUCTIONS:
 - Convert hourly/monthly to annual: hourly × 2080, monthly × 12
 - Look for location-based pay: "salary varies by location", "geographic pay zones"
 
-CRITICAL INSTRUCTIONS:
+CRITICAL INSTRUCTIONS FOR COMPREHENSIVE EXTRACTION:
 - Be COMPREHENSIVE - don't summarize or shorten important information
 - Extract EVERYTHING relevant, don't skip details
 - Maintain professional language while preserving all key information
 - Include specific technologies, methodologies, team sizes, project details
 - Don't generic-ize - keep company-specific and role-specific details
 - If information seems important to a job seeker, include it
+
+ENHANCED EXTRACTION REQUIREMENTS:
+- TEAM DETAILS: Extract team size, department, reporting structure, collaboration style
+- COMPANY CULTURE: Mission, values, work environment, dress code, company size
+- BENEFITS: Detailed breakdown of health, retirement, PTO, professional development
+- GROWTH: Career progression paths, mentorship, training opportunities
+- PROJECT CONTEXT: Specific projects, client types, industry focus
+- PROCESS: Application steps, interview process, start date, deadlines
+- SKILLS BREAKDOWN: Separate technical skills, frameworks, tools, soft skills, certifications
+- UNIQUE ASPECTS: What makes this role special, key selling points, potential challenges
+- WORK FLEXIBILITY: Remote policy details, schedule flexibility, travel requirements
 
 SALARY EXTRACTION RULES:
 - ONLY extract salary if it contains specific numbers or ranges
@@ -269,7 +350,15 @@ ${pageData.workMode ? `Detected Work Mode: ${pageData.workMode}` : ''}
 FULL TEXT CONTENT (MOST IMPORTANT - Extract from here):
 ${pageData.text?.substring(0, 8000)}
 
-Return ONLY the JSON object with comprehensive, detailed extraction.`;
+ENHANCED OUTPUT REQUIREMENTS:
+- Populate ALL available fields from the comprehensive schema above
+- Use arrays for lists (skills, responsibilities, benefits, etc.)
+- Include detailed analysis in summary, keyHighlights, potentialChallenges
+- Extract specific details, not generic statements
+- Categorize skills properly (programmingLanguages vs frameworks vs tools)
+- Provide actionable insights in the AI analysis fields
+
+Return ONLY the JSON object with comprehensive, detailed extraction using ALL available fields.`;
 }
 
 export async function extractResumeData(pdfText: string): Promise<Record<string, any>> {

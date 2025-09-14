@@ -3,11 +3,12 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { validateToken } from '@/lib/auth';
 import { extractJobDataWithAI } from '@/lib/ai-service';
-import { 
-  withErrorHandling, 
-  AuthenticationError, 
+import { perfectAIRAG } from '@/lib/services/perfect-ai-rag';
+import {
+  withErrorHandling,
+  AuthenticationError,
   ConflictError,
-  ExternalServiceError 
+  ExternalServiceError
 } from '@/lib/error-handling';
 
 // Force this API route to use Node.js runtime instead of Edge Runtime
@@ -20,6 +21,72 @@ const extractSchema = z.object({
   title: z.string().optional(),
   structured: z.any().optional(),
 });
+
+/**
+ * Start salary analysis in background after job extraction
+ */
+async function startBackgroundSalaryAnalysis(
+  jobId: string,
+  extractedData: any,
+  location?: string,
+  company?: string,
+  userId?: string
+) {
+  try {
+    // Build comprehensive job description
+    const jobDescription = buildJobDescription(extractedData, location, company);
+
+    // Perform Perfect AI RAG analysis
+    const analysis = await perfectAIRAG.analyzeJobOffer(
+      jobDescription,
+      location,
+      company
+    );
+
+    // Store analysis results in job record
+    await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        extractedData: JSON.stringify({
+          ...extractedData,
+          perfectRAGAnalysis: analysis,
+          analysisDate: new Date(),
+          version: '1.0.0-perfect'
+        }),
+        totalCompMin: analysis.compensation?.salaryRange?.min || null,
+        totalCompMax: analysis.compensation?.salaryRange?.max || null,
+        matchScore: analysis.analysis?.overallScore || null,
+        updatedAt: new Date()
+      }
+    });
+
+    console.log(`Background salary analysis completed for job ${jobId}`);
+  } catch (error) {
+    console.error(`Background salary analysis failed for job ${jobId}:`, error);
+    // Don't throw - this is background processing
+  }
+}
+
+/**
+ * Build comprehensive job description for AI analysis
+ */
+function buildJobDescription(extractedData: any, location?: string, company?: string): string {
+  const parts: string[] = [];
+
+  if (extractedData.title) parts.push(`Job Title: ${extractedData.title}`);
+  if (company) parts.push(`Company: ${company}`);
+  if (location) parts.push(`Location: ${location}`);
+  if (extractedData.workMode) parts.push(`Work Mode: ${extractedData.workMode}`);
+  if (extractedData.salary) parts.push(`Salary Information: ${extractedData.salary}`);
+  if (extractedData.contractType) parts.push(`Contract Type: ${extractedData.contractType}`);
+  if (extractedData.description) parts.push(`Job Description: ${extractedData.description}`);
+  if (extractedData.requirements) parts.push(`Requirements: ${extractedData.requirements}`);
+  if (extractedData.skills) parts.push(`Required Skills: ${Array.isArray(extractedData.skills) ? extractedData.skills.join(', ') : extractedData.skills}`);
+  if (extractedData.perks) parts.push(`Perks and Benefits: ${extractedData.perks}`);
+  if (extractedData.summary) parts.push(`Summary: ${extractedData.summary}`);
+
+  return parts.join('\n\n');
+}
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
     // Validate authentication - check both header and cookie
@@ -104,8 +171,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       });
     }
 
+    // Auto-start Perfect AI RAG salary analysis in background
+    console.log('Starting background salary analysis for job:', job.id);
+    startBackgroundSalaryAnalysis(job.id, extractedData, job.location, job.company, user.id).catch(error => {
+      console.error('Background salary analysis failed for job', job.id, ':', error);
+    });
+
   return NextResponse.json({
     job,
     message: 'Job extracted successfully',
+    salaryAnalysisStarted: true
   });
 });

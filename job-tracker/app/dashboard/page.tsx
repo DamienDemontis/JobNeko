@@ -16,14 +16,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
-import SalaryIntelligenceWidget from '@/components/ui/salary-intelligence-widget';
-// import { AdvancedFilters, type JobFilters } from '@/components/jobs/advanced-filters';
-import { 
-  analyzeSalary, 
-  getComfortColor, 
-  getComfortIcon,
-  type SalaryAnalysis 
-} from '@/lib/salary-intelligence';
+// Modern dashboard - removed legacy salary intelligence imports
 
 interface Job {
   id: string;
@@ -43,7 +36,7 @@ interface Job {
   appliedAt?: string;
   applicationDeadline?: string;
   summary?: string;
-  salaryAnalysis?: SalaryAnalysis;
+  // Legacy salaryAnalysis removed
 }
 
 // Application status configuration with beautiful colors and icons
@@ -222,7 +215,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState<Record<string, unknown>>({});
+  // Removed filters state - using simplified filtering
   const [sortBy, setSortBy] = useState<string>('createdAt');
 
   // Hydration safety - only render after client-side mount
@@ -288,12 +281,8 @@ export default function DashboardPage() {
 
       if (response.ok) {
         const data = await response.json();
-        // Enhance jobs with salary analysis
-        const enhancedJobs = data.jobs.map((job: Job) => ({
-          ...job,
-          salaryAnalysis: analyzeSalary(job.salary, job.location)
-        }));
-        setJobs(enhancedJobs);
+        // Set jobs directly - enhanced salary analysis handled per job
+        setJobs(data.jobs);
       } else {
         throw new Error('Failed to fetch jobs');
       }
@@ -339,7 +328,7 @@ export default function DashboardPage() {
       fetchJobs();
     }, 500);
     return () => clearTimeout(timer);
-  }, [search, filters, sortBy]);
+  }, [search, sortBy]);
 
   const renderStars = (jobId: string, currentRating?: number) => {
     return (
@@ -639,14 +628,22 @@ export default function DashboardPage() {
                           )}
                         </div>
                         
-                        {/* New Salary Intelligence */}
+                        {/* Salary Display */}
                         <div className="mt-3">
-                          <SalaryIntelligenceWidget 
-                            job={job} 
-                            compact={true}
-                            autoAnalyze={true}
-                            className="border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50"
-                          />
+                          {(() => {
+                            const salaryInfo = getSmartSalaryDisplay(job.salary);
+                            return (
+                              <div className="text-sm text-gray-600">
+                                <DollarSign className="w-4 h-4 inline mr-1" />
+                                <span className={salaryInfo.isGeneric ? 'italic' : 'font-medium'}>
+                                  {salaryInfo.display}
+                                </span>
+                                {salaryInfo.isGeneric && (
+                                  <span className="ml-2 text-xs text-blue-600">→ AI Analysis Available</span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         {/* Job Summary */}
@@ -683,14 +680,6 @@ export default function DashboardPage() {
                             </div>
                           );
                         })()}
-                        {job.salaryAnalysis && (
-                          <Badge 
-                            variant="outline" 
-                            className={`text-xs ${getComfortColor(job.salaryAnalysis.comfortLevel || 'comfortable')} border`}
-                          >
-                            {getComfortIcon(job.salaryAnalysis.comfortLevel || 'comfortable')} {job.salaryAnalysis.comfortLevel || 'analyzing'}
-                          </Badge>
-                        )}
                       </div>
 
                       {/* Skills Preview */}

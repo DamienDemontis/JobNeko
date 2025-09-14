@@ -63,14 +63,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       userId: user.id,
       ...(query.search && {
         OR: [
-          { title: { contains: query.search, mode: 'insensitive' } },
-          { company: { contains: query.search, mode: 'insensitive' } },
-          { description: { contains: query.search, mode: 'insensitive' } },
-          { skills: { contains: query.search, mode: 'insensitive' } },
+          { title: { contains: query.search } },
+          { company: { contains: query.search } },
+          { description: { contains: query.search } },
+          { skills: { contains: query.search } },
         ],
       }),
       ...(query.company && {
-        company: { contains: query.company, mode: 'insensitive' },
+        company: { contains: query.company },
       }),
       ...(workModes.length > 0 && {
         workMode: { in: workModes },
@@ -106,9 +106,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         whereClause.OR = whereClause.OR || [];
         whereClause.OR.push(...experiencePatterns.map(pattern => ({
           OR: [
-            { title: { contains: pattern, mode: 'insensitive' } },
-            { description: { contains: pattern, mode: 'insensitive' } },
-            { requirements: { contains: pattern, mode: 'insensitive' } },
+            { title: { contains: pattern } },
+            { description: { contains: pattern } },
+            { requirements: { contains: pattern } },
           ]
         })));
       }

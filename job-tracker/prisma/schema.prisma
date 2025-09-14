@@ -190,7 +190,21 @@ model UserProfile {
   // Career Preferences
   yearsOfExperience Int?
   industryPreferences String?      // JSON array of preferred industries
-  
+
+  // Enhanced Profile Information for AI Negotiation
+  additionalInfo    String?        // Additional context not in resume
+  skills            String?        // JSON array of skills
+  education         String?        // Education background
+  certifications    String?        // Professional certifications
+  achievements      String?        // Key career achievements
+  negotiationHistory String?       // Past negotiation experiences
+  careerLevel       String?        // junior/mid/senior/lead/principal/executive
+  industryExperience String?       // JSON array of industries worked in
+
+  // Tax and Financial Information
+  filingStatus      String?        // single/married_filing_jointly/married_filing_separately/head_of_household
+  stateOfResidence  String?        // For accurate tax calculations
+
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
   

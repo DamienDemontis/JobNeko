@@ -3,7 +3,7 @@ import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { prisma } from '@/lib/prisma';
 import { validateToken } from '@/lib/auth';
-import { extractResumeData } from '@/lib/ai-service';
+import { aiResumeExtractor } from '@/lib/services/ai-resume-extractor';
 
 export async function POST(request: NextRequest) {
   try {
@@ -59,20 +59,8 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(bytes);
     await writeFile(filePath, buffer);
 
-    // Extract text from PDF
-    let pdfText = '';
-    try {
-      // Dynamic import to avoid build issues
-      const pdfParse = (await import('pdf-parse')).default;
-      const pdfData = await pdfParse(buffer);
-      pdfText = pdfData.text;
-    } catch (error) {
-      console.error('PDF parsing error:', error);
-      // Continue without text extraction
-    }
-
-    // Use AI to extract structured data from resume
-    const extractedData = await extractResumeData(pdfText);
+    // Use AI to extract ALL data directly from PDF
+    const extractedData = await aiResumeExtractor.extractFromPDF(buffer, fileName);
 
     // Deactivate previous resumes
     await prisma.resume.updateMany({
@@ -86,10 +74,10 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         fileName: file.name,
         fileUrl,
-        content: pdfText.substring(0, 5000), // Limit content length
-        skills: JSON.stringify(extractedData.skills || []),
-        experience: JSON.stringify(extractedData.experience || []),
-        education: JSON.stringify(extractedData.education || []),
+        content: JSON.stringify(extractedData), // Store complete AI extraction
+        skills: JSON.stringify(extractedData.technicalSkills.concat(extractedData.softSkills)),
+        experience: JSON.stringify(extractedData.experience),
+        education: JSON.stringify(extractedData.education),
         isActive: true,
       },
     });
@@ -112,11 +100,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       resume: {
         ...resume,
-        skills: extractedData.skills,
-        experience: extractedData.experience,
-        education: extractedData.education,
+        extractedData, // Include full AI extraction
       },
-      message: 'Resume uploaded and processed successfully',
+      message: 'Resume uploaded and AI-processed successfully',
     });
   } catch (error) {
     console.error('Resume upload error:', error);

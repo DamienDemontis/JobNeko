@@ -3,7 +3,7 @@
 
 import { generateCompletion } from '../ai-service';
 import { PrismaClient } from '@prisma/client';
-import { salaryCache } from './salary-cache';
+// import { salaryCache } from './salary-cache';
 
 const prisma = new PrismaClient();
 
@@ -353,28 +353,10 @@ export class EnhancedSalaryIntelligenceService {
     const startTime = Date.now();
 
     // Check cache first
-    const cacheKey = salaryCache.generateCacheKey({
-      jobId: request.jobId,
-      userId: request.userId,
-      location: request.location || 'unknown',
-      expenseProfile: this.expenseProfileToNumbers(request.expenseProfile),
-      workMode: request.workMode,
-      currency: request.currency || 'USD'
-    });
+    const cacheKey = `enhanced-${request.jobId}-${request.jobTitle}-${request.location}`;
 
-    if (!request.forceRefresh) {
-      const cached = await salaryCache.get<EnhancedSalaryResponse>(cacheKey);
-      if (cached) {
-        return {
-          ...cached,
-          metadata: {
-            ...cached.metadata,
-            cached: true,
-            processingTimeMs: Date.now() - startTime
-          }
-        };
-      }
-    }
+    // Skip caching for now
+    const cached = null;
 
     // Build RAG context
     const ragContext = await this.ragBuilder.buildContext(request);
@@ -421,20 +403,7 @@ export class EnhancedSalaryIntelligenceService {
     };
 
     // Cache the result
-    await salaryCache.set(
-      cacheKey,
-      analysis,
-      {
-        jobId: request.jobId,
-        userId: request.userId,
-        location: request.location || 'unknown',
-        expenseProfile: this.expenseProfileToNumbers(request.expenseProfile)
-          ? JSON.stringify(this.expenseProfileToNumbers(request.expenseProfile))
-          : 'default',
-        version: '2.0.0'
-      },
-      { ttlHours: 24 }
-    );
+    // Skip caching for now
 
     return analysis;
   }

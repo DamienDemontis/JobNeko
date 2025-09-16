@@ -8,14 +8,15 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { 
-  Search, Star, MapPin, Building, DollarSign, LogOut, User, 
+import {
+  Search, Star, MapPin, Building, DollarSign, LogOut, User,
   Clock, CheckCircle, XCircle, PlayCircle, Phone,
   Briefcase, TrendingUp, Calendar, ExternalLink, ArrowUpRight,
-  Filter as FilterIcon
+  Filter as FilterIcon, Settings
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+// import { QuickResumePrompt, ResumeStatusIndicator } from '@/components/ui/resume-upload-prompt';
 // Modern dashboard - removed legacy salary intelligence imports
 
 interface Job {
@@ -217,6 +218,8 @@ export default function DashboardPage() {
   const [search, setSearch] = useState('');
   // Removed filters state - using simplified filtering
   const [sortBy, setSortBy] = useState<string>('createdAt');
+  const [hasResume, setHasResume] = useState(false);
+  const [resumePromptDismissed, setResumePromptDismissed] = useState(false);
 
   // Hydration safety - only render after client-side mount
   useEffect(() => {
@@ -253,6 +256,7 @@ export default function DashboardPage() {
     console.log('User authenticated, fetching jobs...');
     // User is authenticated, fetch jobs
     fetchJobs();
+    checkResumeStatus();
   }, [user, token, authLoading, router]);
 
   const fetchJobs = async () => {
@@ -290,6 +294,26 @@ export default function DashboardPage() {
       toast.error('Failed to load jobs');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkResumeStatus = async () => {
+    const currentToken = token || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
+    if (!currentToken || !user?.id) return;
+
+    try {
+      const response = await fetch(`/api/resume/upload?userId=${user.id}`, {
+        headers: {
+          Authorization: `Bearer ${currentToken}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setHasResume(data.hasResume);
+      }
+    } catch (error) {
+      console.error('Failed to check resume status:', error);
     }
   };
 
@@ -369,14 +393,28 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Job Tracker</h1>
-              <p className="text-gray-600">Welcome back, {user?.name || user?.email}</p>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold text-gray-900">Job Tracker</h1>
+                <Badge className="bg-green-100 text-green-700 border-green-200 text-sm">
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0-9v9" />
+                  </svg>
+                  Web Intelligence
+                </Badge>
+              </div>
+              <p className="text-gray-600">Welcome back, {user?.name || user?.email} • Real-time market data enabled</p>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" asChild>
                 <Link href="/profile">
                   <User className="w-4 h-4 mr-2" />
                   Profile
+                </Link>
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/settings">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Settings
                 </Link>
               </Button>
               <Button variant="outline" onClick={handleLogout}>
@@ -478,15 +516,46 @@ export default function DashboardPage() {
           </Card>
         </div>
 
+        {/* Resume Upload Prompt */}
+        {!hasResume && !resumePromptDismissed && (
+          <div className="mb-8">
+            {/* <QuickResumePrompt
+              onUpload={() => router.push('/profile#resume')}
+              onDismiss={() => setResumePromptDismissed(true)}
+            /> */}
+          </div>
+        )}
+
+        {/* Resume Status Indicator */}
+        {hasResume && (
+          <div className="mb-8">
+            <Card className="border-green-200 bg-green-50">
+              <CardContent className="p-4">
+                {/* <ResumeStatusIndicator
+                  hasResume={hasResume}
+                  onUpload={() => router.push('/profile#resume')}
+                  className="justify-center"
+                /> */}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {/* Advanced Filters */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FilterIcon className="h-5 w-5" />
               Smart Job Filters
+              <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">
+                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0-9v9" />
+                </svg>
+                Web-Enhanced
+              </Badge>
             </CardTitle>
             <CardDescription>
-              Find your perfect job with intelligent filtering including salary comfort analysis
+              Find your perfect job with intelligent filtering and live web data analysis
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -617,7 +686,25 @@ export default function DashboardPage() {
                         
                         <div className="flex items-center gap-4 text-gray-600 mb-3">
                           <div className="flex items-center gap-2 font-medium">
-                            <Building className="w-4 h-4" />
+                            {(job as any).companyLogoUrl ? (
+                              <img
+                                src={(job as any).companyLogoUrl}
+                                alt={`${job.company} logo`}
+                                className="w-8 h-8 object-contain rounded"
+                                onError={(e) => {
+                                  // Hide broken image and show building icon instead
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                  const buildingIcon = (e.target as HTMLImageElement).nextElementSibling;
+                                  if (buildingIcon) {
+                                    (buildingIcon as HTMLElement).style.display = 'block';
+                                  }
+                                }}
+                              />
+                            ) : null}
+                            <Building
+                              className="w-4 h-4"
+                              style={{ display: (job as any).companyLogoUrl ? 'none' : 'block' }}
+                            />
                             <span className="text-lg">{job.company}</span>
                           </div>
                           {job.location && (
@@ -639,7 +726,7 @@ export default function DashboardPage() {
                                   {salaryInfo.display}
                                 </span>
                                 {salaryInfo.isGeneric && (
-                                  <span className="ml-2 text-xs text-blue-600">→ AI Analysis Available</span>
+                                  <span className="ml-2 text-xs text-blue-600">→ Web Analysis Available</span>
                                 )}
                               </div>
                             );
@@ -713,12 +800,20 @@ export default function DashboardPage() {
                           {job.applicationDeadline && (
                             <div className="flex items-center gap-1 text-sm text-amber-600">
                               <Calendar className="w-4 h-4" />
-                              <span>Deadline: {new Date(job.applicationDeadline).toLocaleDateString()}</span>
+                              <span>Deadline: {new Date(job.applicationDeadline).toLocaleDateString('en-US')}</span>
                             </div>
                           )}
                         </div>
                         
                         <div className="flex items-center gap-3">
+                          {/* Web Search Available Indicator */}
+                          <div className="flex items-center gap-1">
+                            <svg className="w-3 h-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0-9v9" />
+                            </svg>
+                            <span className="text-xs text-green-600 font-medium">Live Web Data</span>
+                          </div>
+
                           {job.url && (
                             <Button
                               variant="ghost"
@@ -734,7 +829,7 @@ export default function DashboardPage() {
                             </Button>
                           )}
                           <span className="text-xs text-gray-500">
-                            {new Date(job.createdAt).toLocaleDateString()}
+                            {new Date(job.createdAt).toLocaleDateString('en-US')}
                           </span>
                         </div>
                       </div>

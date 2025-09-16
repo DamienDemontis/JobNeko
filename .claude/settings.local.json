@@ -24,7 +24,12 @@
       "Bash(timeout 30s npm test -- __tests__/salary-analysis-real-data.test.ts --testTimeout=10000)",
       "WebFetch(domain:relocate.me)",
       "Bash(npx tsc:*)",
-      "Bash(timeout 30s npm test -- --passWithNoTests --verbose)"
+      "Bash(timeout 30s npm test -- --passWithNoTests --verbose)",
+      "WebFetch(domain:platform.openai.com)",
+      "WebFetch(domain:tavily.com)",
+      "WebFetch(domain:docs.tavily.com)",
+      "Bash(npx next:*)",
+      "Bash(npx eslint:*)"
     ],
     "deny": [],
     "ask": []

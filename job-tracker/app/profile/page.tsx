@@ -6,11 +6,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
-import { Upload, FileText, User, ArrowLeft, MapPin, Users, DollarSign, Heart, Baby } from 'lucide-react';
+import { Upload, FileText, User, ArrowLeft, MapPin, DollarSign, Heart, ChevronDown, ChevronUp, Eye } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Slider } from '@/components/ui/slider';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import Link from 'next/link';
 
@@ -25,6 +25,7 @@ export default function ProfilePage() {
   const { user, token } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [resume, setResume] = useState<Resume | null>(null);
+  const [showFullResumeContent, setShowFullResumeContent] = useState(false);
   const [userProfile, setUserProfile] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -32,10 +33,6 @@ export default function ProfilePage() {
     currentCity: '',
     currentCountry: '',
     currentState: '',
-    // Family Context
-    familySize: 1,
-    dependents: 0,
-    maritalStatus: 'single',
     // Financial Context
     currentSalary: 0,
     expectedSalary: 0,
@@ -47,9 +44,39 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (user && token) {
+      fetchUserProfile();
       fetchUserResume();
     }
   }, [user, token]);
+
+  const fetchUserProfile = async () => {
+    if (!token) return;
+
+    try {
+      const response = await fetch('/api/auth/profile', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.profile) {
+          // Update the user profile state with the fetched data
+          setUserProfile(prev => ({
+            ...prev,
+            ...data.profile,
+            // Handle location parsing if needed
+            currentCity: data.profile.currentCity || '',
+            currentCountry: data.profile.currentCountry || '',
+            currentState: data.profile.currentState || '',
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch user profile:', error);
+    }
+  };
 
   const fetchUserResume = async () => {
     if (!token) return;
@@ -68,9 +95,9 @@ export default function ProfilePage() {
           const latestResume = data.resumes[0];
           setResume({
             id: latestResume.id,
-            filename: latestResume.filename,
+            filename: latestResume.filename || latestResume.fileName,
             uploadedAt: latestResume.createdAt,
-            extractedText: latestResume.content,
+            extractedText: latestResume.content, // This should now be the full raw text
           });
         }
       }
@@ -110,8 +137,9 @@ export default function ProfilePage() {
       const data = await response.json();
 
       if (response.ok) {
-        setResume(data.resume);
         toast.success('Resume uploaded successfully!');
+        // Refresh the resume data to get the full content
+        await fetchUserResume();
         // Trigger job re-matching
         await triggerJobMatching();
       } else {
@@ -156,6 +184,8 @@ export default function ProfilePage() {
 
       if (response.ok) {
         toast.success('Profile updated successfully!');
+        // Refresh the profile data to show the updated values
+        await fetchUserProfile();
       } else {
         toast.error('Failed to update profile');
       }
@@ -290,71 +320,6 @@ export default function ProfilePage() {
               </CardContent>
             </Card>
 
-            {/* Family Context */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Users className="w-5 h-5 mr-2" />
-                  Family Context
-                </CardTitle>
-                <CardDescription>
-                  Family information helps us provide more accurate cost of living calculations
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="maritalStatus">Marital Status</Label>
-                    <Select value={userProfile.maritalStatus} onValueChange={(value) => setUserProfile(prev => ({ ...prev, maritalStatus: value }))}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="single">Single</SelectItem>
-                        <SelectItem value="married">Married</SelectItem>
-                        <SelectItem value="partner">In a relationship</SelectItem>
-                        <SelectItem value="divorced">Divorced</SelectItem>
-                        <SelectItem value="widowed">Widowed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="familySize">Total Family Size</Label>
-                    <Input
-                      id="familySize"
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={userProfile.familySize}
-                      onChange={(e) => setUserProfile(prev => ({ ...prev, familySize: parseInt(e.target.value) || 1 }))}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Including yourself</p>
-                  </div>
-                </div>
-                
-                <div>
-                  <Label className="flex items-center gap-2 mb-3">
-                    <Baby className="w-4 h-4" />
-                    Dependents: {userProfile.dependents}
-                  </Label>
-                  <Slider
-                    value={[userProfile.dependents]}
-                    onValueChange={([value]) => setUserProfile(prev => ({ ...prev, dependents: value }))}
-                    max={5}
-                    min={0}
-                    step={1}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-xs text-gray-500 mt-2">
-                    <span>0 children</span>
-                    <span>5+ children</span>
-                  </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    Children or other family members who depend on your income
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
 
             {/* Financial Context */}
             <Card>
@@ -422,12 +387,7 @@ export default function ProfilePage() {
               </CardContent>
             </Card>
 
-            {/* Update Profile Button */}
-            <div className="flex justify-end">
-              <Button onClick={updateProfile} disabled={isLoading} className="px-8">
-                {isLoading ? 'Updating...' : 'Save All Changes'}
-              </Button>
-            </div>
+
 
             {/* Resume Management */}
             <Card className="mt-8">
@@ -455,13 +415,75 @@ export default function ProfilePage() {
                       </div>
                     </div>
                     {resume.extractedText && (
-                      <div className="mt-3">
-                        <Label>Extracted Content Preview:</Label>
-                        <Textarea
-                          value={resume.extractedText.substring(0, 200) + '...'}
-                          readOnly
-                          className="mt-2 h-20 text-sm"
-                        />
+                      <div className="mt-4 border-t pt-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <Label className="flex items-center gap-2">
+                            <Eye className="w-4 h-4" />
+                            Extracted Content
+                          </Label>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowFullResumeContent(!showFullResumeContent)}
+                            className="flex items-center gap-2"
+                          >
+                            {showFullResumeContent ? (
+                              <>
+                                <ChevronUp className="w-4 h-4" />
+                                Hide Full Content
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown className="w-4 h-4" />
+                                View Full Content
+                              </>
+                            )}
+                          </Button>
+                        </div>
+
+                        {/* Preview (always shown) */}
+                        <div className="mb-3">
+                          <Label className="text-xs text-gray-600">Preview (first 200 characters):</Label>
+                          <div className="mt-1 p-3 bg-gray-50 rounded-md text-sm text-gray-700 border">
+                            {String(resume.extractedText).substring(0, 200)}
+                            {String(resume.extractedText).length > 200 && (
+                              <span className="text-gray-500">...</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Full content (collapsible) */}
+                        {showFullResumeContent && (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-xs text-gray-600">
+                                Full Content ({String(resume.extractedText).length} characters):
+                              </Label>
+                              <Badge variant="outline" className="text-xs">
+                                AI-Extracted Text
+                              </Badge>
+                            </div>
+                            <Textarea
+                              value={String(resume.extractedText)}
+                              readOnly
+                              className="min-h-[300px] text-sm font-mono"
+                              placeholder="No content available"
+                            />
+                            <div className="flex justify-end">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(String(resume.extractedText));
+                                  toast.success('Resume content copied to clipboard');
+                                }}
+                                className="text-xs"
+                              >
+                                Copy to Clipboard
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -501,34 +523,27 @@ export default function ProfilePage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Save All Changes Button - Moved to end of page */}
+            <div className="flex justify-center mt-8">
+              <Button
+                onClick={updateProfile}
+                disabled={isLoading}
+                className="px-12 py-3 text-lg font-semibold"
+                size="lg"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    Saving Changes...
+                  </>
+                ) : (
+                  'Save All Changes'
+                )}
+              </Button>
+            </div>
           </div>
 
-          <Card className="mt-8">
-            <CardHeader>
-              <CardTitle>Usage Statistics</CardTitle>
-              <CardDescription>Your job tracking activity</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                <div>
-                  <div className="text-2xl font-bold text-blue-600">0</div>
-                  <div className="text-sm text-gray-600">Jobs Extracted</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-green-600">0</div>
-                  <div className="text-sm text-gray-600">Applications</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-yellow-600">0</div>
-                  <div className="text-sm text-gray-600">Interviews</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-purple-600">0%</div>
-                  <div className="text-sm text-gray-600">Avg Match Score</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
     </ProtectedRoute>

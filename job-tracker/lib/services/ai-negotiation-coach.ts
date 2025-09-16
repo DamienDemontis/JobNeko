@@ -173,8 +173,8 @@ export class AINegotiationCoachService {
     // Update readiness based on actual data
     strategy.readiness = {
       ...strategy.readiness,
-      hasResume,
-      hasAdditionalInfo,
+      hasResume: hasResume || false,
+      hasAdditionalInfo: hasAdditionalInfo || false,
       profileCompleteness: this.calculateProfileCompleteness(userProfile),
       missingElements: this.getMissingProfileElements(userProfile)
     };
@@ -232,7 +232,7 @@ export class AINegotiationCoachService {
 
       try {
         // Try to parse the complete AI extraction from content
-        const extractedData = JSON.parse(resume.content || '{}');
+        const extractedData = JSON.parse((resume as any).content || '{}');
         if (extractedData.name) {
           resumeContext += `\nName: ${extractedData.name}`;
           resumeContext += `\nCareer Level: ${extractedData.careerLevel || 'Unknown'}`;

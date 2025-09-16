@@ -87,9 +87,9 @@ export async function GET(
 
       analysis = await perfectAIRAG.analyzeJobOffer(
         comprehensiveJobDescription,
-        job.location,
+        job.location || 'Remote',
         job.company,
-        userLocation
+        userLocation || undefined
       );
 
       processingTimeMs = Date.now() - startTime;
@@ -331,12 +331,14 @@ export async function POST(
     }
 
     // Force fresh analysis (perfect RAG always uses fresh data anyway)
+    const startTime = Date.now();
     const analysis = await perfectAIRAG.analyzeJobOffer(
       jobDescription,
-      job.location,
+      job.location || 'Remote',
       job.company,
-      userLocation || job.user.profile?.currentLocation
+      userLocation || job.user.profile?.currentLocation || undefined
     );
+    const processingTimeMs = Date.now() - startTime;
 
     // Store analysis results in job record for future reference
     await prisma.job.update({
@@ -357,9 +359,9 @@ export async function POST(
     return NextResponse.json({
       ...analysis,
       metadata: {
-        ...analysis.metadata,
         stored: true,
-        jobUpdated: true
+        jobUpdated: true,
+        processingTimeMs
       }
     });
 

@@ -58,6 +58,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     throw new AuthenticationError('User not found');
   }
 
+  // Parse location from currentLocation field (which may contain "City, State")
+  const currentLocation = user.profile?.currentLocation || '';
+  const locationParts = currentLocation.split(',').map(part => part.trim());
+  const currentCity = locationParts[0] || '';
+  const currentState = locationParts[1] || '';
+
   // Combine user data with profile data (mapping DB fields to form fields)
   const profileData = {
     // User fields
@@ -65,9 +71,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     email: user.email,
     name: user.name,
     // Profile fields (with defaults, mapped to form field names)
-    currentCity: user.profile?.currentLocation || '',
+    currentCity: currentCity,
     currentCountry: user.profile?.currentCountry || '',
-    currentState: '', // Not stored separately in DB
+    currentState: currentState,
     familySize: user.profile?.familySize || 1,
     dependents: user.profile?.dependents || 0,
     maritalStatus: user.profile?.maritalStatus || 'single',
@@ -155,16 +161,15 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
     }
 
     // Update user fields if any
-    let updatedUser = null;
     if (Object.values(validatedUserData).some(val => val !== undefined)) {
-      updatedUser = await prisma.user.update({
+      await prisma.user.update({
         where: { id: session.id },
         data: validatedUserData,
       });
     }
 
     // Update or create profile - map form fields to DB fields
-    const dbMappedData: any = {};
+    const dbMappedData: Record<string, unknown> = {};
     
     if (validatedProfileData.currentCity !== undefined) {
       // Combine city and state for currentLocation
@@ -210,9 +215,8 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
       Object.entries(dbMappedData).filter(([, value]) => value !== undefined)
     );
 
-    let updatedProfile = null;
     if (Object.keys(profileUpdateData).length > 0) {
-      updatedProfile = await prisma.userProfile.upsert({
+      await prisma.userProfile.upsert({
         where: { userId: session.id },
         update: profileUpdateData,
         create: {
@@ -230,6 +234,12 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
       },
     });
 
+    // Parse location from currentLocation field for response
+    const responseLocation = user!.profile?.currentLocation || '';
+    const responseLocationParts = responseLocation.split(',').map(part => part.trim());
+    const responseCurrentCity = responseLocationParts[0] || '';
+    const responseCurrentState = responseLocationParts[1] || '';
+
     // Combine user data with profile data for response (mapping DB fields back to form fields)
     const responseData = {
       // User fields
@@ -237,9 +247,9 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
       email: user!.email,
       name: user!.name,
       // Profile fields (with defaults, mapped to form field names)
-      currentCity: user!.profile?.currentLocation || '',
+      currentCity: responseCurrentCity,
       currentCountry: user!.profile?.currentCountry || '',
-      currentState: '', // Not stored separately in DB
+      currentState: responseCurrentState,
       familySize: user!.profile?.familySize || 1,
       dependents: user!.profile?.dependents || 0,
       maritalStatus: user!.profile?.maritalStatus || 'single',

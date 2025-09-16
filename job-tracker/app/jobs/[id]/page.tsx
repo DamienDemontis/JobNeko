@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import PerfectAISalaryHub from '@/components/ui/perfect-ai-salary-hub';
+import { AdaptiveSalaryIntelligence } from '@/components/ui/adaptive-salary-intelligence';
+import ModernSalaryIntelligence from '@/components/ui/modern-salary-intelligence';
 import JobEditForm from '@/components/ui/job-edit-form';
 import { toast } from 'sonner';
 import {
@@ -29,10 +30,11 @@ import {
   XCircleIcon,
   PlayCircleIcon,
   SparklesIcon,
-  InformationCircleIcon,
-  UsersIcon,
-  AwardIcon,
 } from '@heroicons/react/24/outline';
+import {
+  UsersIcon,
+} from '@heroicons/react/24/solid';
+import { TrophyIcon } from '@heroicons/react/24/outline';
 
 interface Job {
   id: string;
@@ -170,6 +172,7 @@ export default function JobDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [hasResume, setHasResume] = useState(false);
 
   // Parse extracted data from job
   const extractedData = job?.extractedData ? (() => {
@@ -208,6 +211,25 @@ export default function JobDetailPage() {
       }
     } catch (error) {
       console.error('Error fetching user profile:', error);
+    }
+  };
+
+  const checkResumeStatus = async () => {
+    if (!token) return;
+
+    try {
+      const response = await fetch('/api/resumes', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setHasResume(data.resumes && data.resumes.length > 0);
+      }
+    } catch (error) {
+      console.error('Error checking resume status:', error);
     }
   };
 
@@ -301,7 +323,9 @@ export default function JobDetailPage() {
     if (user && token) {
       fetchJob();
       fetchUserProfile();
+      checkResumeStatus();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, token, params.id]);
 
   if (loading) {
@@ -423,7 +447,25 @@ export default function JobDetailPage() {
                 
                 <div className="flex items-center gap-6 text-gray-600 mb-4">
                   <div className="flex items-center gap-2">
-                    <BuildingIcon className="h-5 w-5" />
+                    {(job as any).companyLogoUrl ? (
+                      <img
+                        src={(job as any).companyLogoUrl}
+                        alt={`${job.company} logo`}
+                        className="h-10 w-10 object-contain rounded"
+                        onError={(e) => {
+                          // Hide broken image and show building icon instead
+                          (e.target as HTMLImageElement).style.display = 'none';
+                          const buildingIcon = (e.target as HTMLImageElement).nextElementSibling;
+                          if (buildingIcon) {
+                            (buildingIcon as HTMLElement).style.display = 'block';
+                          }
+                        }}
+                      />
+                    ) : null}
+                    <BuildingIcon
+                      className="h-5 w-5"
+                      style={{ display: (job as any).companyLogoUrl ? 'none' : 'block' }}
+                    />
                     <span className="text-xl font-semibold">{job.company}</span>
                   </div>
                   {job.location && (
@@ -511,8 +553,11 @@ export default function JobDetailPage() {
               value="salary"
               className="data-[state=active]:bg-green-50 data-[state=active]:text-green-700 data-[state=active]:border-green-200 transition-all duration-200"
             >
-              <span className="hidden sm:inline">💰 Salary</span>
-              <span className="sm:hidden">💰</span>
+              <span className="hidden sm:inline flex items-center gap-2">
+                <SparklesIcon className="w-4 h-4" />
+                Perfect AI RAG
+              </span>
+              <span className="sm:hidden">✨</span>
             </TabsTrigger>
             <TabsTrigger
               value="application"
@@ -556,13 +601,72 @@ export default function JobDetailPage() {
                 {/* Job Description */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>Job Description</CardTitle>
+                    <CardTitle className="flex items-center gap-2">
+                      <BriefcaseIcon className="h-5 w-5 text-blue-600" />
+                      Job Description
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="prose max-w-none">
-                      <p className="text-gray-700 whitespace-pre-wrap">
-                        {job.description || 'No description available'}
-                      </p>
+                    <div className="space-y-4">
+                      {job.description ? (
+                        <div className="prose max-w-none">
+                          {(() => {
+                            // First try to split by double newlines (proper paragraphs)
+                            let paragraphs = job.description.split('\n\n').filter(p => p.trim());
+
+                            // If we only have one big paragraph, try to break it intelligently
+                            if (paragraphs.length === 1 && paragraphs[0].length > 200) {
+                              const text = paragraphs[0];
+                              // Split on sentence boundaries that likely indicate new sections
+                              const sentences = text.split(/(?<=[.!?])\s+(?=[A-Z])/);
+                              paragraphs = [];
+                              let currentParagraph = "";
+
+                              sentences.forEach((sentence, index) => {
+                                // Check if this sentence starts a new section
+                                const startsNewSection = sentence.match(/^(We are|Our team|You will|Your role|The role|This position|Required|Preferred|Responsibilities include)/i) ||
+                                  (sentence.length > 50 && currentParagraph.length > 150);
+
+                                if (startsNewSection && currentParagraph) {
+                                  paragraphs.push(currentParagraph.trim());
+                                  currentParagraph = sentence;
+                                } else {
+                                  currentParagraph += (currentParagraph ? ' ' : '') + sentence;
+                                }
+                              });
+
+                              if (currentParagraph) {
+                                paragraphs.push(currentParagraph.trim());
+                              }
+                            }
+
+                            return paragraphs.map((paragraph, index) => (
+                              paragraph.trim() && (
+                                <div key={index} className="mb-4">
+                                  {paragraph.includes(':') && paragraph.split(':')[0].length < 50 ? (
+                                    // Format as heading if it looks like a section header
+                                    <div>
+                                      <h4 className="font-semibold text-gray-900 mb-2">
+                                        {paragraph.split(':')[0]}:
+                                      </h4>
+                                      <p className="text-gray-700 leading-relaxed">
+                                        {paragraph.split(':').slice(1).join(':')}
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    // Regular paragraph
+                                    <p className="text-gray-700 leading-relaxed">
+                                      {paragraph}
+                                    </p>
+                                  )}
+                                </div>
+                              )
+                            ));
+                          })()}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 italic">No description available</p>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -571,11 +675,61 @@ export default function JobDetailPage() {
                 {job.requirements && (
                   <Card>
                     <CardHeader>
-                      <CardTitle>Requirements</CardTitle>
+                      <CardTitle className="flex items-center gap-2">
+                        <CheckCircleIcon className="h-5 w-5 text-green-600" />
+                        Requirements
+                      </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="prose max-w-none">
-                        <p className="text-gray-700 whitespace-pre-wrap">{job.requirements}</p>
+                      <div className="space-y-3">
+                        {(() => {
+                          // First try to split by newlines
+                          let requirements = job.requirements.split('\n').filter(req => req.trim());
+
+                          // If we only have one big requirement block, try to break it intelligently
+                          if (requirements.length === 1 && requirements[0].length > 150) {
+                            const text = requirements[0];
+                            // Split on common requirement separators
+                            requirements = text.split(/(?:\.?\s*)(?:Required|Preferred|Essential|Must have|Should have|Experience with|Proficiency in|Knowledge of)/i)
+                              .filter(req => req.trim())
+                              .map(req => req.trim().replace(/^[,.\s]+/, ''))
+                              .filter(req => req.length > 10);
+
+                            // If that didn't work well, try splitting on sentence boundaries with keywords
+                            if (requirements.length <= 2) {
+                              const sentences = text.split(/(?<=[.!?])\s+(?=[A-Z])/);
+                              requirements = [];
+                              let currentReq = "";
+
+                              sentences.forEach(sentence => {
+                                // Check if this sentence starts a new requirement
+                                const startsNewReq = sentence.match(/^(Required|Preferred|Essential|Must|Should|Experience|Proficiency|Knowledge|Bachelor|Master|Degree)/i) ||
+                                  (sentence.includes('experience') || sentence.includes('skills') || sentence.includes('knowledge')) ||
+                                  (currentReq.length > 100);
+
+                                if (startsNewReq && currentReq && currentReq.length > 20) {
+                                  requirements.push(currentReq.trim());
+                                  currentReq = sentence;
+                                } else {
+                                  currentReq += (currentReq ? ' ' : '') + sentence;
+                                }
+                              });
+
+                              if (currentReq && currentReq.length > 20) {
+                                requirements.push(currentReq.trim());
+                              }
+                            }
+                          }
+
+                          return requirements.map((req, index) => (
+                            req.trim() && (
+                              <div key={index} className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-green-500 rounded-full mt-2 flex-shrink-0"></div>
+                                <p className="text-gray-700 leading-relaxed">{req.trim()}</p>
+                              </div>
+                            )
+                          ));
+                        })()}
                       </div>
                     </CardContent>
                   </Card>
@@ -585,7 +739,10 @@ export default function JobDetailPage() {
                 {(job.skills || extractedData?.programmingLanguages || extractedData?.frameworks) && (
                   <Card>
                     <CardHeader>
-                      <CardTitle>Skills & Technologies</CardTitle>
+                      <CardTitle className="flex items-center gap-2">
+                        <SparklesIcon className="h-5 w-5 text-purple-600" />
+                        Skills & Technologies
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       {/* All Skills */}
@@ -770,55 +927,46 @@ export default function JobDetailPage() {
                   </Card>
                 )}
               </div>
+
+              {/* Quick Stats Summary */}
+              {(extractedData?.yearsExperienceRequired || extractedData?.teamSize || extractedData?.companyStage) && (
+                <div className="mt-6 p-4 bg-black text-white rounded-lg">
+                  <Label className="text-sm font-medium text-white mb-3 block">Quick Summary</Label>
+                  <div className="grid grid-cols-1 gap-2 text-sm">
+                    {extractedData?.yearsExperienceRequired && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-300">Experience Level:</span>
+                        <span className="font-semibold">{extractedData.yearsExperienceRequired}+ years</span>
+                      </div>
+                    )}
+                    {extractedData?.teamSize && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-300">Team Size:</span>
+                        <span className="font-semibold">{extractedData.teamSize}</span>
+                      </div>
+                    )}
+                    {extractedData?.companyStage && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-300">Company Stage:</span>
+                        <span className="font-semibold capitalize">{extractedData.companyStage.replace('_', ' ')}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </TabsContent>
 
-          {/* Perfect AI RAG Salary Hub Tab */}
+          {/* Enhanced Adaptive Salary Intelligence Tab */}
           <TabsContent value="salary" className="space-y-6">
-            <div className="bg-gradient-to-br from-white via-yellow-50/30 to-purple-50/30 rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-              {/* Header with perfect RAG branding */}
-              <div className="relative p-8 border-b border-gray-100/50 bg-gradient-to-r from-yellow-500/5 via-purple-500/5 to-blue-500/5">
-                <div className="relative z-10 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-gradient-to-r from-yellow-500 via-purple-500 to-blue-500 rounded-xl flex items-center justify-center shadow-lg animate-pulse">
-                      <SparklesIcon className="w-7 h-7 text-white" />
-                    </div>
-                    <div>
-                      <h2 className="text-3xl font-bold bg-gradient-to-r from-yellow-600 via-purple-600 to-blue-600 bg-clip-text text-transparent">
-                        Perfect AI RAG Intelligence
-                      </h2>
-                      <p className="text-sm text-gray-600 mt-1 flex items-center gap-2">
-                        <CurrencyDollarIcon className="w-4 h-4 text-yellow-500" />
-                        Zero hardcoded values • Live market data • Perfect RAG
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Perfect RAG status badges */}
-                  <div className="hidden md:flex items-center gap-3">
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-50/80 backdrop-blur-sm rounded-full border border-yellow-200/50 shadow-sm">
-                      <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
-                      <span className="text-sm font-medium text-yellow-700">Live AI Analysis</span>
-                    </div>
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-50/80 backdrop-blur-sm rounded-full border border-purple-200/50 shadow-sm">
-                      <CheckCircleIcon className="w-4 h-4 text-purple-500" />
-                      <span className="text-sm font-medium text-purple-700">Zero Hardcoded</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Perfect RAG content area */}
-              <div className="relative">
-                <div className="p-6 md:p-8">
-                  <PerfectAISalaryHub
-                    jobId={job.id}
-                    token={token}
-                    className="max-w-none"
-                  />
-                </div>
-              </div>
-            </div>
+            <ModernSalaryIntelligence
+              jobId={job.id}
+              jobTitle={job.title}
+              company={job.company}
+              location={job.location || ''}
+              hasResume={hasResume}
+              token={token || ''}
+            />
           </TabsContent>
 
           {/* Other tabs will be implemented similarly... */}

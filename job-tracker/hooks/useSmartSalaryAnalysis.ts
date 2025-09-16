@@ -452,7 +452,9 @@ export const useSmartSalaryAnalysis = ({
   const scenario = useMemo((): 'has_salary' | 'no_salary' | 'remote_job' => {
     if (!job) return 'no_salary';
     
-    const hasValidSalary = job.salary && job.salary.trim() && 
+    const hasValidSalary = job.salary &&
+      typeof job.salary === 'string' &&
+      job.salary.trim() &&
       !job.salary.toLowerCase().includes('competitive') &&
       !job.salary.toLowerCase().includes('negotiable');
     

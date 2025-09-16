@@ -4,7 +4,7 @@ import type { CityData } from '@prisma/client';
 // Rate limiting and caching configuration
 const CACHE_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days
 const REQUEST_DELAY = 10000; // 10 seconds between requests
-const MAX_RETRIES = 3;
+const _MAX_RETRIES = 3;
 
 interface ScrapedCityData {
   city: string;
@@ -183,7 +183,7 @@ export class EthicalWebScraper {
       const rentIndexMatch = html.match(/Rent Index[^>]*>[\s\S]*?(\d+\.?\d*)/i);
       const groceriesIndexMatch = html.match(/Groceries Index[^>]*>[\s\S]*?(\d+\.?\d*)/i);
       const restaurantIndexMatch = html.match(/Restaurant Price Index[^>]*>[\s\S]*?(\d+\.?\d*)/i);
-      const localPurchasingMatch = html.match(/Local Purchasing Power Index[^>]*>[\s\S]*?(\d+\.?\d*)/i);
+      const _localPurchasingMatch = html.match(/Local Purchasing Power Index[^>]*>[\s\S]*?(\d+\.?\d*)/i);
 
       // Extract average salary
       const salaryMatch = html.match(/Average Monthly Net Salary[^>]*>[\s\S]*?\$?([\d,]+\.?\d*)/i);
@@ -292,7 +292,7 @@ export class EthicalWebScraper {
   /**
    * Scrape other alternative sources
    */
-  private async scrapeAlternativeSources(city: string, country?: string, state?: string): Promise<ScrapedCityData | null> {
+  private async scrapeAlternativeSources(_city: string, _country?: string, _state?: string): Promise<ScrapedCityData | null> {
     // Could add other sources like cost-of-living.org, etc.
     // For now, return null to fall back to API data
     return null;

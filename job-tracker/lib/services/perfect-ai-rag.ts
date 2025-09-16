@@ -150,10 +150,10 @@ class ExternalAPIIntegrator {
         source: 'Bureau of Labor Statistics',
         confidence: 0.95,
         timestamp: new Date(),
-        data: JSON.parse(response.content || '{}')
+        data: JSON.parse(response?.content || '{}')
       };
     } catch (error) {
-      console.error('BLS JSON parse error:', response.content);
+      console.error('BLS JSON parse error:', response?.content);
       return {
         source: 'Bureau of Labor Statistics',
         confidence: 0.5,
@@ -213,7 +213,7 @@ class ExternalAPIIntegrator {
         source: 'Numbeo Live API',
         confidence: 0.90,
         timestamp: new Date(),
-        data: JSON.parse(response.content || '{}')
+        data: JSON.parse(response?.content || '{}')
       };
     } catch (error) {
       console.error('Failed to parse Numbeo data:', error);
@@ -273,7 +273,7 @@ class ExternalAPIIntegrator {
         source: 'Live Job Market Analysis',
         confidence: 0.85,
         timestamp: new Date(),
-        data: JSON.parse(response.content || '{}')
+        data: JSON.parse(response?.content || '{}')
       };
     } catch (error) {
       console.error('Failed to parse job market data:', error);
@@ -343,10 +343,10 @@ class ExternalAPIIntegrator {
         source: 'Company Intelligence APIs',
         confidence: 0.80,
         timestamp: new Date(),
-        data: JSON.parse(response.content || '{}')
+        data: JSON.parse(response?.content || '{}')
       };
     } catch (error) {
-      console.error('Company intelligence JSON parse error:', response.content);
+      console.error('Company intelligence JSON parse error:', response?.content);
       return {
         source: 'Company Intelligence APIs',
         confidence: 0.5,
@@ -411,7 +411,7 @@ class ExternalAPIIntegrator {
         source: 'Economic Data APIs',
         confidence: 0.90,
         timestamp: new Date(),
-        data: JSON.parse(response.content || '{}')
+        data: JSON.parse(response?.content || '{}')
       };
     } catch (error) {
       console.error('Failed to parse economic indicators:', error);
@@ -472,7 +472,7 @@ class ExternalAPIIntegrator {
         source: 'Industry Intelligence',
         confidence: 0.75,
         timestamp: new Date(),
-        data: JSON.parse(response.content || '{}')
+        data: JSON.parse(response?.content || '{}')
       };
     } catch (error) {
       console.error('Failed to parse industry trends:', error);
@@ -532,7 +532,7 @@ class ExternalAPIIntegrator {
         source: 'Tax Calculation APIs',
         confidence: 0.95,
         timestamp: new Date(),
-        data: JSON.parse(response.content || '{}')
+        data: JSON.parse(response?.content || '{}')
       };
     } catch (error) {
       console.error('Failed to parse tax data:', error);
@@ -588,7 +588,10 @@ export class PerfectAIRAG {
     console.log(`Locations - Job: ${effectiveJobLocation}, User: ${userLocation}, Analysis: ${effectiveAnalysisLocation}`);
     console.log(`Remote Policy: ${remotePolicy}, Is Remote: ${isRemoteJob}`);
 
-    // Fetch all live data in parallel
+    // Ensure we use the actual job location, not a fallback
+    const analysisLocation = effectiveAnalysisLocation || effectiveJobLocation || 'Global Remote';
+
+    // Fetch all live data in parallel with proper location
     const [
       salaryBLS,
       salaryMarket,
@@ -597,10 +600,10 @@ export class PerfectAIRAG {
       companyIntel,
       industryTrends
     ] = await Promise.all([
-      this.apiIntegrator.fetchBLSData(jobTitle || 'Software Engineer', effectiveAnalysisLocation || 'New York, NY'),
-      this.apiIntegrator.analyzeJobMarket(jobTitle || 'Software Engineer', effectiveAnalysisLocation || 'New York, NY', company),
-      this.apiIntegrator.fetchCostOfLivingData(effectiveAnalysisLocation || 'New York, NY'),
-      this.apiIntegrator.getEconomicIndicators(effectiveAnalysisLocation || 'New York, NY'),
+      this.apiIntegrator.fetchBLSData(jobTitle || 'Software Engineer', analysisLocation),
+      this.apiIntegrator.analyzeJobMarket(jobTitle || 'Software Engineer', analysisLocation, company),
+      this.apiIntegrator.fetchCostOfLivingData(analysisLocation),
+      this.apiIntegrator.getEconomicIndicators(analysisLocation),
       company ? this.apiIntegrator.getCompanyIntelligence(company) : this.createEmptyData('No company specified'),
       this.apiIntegrator.getIndustryTrends(industry || 'Technology', jobTitle || 'Software Engineer')
     ]);
@@ -627,7 +630,7 @@ export class PerfectAIRAG {
       companyIntelligence: companyIntel,
       industryTrends,
       marketSentiment: await this.getMarketSentiment(jobTitle || 'Software Engineer', industry || 'Technology'),
-      competitorAnalysis: await this.getCompetitorAnalysis(jobTitle || 'Software Engineer', effectiveAnalysisLocation || 'New York, NY', company)
+      competitorAnalysis: await this.getCompetitorAnalysis(jobTitle || 'Software Engineer', analysisLocation, company)
     };
   }
 
@@ -673,7 +676,7 @@ export class PerfectAIRAG {
         source: 'AI Job Description Analysis',
         confidence: 0.90,
         timestamp: new Date(),
-        data: JSON.parse(response.content || '{}')
+        data: JSON.parse(response?.content || '{}')
       };
     } catch (error) {
       console.error('Failed to parse job description:', error);
@@ -728,7 +731,7 @@ export class PerfectAIRAG {
         source: 'Market Sentiment Analysis',
         confidence: 0.70,
         timestamp: new Date(),
-        data: JSON.parse(response.content || '{}')
+        data: JSON.parse(response?.content || '{}')
       };
     } catch (error) {
       console.error('Failed to parse market sentiment:', error);
@@ -783,7 +786,7 @@ export class PerfectAIRAG {
         source: 'Competitive Intelligence',
         confidence: 0.75,
         timestamp: new Date(),
-        data: JSON.parse(response.content || '{}')
+        data: JSON.parse(response?.content || '{}')
       };
     } catch (error) {
       console.error('Failed to parse competitor analysis:', error);
@@ -841,14 +844,17 @@ export class PerfectAIRAG {
           industry: 'Unknown',
           skillsRequired: [],
           experienceLevel: 0,
-          marketDemand: 0
+          marketDemand: 0,
+          jobType: 'fulltime' as const,
+          workMode: 'hybrid' as const,
+          compensationModel: 'salary' as const
         },
         compensation: {
           salaryRange: {
             min: 0,
             max: 0,
             median: 0,
-            currency: 'USD',
+            currency: '', // No fallback currency - let AI determine based on location
             confidence: 0
           },
           totalCompensation: {
@@ -863,7 +869,7 @@ export class PerfectAIRAG {
         },
         location: {
           jobLocation: 'Unknown',
-          userLocation: null,
+          userLocation: undefined,
           isRemote: false,
           effectiveLocation: 'Unknown',
           costOfLiving: 100,
@@ -899,6 +905,7 @@ export class PerfectAIRAG {
           market: 0,
           location: 0,
           dataSources: ['Error'],
+          estimateType: 'ai_estimate' as const,
           error: 'Failed to parse AI response'
         }
       } as UniversalJobAnalysis;
@@ -956,10 +963,36 @@ export class PerfectAIRAG {
 
     Competitor Analysis: ${JSON.stringify(ragContext.competitorAnalysis.data)}
 
+    CURRENCY MAPPING - CRITICAL:
+    Based on the job location, determine the appropriate currency:
+    - Seoul, South Korea, Korea → "KRW" (Korean Won)
+    - Japan, Tokyo → "JPY" (Japanese Yen)
+    - United Kingdom, UK, London → "GBP" (British Pound)
+    - Eurozone countries (Germany, France, Netherlands, etc.) → "EUR" (Euro)
+    - United States, USA, US → "USD" (US Dollar)
+    - Canada → "CAD" (Canadian Dollar)
+    - Australia → "AUD" (Australian Dollar)
+    - Singapore → "SGD" (Singapore Dollar)
+    - Switzerland → "CHF" (Swiss Franc)
+
+    SALARY RANGES BY LOCATION:
+    For Seoul/Korea software developers:
+    - Junior: 35,000,000 - 55,000,000 KRW
+    - Mid-level: 55,000,000 - 85,000,000 KRW
+    - Senior: 85,000,000 - 120,000,000 KRW
+    - Staff/Principal: 120,000,000+ KRW
+
     INSTRUCTIONS:
     Using ONLY the live market data provided above, create a comprehensive analysis.
     DO NOT use any estimates, assumptions, or generic data.
     Base ALL conclusions on the real market intelligence provided.
+
+    CRITICAL REQUIREMENTS:
+    1. Use the correct local currency based on job location (KRW for Seoul/Korea, JPY for Japan, etc.)
+    2. If job is in Seoul/Korea, salary must be in KRW with appropriate ranges (50M-120M+ KRW for developers)
+    3. DO NOT use generic salary ranges like $45,000-$65,000 USD for non-US locations
+    4. Adjust all compensation values to reflect local market standards and currency
+    5. If market data is insufficient, clearly indicate low confidence rather than using defaults
 
     Return a JSON object with this exact structure:
     {
@@ -977,10 +1010,10 @@ export class PerfectAIRAG {
       },
       "compensation": {
         "salaryRange": {
-          "min": number_from_market_data,
-          "max": number_from_market_data,
-          "median": number_from_market_data_or_average_of_min_max,
-          "currency": "USD|EUR|GBP|etc",
+          "min": number_from_market_data_in_local_currency,
+          "max": number_from_market_data_in_local_currency,
+          "median": number_from_market_data_or_average_of_min_max_in_local_currency,
+          "currency": "KRW_for_Seoul_USD_EUR_GBP_JPY_etc_based_on_location",
           "confidence": number_0_to_1
         },
         "totalCompensation": {

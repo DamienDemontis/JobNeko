@@ -3,12 +3,10 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { validateToken } from '@/lib/auth';
 import { extractJobDataWithAI } from '@/lib/ai-service';
-import { perfectAIRAG } from '@/lib/services/perfect-ai-rag';
+import { webEnhancedSalaryIntelligence } from '@/lib/services/web-enhanced-salary-intelligence';
 import {
   withErrorHandling,
-  AuthenticationError,
-  ConflictError,
-  ExternalServiceError
+  AuthenticationError
 } from '@/lib/error-handling';
 
 // Force this API route to use Node.js runtime instead of Edge Runtime
@@ -23,24 +21,24 @@ const extractSchema = z.object({
 });
 
 /**
- * Start salary analysis in background after job extraction
+ * Start web-enhanced salary analysis in background after job extraction
  */
-async function startBackgroundSalaryAnalysis(
+async function startBackgroundWebAnalysis(
   jobId: string,
-  extractedData: any,
+  extractedData: Record<string, unknown>,
   location?: string,
-  company?: string,
-  userId?: string
+  company?: string
 ) {
   try {
-    // Build comprehensive job description
-    const jobDescription = buildJobDescription(extractedData, location, company);
+    console.log(`Starting web-enhanced salary analysis for job ${jobId}...`);
 
-    // Perform Perfect AI RAG analysis
-    const analysis = await perfectAIRAG.analyzeJobOffer(
-      jobDescription,
-      location,
-      company
+    // Use web-enhanced salary intelligence
+    const analysis = await webEnhancedSalaryIntelligence.analyzeSalary(
+      String(extractedData.title || 'Software Engineer'),
+      company || 'Unknown Company',
+      location || 'Remote',
+      String(extractedData.description || ''),
+      extractedData.salary as string | undefined
     );
 
     // Store analysis results in job record
@@ -49,44 +47,26 @@ async function startBackgroundSalaryAnalysis(
       data: {
         extractedData: JSON.stringify({
           ...extractedData,
-          perfectRAGAnalysis: analysis,
+          webEnhancedAnalysis: analysis,
           analysisDate: new Date(),
-          version: '1.0.0-perfect'
+          version: '2.0.0-web-enhanced',
+          dataSource: 'web_search_ai'
         }),
         totalCompMin: analysis.compensation?.salaryRange?.min || null,
         totalCompMax: analysis.compensation?.salaryRange?.max || null,
-        matchScore: analysis.analysis?.overallScore || null,
+        matchScore: analysis.confidence?.overall || null,
         updatedAt: new Date()
       }
     });
 
-    console.log(`Background salary analysis completed for job ${jobId}`);
+    console.log(`Web-enhanced salary analysis completed for job ${jobId} with confidence: ${(analysis.confidence?.overall * 100 || 0)}%`);
   } catch (error) {
-    console.error(`Background salary analysis failed for job ${jobId}:`, error);
+    console.error(`Web-enhanced salary analysis failed for job ${jobId}:`, error);
     // Don't throw - this is background processing
   }
 }
 
-/**
- * Build comprehensive job description for AI analysis
- */
-function buildJobDescription(extractedData: any, location?: string, company?: string): string {
-  const parts: string[] = [];
-
-  if (extractedData.title) parts.push(`Job Title: ${extractedData.title}`);
-  if (company) parts.push(`Company: ${company}`);
-  if (location) parts.push(`Location: ${location}`);
-  if (extractedData.workMode) parts.push(`Work Mode: ${extractedData.workMode}`);
-  if (extractedData.salary) parts.push(`Salary Information: ${extractedData.salary}`);
-  if (extractedData.contractType) parts.push(`Contract Type: ${extractedData.contractType}`);
-  if (extractedData.description) parts.push(`Job Description: ${extractedData.description}`);
-  if (extractedData.requirements) parts.push(`Requirements: ${extractedData.requirements}`);
-  if (extractedData.skills) parts.push(`Required Skills: ${Array.isArray(extractedData.skills) ? extractedData.skills.join(', ') : extractedData.skills}`);
-  if (extractedData.perks) parts.push(`Perks and Benefits: ${extractedData.perks}`);
-  if (extractedData.summary) parts.push(`Summary: ${extractedData.summary}`);
-
-  return parts.join('\n\n');
-}
+// Removed unused buildJobDescription function
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
     // Validate authentication - check both header and cookie
@@ -139,6 +119,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         url: pageData.url,
         title: extractedData.title,
         company: extractedData.company,
+        companyLogoUrl: extractedData.companyLogoUrl,
         location: extractedData.location,
         salary: extractedData.salary,
         salaryMin: extractedData.salaryMin,
@@ -171,15 +152,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       });
     }
 
-    // Auto-start Perfect AI RAG salary analysis in background
-    console.log('Starting background salary analysis for job:', job.id);
-    startBackgroundSalaryAnalysis(job.id, extractedData, job.location, job.company, user.id).catch(error => {
-      console.error('Background salary analysis failed for job', job.id, ':', error);
+    // Auto-start web-enhanced salary analysis in background
+    console.log('Starting background web-enhanced salary analysis for job:', job.id);
+    startBackgroundWebAnalysis(job.id, extractedData as unknown as Record<string, unknown>, job.location || undefined, job.company).catch(error => {
+      console.error('Background web-enhanced salary analysis failed for job', job.id, ':', error);
     });
 
   return NextResponse.json({
     job,
-    message: 'Job extracted successfully',
-    salaryAnalysisStarted: true
+    message: 'Job extracted successfully with web intelligence',
+    webAnalysisStarted: true,
+    analysisType: 'web-enhanced'
   });
 });

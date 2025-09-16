@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma';
+// import { prisma } from '@/lib/prisma';
 
 interface WorldBankIndicator {
   indicator: {
@@ -17,7 +17,7 @@ interface WorldBankIndicator {
   decimal: number;
 }
 
-interface WorldBankResponse {
+interface _WorldBankResponse {
   page: number;
   pages: number;
   per_page: number;

@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(bytes);
     await writeFile(filePath, buffer);
 
-    // Use AI to extract ALL data directly from PDF
+    // Extract raw text from PDF (simple and reliable)
     const extractedData = await aiResumeExtractor.extractFromPDF(buffer, fileName);
 
     // Deactivate previous resumes
@@ -68,16 +68,16 @@ export async function POST(request: NextRequest) {
       data: { isActive: false },
     });
 
-    // Create resume record
+    // Create resume record with raw text
     const resume = await prisma.resume.create({
       data: {
         userId: user.id,
         fileName: file.name,
         fileUrl,
-        content: JSON.stringify(extractedData), // Store complete AI extraction
-        skills: JSON.stringify(extractedData.technicalSkills.concat(extractedData.softSkills)),
-        experience: JSON.stringify(extractedData.experience),
-        education: JSON.stringify(extractedData.education),
+        content: extractedData.rawText || extractedData.summary || '', // Store raw text content
+        skills: '[]', // AI services will extract when needed
+        experience: '[]', // AI services will extract when needed
+        education: '[]', // AI services will extract when needed
         isActive: true,
       },
     });
@@ -99,10 +99,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       resume: {
-        ...resume,
-        extractedData, // Include full AI extraction
+        id: resume.id,
+        filename: file.name,
+        uploadedAt: resume.createdAt.toISOString(),
+        extractedText: extractedData.rawText || extractedData.summary || '', // Return full content
+        rawText: extractedData.rawText || '', // Return full raw text
+        createdAt: resume.createdAt.toISOString(),
       },
-      message: 'Resume uploaded and AI-processed successfully',
+      message: 'Resume uploaded and text extracted successfully',
     });
   } catch (error) {
     console.error('Resume upload error:', error);

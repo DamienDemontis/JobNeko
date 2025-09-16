@@ -252,7 +252,7 @@ export default function LocationAutocomplete({
           align="start"
           onInteractOutside={(e) => {
             // Prevent closing when interacting with the popover content
-            if (e.currentTarget.contains(e.target as Node)) {
+            if ((e.currentTarget as Element)?.contains(e.target as Node)) {
               e.preventDefault();
             }
           }}

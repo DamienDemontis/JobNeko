@@ -41,7 +41,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
     // Parse query parameters - handle multiple values for arrays
     const searchParams = request.nextUrl.searchParams;
-    const queryParams: Record<string, any> = {};
+    const queryParams: Record<string, unknown> = {};
     
     // Handle array parameters
     const workModes = searchParams.getAll('workMode');
@@ -59,7 +59,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const query = querySchema.parse(queryParams);
 
     // Build comprehensive database query with proper filtering
-    const whereClause: any = {
+    const whereClause: Record<string, unknown> = {
       userId: user.id,
       ...(query.search && {
         OR: [
@@ -103,8 +103,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       });
 
       if (experiencePatterns.length > 0) {
-        whereClause.OR = whereClause.OR || [];
-        whereClause.OR.push(...experiencePatterns.map(pattern => ({
+        if (!whereClause.OR) {
+          whereClause.OR = [];
+        }
+        (whereClause.OR as any[]).push(...experiencePatterns.map(pattern => ({
           OR: [
             { title: { contains: pattern } },
             { description: { contains: pattern } },
@@ -118,7 +120,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const totalCount = await prisma.job.count({ where: whereClause });
 
     // Build order by clause
-    let orderBy: any = {};
+    let orderBy: Record<string, unknown> = {};
     switch (query.sortBy) {
       case 'matchScore':
         orderBy = { matchScore: query.order || 'desc' };

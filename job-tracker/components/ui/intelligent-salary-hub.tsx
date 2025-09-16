@@ -333,8 +333,9 @@ export default function IntelligentSalaryHub({ job, onJobUpdate }: IntelligentSa
         );
         
         // Enhanced salary parsing for better scenario detection
-        const hasValidSalary = job.salary && 
-          job.salary.trim() && 
+        const hasValidSalary = job.salary &&
+          typeof job.salary === 'string' &&
+          job.salary.trim() &&
           !job.salary.toLowerCase().includes('competitive') &&
           !job.salary.toLowerCase().includes('negotiable') &&
           !job.salary.toLowerCase().includes('doe') &&

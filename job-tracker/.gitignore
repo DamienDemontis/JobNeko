@@ -1,6 +1,6 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
+# Dependencies
 /node_modules
 /.pnp
 .pnp.*
@@ -9,35 +9,172 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+.yarn/install-state.gz
 
-# testing
+# Testing
 /coverage
+.nyc_output
+*.lcov
+test-results/
+playwright-report/
+playwright/.cache/
 
-# next.js
+# Next.js
 /.next/
 /out/
-
-# production
 /build
+/dist
 
-# misc
-.DS_Store
-*.pem
+# Production
+*.local
 
-# debug
+# Debug & Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+lerna-debug.log*
+logs/
+*.log
 
-# env files (can opt-in for committing if needed)
+# CRITICAL: Environment Variables - NEVER COMMIT
+.env
 .env*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.production
+!.env.example
 
-# vercel
-.vercel
+# Database
+*.db
+*.sqlite
+*.sqlite3
+prisma/dev.db
+prisma/dev.db-journal
+prisma/migrations/dev/
+/lib/generated/prisma
 
-# typescript
+# IDE and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
+tmp/
+temp/
+
+# TypeScript
 *.tsbuildinfo
 next-env.d.ts
 
-/lib/generated/prisma
+# Vercel
+.vercel
+
+# Chrome Extension Security
+chrome-extension/dist/
+chrome-extension/*.crx
+chrome-extension/*.pem
+chrome-extension/key.pem
+
+# API Keys and Secrets - CRITICAL
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+secrets/
+credentials/
+config/secrets/
+oauth-secrets.json
+auth-config.local.json
+stripe-keys.json
+payment-config.local.json
+
+# User Data - Privacy
+uploads/
+public/uploads/
+public/resumes/
+resume-uploads/
+resume-cache/
+user-exports/
+exports/
+
+# Cache directories
+.cache/
+.parcel-cache/
+.turbo/
+salary-cache/
+analysis-cache/
+extraction-cache/
+job-cache/
+
+# Session storage
+sessions/
+*.session
+
+# Backup files
+*.bak
+*.backup
+backup/
+
+# Sensitive configuration
+config.local.js
+config.local.json
+settings.local.json
+services-config.local.json
+integrations-config.local.json
+
+# Analytics and Monitoring
+analytics-config.local.json
+gtag-config.local.json
+newrelic_agent.log
+.apm/
+.sentryclirc
+
+# Rate limiting tracking
+rate-limits.json
+quota-usage.json
+
+# Large data files
+*.csv
+*.sql
+data/
+datasets/
+
+# PWA
+**/public/sw.js
+**/public/workbox-*.js
+**/public/worker-*.js
+**/public/fallback-*.js
+
+# Miscellaneous
+*.seed
+*.pid
+*.pid.lock
+.eslintcache
+.webpack/
+
+# Personal notes
+NOTES.md
+TODO.md
+personal-notes/

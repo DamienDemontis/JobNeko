@@ -7,7 +7,7 @@
     "dev:next": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint app components lib --ext .ts,.tsx",
+    "lint": "eslint app components lib --ext .ts,.tsx --fix",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",

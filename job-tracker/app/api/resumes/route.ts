@@ -20,10 +20,17 @@ export async function GET(request: NextRequest) {
     });
 
     const formattedResumes = resumes.map(resume => ({
-      ...resume,
+      id: resume.id,
+      userId: resume.userId,
+      filename: resume.fileName,
+      fileUrl: resume.fileUrl,
+      content: resume.content || '', // Return raw content as string
       skills: resume.skills ? JSON.parse(resume.skills) : [],
       experience: resume.experience ? JSON.parse(resume.experience) : [],
       education: resume.education ? JSON.parse(resume.education) : [],
+      isActive: resume.isActive,
+      createdAt: resume.createdAt.toISOString(),
+      updatedAt: resume.updatedAt.toISOString(),
     }));
 
     return NextResponse.json({ resumes: formattedResumes });

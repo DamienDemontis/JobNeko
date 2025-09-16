@@ -95,7 +95,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 })
 
 // GET method for API documentation
-export const GET = withErrorHandling(async (request: NextRequest) => {
+export const GET = withErrorHandling(async (_request: NextRequest) => {
   return NextResponse.json({
     endpoint: 'AI Market Intelligence API',
     method: 'POST',

@@ -26,10 +26,11 @@ function extractJobData() {
   const data = {
     url: window.location.href,
     title: document.title,
-    
+
     // Try to extract job-specific data
     jobTitle: extractJobTitle(),
     company: extractCompany(),
+    companyLogoUrl: extractCompanyLogo(),
     location: extractLocation(),
     salary: extractSalary(),
     description: extractDescription(),
@@ -82,6 +83,64 @@ function extractCompany() {
     const element = document.querySelector(selector);
     if (element && element.textContent.trim()) {
       return element.textContent.trim();
+    }
+  }
+
+  return '';
+}
+
+function extractCompanyLogo() {
+  // Try to find company logo in various locations
+  const selectors = [
+    // Common class/id patterns for company logos
+    'img[class*="company-logo"]',
+    'img[class*="employer-logo"]',
+    'img[class*="org-logo"]',
+    'img[class*="brand-logo"]',
+    'img[id*="company-logo"]',
+    'img[alt*="logo"]',
+    '.company-logo img',
+    '.employer-logo img',
+    '.company-header img',
+    '[class*="company"] img',
+    '[class*="employer"] img',
+    // Schema.org structured data
+    '[itemProp="logo"]',
+    '[itemProp="image"]',
+    // Common job board patterns
+    '.job-header img',
+    '.job-company-logo img',
+    '.posting-logo img',
+    // Look in header/branding areas
+    'header img[src*="logo"]',
+    '.header img[src*="logo"]',
+    // Data attributes
+    '[data-testid*="company-logo"]',
+    '[data-testid*="employer-logo"]',
+  ];
+
+  for (const selector of selectors) {
+    const element = document.querySelector(selector);
+    if (element && element.src) {
+      // Make sure it's a valid image URL
+      const src = element.src;
+      if (src && (src.startsWith('http') || src.startsWith('//'))) {
+        // Convert relative URLs to absolute
+        return src.startsWith('//') ? 'https:' + src : src;
+      }
+    }
+  }
+
+  // Try to find logo near company name
+  const companyElement = document.querySelector('[class*="company-name"], [class*="employer"], .company');
+  if (companyElement) {
+    // Look for images in parent or sibling elements
+    const parent = companyElement.parentElement;
+    if (parent) {
+      const nearbyImg = parent.querySelector('img');
+      if (nearbyImg && nearbyImg.src) {
+        return nearbyImg.src.startsWith('//') ? 'https:' + nearbyImg.src : nearbyImg.src;
+      }
     }
   }
 

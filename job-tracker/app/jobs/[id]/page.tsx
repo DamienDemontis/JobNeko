@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AdaptiveSalaryIntelligence } from '@/components/ui/adaptive-salary-intelligence';
 import ModernSalaryIntelligence from '@/components/ui/modern-salary-intelligence';
 import JobEditForm from '@/components/ui/job-edit-form';
+import { MatchScoreDonut } from '@/components/ui/match-score-donut';
 import { toast } from 'sonner';
 import {
   ArrowTopRightOnSquareIcon as ExternalLinkIcon,
@@ -499,9 +500,8 @@ export default function JobDetailPage() {
                     );
                   })()}
                   {job.matchScore && (
-                    <div className="flex items-center gap-2">
-                      <StarIcon className="h-5 w-5 text-yellow-500" />
-                      <span className="font-semibold">{job.matchScore}% match</span>
+                    <div className="flex items-center gap-3">
+                      <MatchScoreDonut score={job.matchScore} size={60} strokeWidth={6} />
                     </div>
                   )}
                 </div>
@@ -541,56 +541,60 @@ export default function JobDetailPage() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-7 bg-white border rounded-lg p-1">
+          <TabsList className="grid w-full grid-cols-3 md:grid-cols-4 lg:grid-cols-7 bg-white border rounded-lg p-2 gap-1 h-auto min-h-[52px]">
             <TabsTrigger
               value="overview"
-              className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:border-blue-200 transition-all duration-200"
+              className="flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 hover:bg-gray-50 transition-all duration-200"
             >
-              <span className="hidden sm:inline">Overview</span>
-              <span className="sm:hidden">Info</span>
+              <span className="text-base">📋</span>
+              <span className="hidden sm:inline font-medium">Overview</span>
+              <span className="sm:hidden text-xs">Info</span>
             </TabsTrigger>
             <TabsTrigger
               value="salary"
-              className="data-[state=active]:bg-green-50 data-[state=active]:text-green-700 data-[state=active]:border-green-200 transition-all duration-200"
+              className="flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-green-50 data-[state=active]:text-green-700 hover:bg-gray-50 transition-all duration-200"
             >
-              <span className="hidden sm:inline flex items-center gap-2">
-                <SparklesIcon className="w-4 h-4" />
-                Perfect AI RAG
-              </span>
-              <span className="sm:hidden">✨</span>
+              <span className="text-base">💰</span>
+              <span className="hidden sm:inline font-medium">Salary Intel</span>
+              <span className="sm:hidden text-xs">💰</span>
             </TabsTrigger>
             <TabsTrigger
               value="application"
-              className="data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700 data-[state=active]:border-purple-200 transition-all duration-200"
+              className="flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700 hover:bg-gray-50 transition-all duration-200"
             >
-              <span className="hidden sm:inline">Application</span>
-              <span className="sm:hidden">App</span>
+              <span className="text-base">📝</span>
+              <span className="hidden sm:inline font-medium">Application</span>
+              <span className="sm:hidden text-xs">App</span>
             </TabsTrigger>
             <TabsTrigger
               value="timeline"
-              className="data-[state=active]:bg-orange-50 data-[state=active]:text-orange-700 data-[state=active]:border-orange-200 transition-all duration-200"
+              className="flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-orange-50 data-[state=active]:text-orange-700 hover:bg-gray-50 transition-all duration-200"
             >
-              <span className="hidden md:inline">Timeline</span>
-              <span className="md:hidden">Time</span>
+              <span className="text-base">📅</span>
+              <span className="hidden md:inline font-medium">Timeline</span>
+              <span className="md:hidden text-xs">Time</span>
             </TabsTrigger>
             <TabsTrigger
               value="contacts"
-              className="hidden md:flex data-[state=active]:bg-cyan-50 data-[state=active]:text-cyan-700 data-[state=active]:border-cyan-200 transition-all duration-200"
+              className="hidden md:flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-cyan-50 data-[state=active]:text-cyan-700 hover:bg-gray-50 transition-all duration-200"
             >
-              <span className="hidden lg:inline">Contacts</span>
-              <span className="lg:hidden">People</span>
+              <span className="text-base">👥</span>
+              <span className="hidden lg:inline font-medium">Contacts</span>
+              <span className="lg:hidden text-xs">People</span>
             </TabsTrigger>
             <TabsTrigger
               value="research"
-              className="hidden lg:flex data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 data-[state=active]:border-indigo-200 transition-all duration-200"
+              className="hidden lg:flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 hover:bg-gray-50 transition-all duration-200"
             >
-              Research
+              <span className="text-base">🔍</span>
+              <span className="font-medium">Research</span>
             </TabsTrigger>
             <TabsTrigger
               value="notes"
-              className="hidden lg:flex data-[state=active]:bg-pink-50 data-[state=active]:text-pink-700 data-[state=active]:border-pink-200 transition-all duration-200"
+              className="hidden lg:flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-pink-50 data-[state=active]:text-pink-700 hover:bg-gray-50 transition-all duration-200"
             >
-              Notes
+              <span className="text-base">📔</span>
+              <span className="font-medium">Notes</span>
             </TabsTrigger>
           </TabsList>
 
@@ -928,32 +932,6 @@ export default function JobDetailPage() {
                 )}
               </div>
 
-              {/* Quick Stats Summary */}
-              {(extractedData?.yearsExperienceRequired || extractedData?.teamSize || extractedData?.companyStage) && (
-                <div className="mt-6 p-4 bg-black text-white rounded-lg">
-                  <Label className="text-sm font-medium text-white mb-3 block">Quick Summary</Label>
-                  <div className="grid grid-cols-1 gap-2 text-sm">
-                    {extractedData?.yearsExperienceRequired && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-300">Experience Level:</span>
-                        <span className="font-semibold">{extractedData.yearsExperienceRequired}+ years</span>
-                      </div>
-                    )}
-                    {extractedData?.teamSize && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-300">Team Size:</span>
-                        <span className="font-semibold">{extractedData.teamSize}</span>
-                      </div>
-                    )}
-                    {extractedData?.companyStage && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-300">Company Stage:</span>
-                        <span className="font-semibold capitalize">{extractedData.companyStage.replace('_', ' ')}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           </TabsContent>
 

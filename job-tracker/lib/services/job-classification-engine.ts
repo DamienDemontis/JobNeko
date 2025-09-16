@@ -246,8 +246,8 @@ export class JobClassificationEngine {
       return 'senior';
     }
 
-    // Fallback to mid-level for ambiguous cases
-    return 'mid';
+    // Unable to determine level from available data
+    throw new Error('Unable to determine experience level from job description - insufficient data');
   }
 
   private detectCompanyType(job: ExtractedJobData): JobClassification['companyType'] {
@@ -450,15 +450,9 @@ export class JobClassificationEngine {
       }
     }
 
-    // Fallback to experience level
+    // Unable to determine experience requirements from job data
     if (requiredYears === 0) {
-      if (experienceLevel.includes('entry') || experienceLevel.includes('junior')) {
-        requiredYears = 2;
-      } else if (experienceLevel.includes('mid')) {
-        requiredYears = 4;
-      } else if (experienceLevel.includes('senior')) {
-        requiredYears = 6;
-      }
+      throw new Error('Cannot determine experience requirements from job posting - insufficient data');
     }
 
     return resume.yearsOfExperience - requiredYears;

@@ -5,11 +5,14 @@ import { aiWebSearch } from './ai-web-search';
 import { generateCompletion } from '../ai-service';
 import { profileContextService, type UserProfileContext, type AIContextPrompt } from './profile-context-service';
 import { salaryAnalysisCache } from './salary-analysis-cache';
+import { geographicSalaryIntelligence, type GeographicSalaryAnalysis } from './geographic-salary-intelligence';
+import { skillsGapAnalysis, type SkillsAnalysisResult } from './skills-gap-analysis';
+import { resumeMatchingService, type ResumeMatchResult } from './resume-matching-service';
 
 export interface SalaryAnalysisRequest {
   jobTitle: string;
   company: string;
-  location: string;
+  location?: string;
   description?: string;
   requirements?: string;
   userId: string;
@@ -60,6 +63,21 @@ export interface PersonalizedSalaryAnalysis {
     keyFactors: string[];
     improvementSuggestions: string[];
   };
+
+  // New comprehensive analysis sections
+  geographicAnalysis?: GeographicSalaryAnalysis;
+  skillsAnalysis?: SkillsAnalysisResult;
+  resumeMatch?: ResumeMatchResult;
+
+  // Enhanced for edge cases
+  edgeCaseHandling: {
+    isRemotePosition: boolean;
+    hasSalaryInfo: boolean;
+    confidence_adjustments: string[];
+    data_limitations: string[];
+    analysis_scope: 'full' | 'limited' | 'basic';
+  };
+
   sources: {
     webSources: Array<{
       title: string;
@@ -97,7 +115,7 @@ export class EnhancedSalaryRAG {
       const inputHash = salaryAnalysisCache.generateInputHash({
         title: request.jobTitle,
         company: request.company,
-        location: request.location,
+        location: request.location || 'Remote/Not specified',
         description: request.description,
         requirements: request.requirements,
         salary: request.postedSalary
@@ -114,53 +132,79 @@ export class EnhancedSalaryRAG {
         return cachedAnalysis.analysis;
       }
 
-      // Step 3: Perform intelligent web searches - MUST HAVE REAL DATA
+      // Step 3: Detect edge cases
+      const edgeCaseInfo = this.detectEdgeCases(request);
+      console.log('🔍 Edge case analysis:', edgeCaseInfo);
+
+      // Step 4: Perform intelligent web searches - MUST HAVE REAL DATA
       const webIntelligence = await this.performContextualWebSearch(request, userContext);
 
-      // FAIL FAST: If no real web search results, throw error instead of using fallbacks
-      if (!webIntelligence.combinedSources.length) {
-        throw new Error('No web search data available. Cannot generate analysis without real market data.');
-      }
-
-      // Validate we have actual search results with content
+      // Handle edge case: Limited web data for remote or niche positions
       const validSources = webIntelligence.combinedSources.filter(source =>
         source.url && source.title && source.url.startsWith('http')
       );
 
-      if (validSources.length === 0) {
+      if (validSources.length === 0 && !edgeCaseInfo.isRemotePosition) {
         throw new Error('No valid web sources found. Analysis requires real market data.');
       }
 
-      // Step 3: Generate personalized analysis using ONLY web search data
-      const analysis = await this.generatePersonalizedAnalysis(
+      // Step 5: Run comprehensive analysis in parallel
+      const [
+        geographicAnalysis,
+        skillsAnalysis,
+        resumeMatch
+      ] = await Promise.allSettled([
+        // Geographic analysis
+        this.runGeographicAnalysis(request, userContext, edgeCaseInfo),
+
+        // Skills gap analysis (if we have job description)
+        this.runSkillsAnalysis(request, userContext),
+
+        // Resume matching (if user has resume)
+        this.runResumeMatching(request, userContext)
+      ]);
+
+      // Step 6: Generate core salary analysis using ONLY web search data
+      const coreAnalysis = await this.generatePersonalizedAnalysis(
         request,
         userContext,
         aiContext,
-        webIntelligence
+        webIntelligence,
+        edgeCaseInfo
       );
 
       // Validate analysis has real numerical data
-      if (typeof analysis.salaryIntelligence?.range?.min !== 'number' ||
-          typeof analysis.salaryIntelligence?.range?.max !== 'number' ||
-          typeof analysis.salaryIntelligence?.range?.median !== 'number' ||
-          typeof analysis.salaryIntelligence?.range?.confidence !== 'number' ||
-          isNaN(analysis.salaryIntelligence.range.min) ||
-          isNaN(analysis.salaryIntelligence.range.max) ||
-          isNaN(analysis.salaryIntelligence.range.median) ||
-          isNaN(analysis.salaryIntelligence.range.confidence) ||
-          analysis.salaryIntelligence.range.min < 0 ||
-          analysis.salaryIntelligence.range.max < 0) {
+      if (typeof coreAnalysis.salaryIntelligence?.range?.min !== 'number' ||
+          typeof coreAnalysis.salaryIntelligence?.range?.max !== 'number' ||
+          typeof coreAnalysis.salaryIntelligence?.range?.median !== 'number' ||
+          typeof coreAnalysis.salaryIntelligence?.range?.confidence !== 'number' ||
+          isNaN(coreAnalysis.salaryIntelligence.range.min) ||
+          isNaN(coreAnalysis.salaryIntelligence.range.max) ||
+          isNaN(coreAnalysis.salaryIntelligence.range.median) ||
+          isNaN(coreAnalysis.salaryIntelligence.range.confidence) ||
+          coreAnalysis.salaryIntelligence.range.min < 0 ||
+          coreAnalysis.salaryIntelligence.range.max < 0) {
         console.error('Invalid salary data:', {
-          min: analysis.salaryIntelligence?.range?.min,
-          max: analysis.salaryIntelligence?.range?.max,
-          median: analysis.salaryIntelligence?.range?.median,
-          confidence: analysis.salaryIntelligence?.range?.confidence
+          min: coreAnalysis.salaryIntelligence?.range?.min,
+          max: coreAnalysis.salaryIntelligence?.range?.max,
+          median: coreAnalysis.salaryIntelligence?.range?.median,
+          confidence: coreAnalysis.salaryIntelligence?.range?.confidence
         });
         throw new Error('Invalid salary data returned. Analysis must contain real market-based numbers.');
       }
 
+      // Step 7: Combine all analysis results
       const finalAnalysis: PersonalizedSalaryAnalysis = {
-        ...analysis,
+        ...coreAnalysis,
+
+        // Add comprehensive analysis results
+        geographicAnalysis: geographicAnalysis.status === 'fulfilled' ? geographicAnalysis.value : undefined,
+        skillsAnalysis: skillsAnalysis.status === 'fulfilled' ? skillsAnalysis.value : undefined,
+        resumeMatch: resumeMatch.status === 'fulfilled' ? resumeMatch.value : undefined,
+
+        // Edge case handling
+        edgeCaseHandling: edgeCaseInfo,
+
         sources: {
           webSources: validSources,
           searchQueries: webIntelligence.queries,
@@ -170,11 +214,11 @@ export class EnhancedSalaryRAG {
           analysisId,
           timestamp: new Date().toISOString(),
           processingTime: Date.now() - startTime,
-          version: '5.0.0-no-fallbacks',
+          version: '6.0.0-comprehensive',
         },
       };
 
-      // Step 5: Cache the successful analysis
+      // Step 8: Cache the successful analysis
       await salaryAnalysisCache.cacheAnalysis(
         request.jobTitle + '_' + request.company,
         request.userId,
@@ -295,14 +339,139 @@ export class EnhancedSalaryRAG {
   }
 
   /**
+   * Detect edge cases in the analysis request
+   */
+  private detectEdgeCases(request: SalaryAnalysisRequest): PersonalizedSalaryAnalysis['edgeCaseHandling'] {
+    const isRemotePosition =
+      request.location?.toLowerCase().includes('remote') ||
+      request.description?.toLowerCase().includes('remote') ||
+      request.description?.toLowerCase().includes('work from home') ||
+      false;
+
+    const hasSalaryInfo = Boolean(request.postedSalary);
+
+    const confidence_adjustments: string[] = [];
+    const data_limitations: string[] = [];
+
+    if (isRemotePosition) {
+      confidence_adjustments.push('Remote position: using global salary data');
+      data_limitations.push('Location-specific cost adjustments may not apply');
+    }
+
+    if (!hasSalaryInfo) {
+      confidence_adjustments.push('No posted salary: relying on market estimates');
+      data_limitations.push('Cannot validate against company-specific compensation');
+    }
+
+    if (!request.description || request.description.length < 100) {
+      confidence_adjustments.push('Limited job description: using role-based analysis');
+      data_limitations.push('Skills gap analysis may be incomplete');
+    }
+
+    const analysis_scope: 'full' | 'limited' | 'basic' =
+      isRemotePosition && hasSalaryInfo && request.description ? 'full' :
+      (!isRemotePosition && hasSalaryInfo) || (isRemotePosition && request.description) ? 'limited' :
+      'basic';
+
+    return {
+      isRemotePosition,
+      hasSalaryInfo,
+      confidence_adjustments,
+      data_limitations,
+      analysis_scope
+    };
+  }
+
+  /**
+   * Run geographic salary analysis
+   */
+  private async runGeographicAnalysis(
+    request: SalaryAnalysisRequest,
+    userContext: UserProfileContext,
+    edgeCaseInfo: PersonalizedSalaryAnalysis['edgeCaseHandling']
+  ): Promise<GeographicSalaryAnalysis> {
+    try {
+      return await geographicSalaryIntelligence.analyzeGeographicOpportunities(
+        request.jobTitle,
+        request.location || userContext.currentLocation.fullLocation || 'United States',
+        userContext.currentLocation.fullLocation,
+        edgeCaseInfo.isRemotePosition,
+        request.postedSalary
+      );
+    } catch (error) {
+      console.warn('Geographic analysis failed:', error);
+      throw new Error('Geographic analysis not available');
+    }
+  }
+
+  /**
+   * Run skills gap analysis
+   */
+  private async runSkillsAnalysis(
+    request: SalaryAnalysisRequest,
+    userContext: UserProfileContext
+  ): Promise<SkillsAnalysisResult> {
+    if (!userContext.professionalProfile.hasResume) {
+      throw new Error('Resume required for skills analysis');
+    }
+
+    if (!request.description) {
+      throw new Error('Job description required for skills analysis');
+    }
+
+    try {
+      return await skillsGapAnalysis.analyzeSkillsGap(
+        userContext.professionalProfile.resumeContent || '',
+        request.jobTitle,
+        request.description,
+        request.requirements || '',
+        userContext.salaryContext.currentSalary || undefined
+      );
+    } catch (error) {
+      console.warn('Skills analysis failed:', error);
+      throw new Error('Skills gap analysis not available');
+    }
+  }
+
+  /**
+   * Run resume matching analysis
+   */
+  private async runResumeMatching(
+    request: SalaryAnalysisRequest,
+    userContext: UserProfileContext
+  ): Promise<ResumeMatchResult> {
+    if (!userContext.professionalProfile.hasResume) {
+      throw new Error('Resume required for matching analysis');
+    }
+
+    if (!request.description) {
+      throw new Error('Job description required for resume matching');
+    }
+
+    try {
+      return await resumeMatchingService.analyzeResumeMatch(
+        userContext.professionalProfile.resumeContent || '',
+        request.jobTitle,
+        request.company,
+        request.description,
+        request.requirements || ''
+      );
+    } catch (error) {
+      console.warn('Resume matching failed:', error);
+      throw new Error('Resume matching analysis not available');
+    }
+  }
+
+  /**
    * Generate comprehensive personalized analysis
    */
   private async generatePersonalizedAnalysis(
     request: SalaryAnalysisRequest,
     userContext: UserProfileContext,
     aiContext: AIContextPrompt,
-    webIntelligence: any
-  ): Promise<Omit<PersonalizedSalaryAnalysis, 'sources' | 'metadata'>> {
+    webIntelligence: any,
+    edgeCaseInfo?: PersonalizedSalaryAnalysis['edgeCaseHandling']
+  ): Promise<Omit<PersonalizedSalaryAnalysis, 'sources' | 'metadata' | 'geographicAnalysis' | 'skillsAnalysis' | 'resumeMatch' | 'edgeCaseHandling'>> {
     const prompt = this.buildAnalysisPrompt(request, userContext, aiContext, webIntelligence);
 
     const response = await generateCompletion(prompt, {
@@ -310,11 +479,16 @@ export class EnhancedSalaryRAG {
       max_tokens: 2500,
     });
 
+    if (!response || !response.content) {
+      throw new Error('Failed to get valid response from AI service');
+    }
+
     console.log('🤖 AI Response length:', response.content.length);
     console.log('🤖 AI Response preview:', response.content.substring(0, 200) + '...');
 
     try {
-      const parsed = JSON.parse(response.content);
+      const cleanedContent = this.cleanJsonResponse(response.content);
+      const parsed = JSON.parse(cleanedContent);
 
       // Log the parsed confidence to debug NaN issue
       console.log('🔍 Parsed confidence value:', parsed?.salaryIntelligence?.range?.confidence);
@@ -339,6 +513,73 @@ export class EnhancedSalaryRAG {
       console.error('❌ Raw AI response:', response.content);
       throw new Error('Failed to generate analysis - invalid JSON format');
     }
+  }
+
+  /**
+   * Clean AI response to extract JSON from markdown code blocks
+   */
+  private cleanJsonResponse(content: string): string {
+    // Remove markdown code block syntax if present
+    let cleaned = content.trim();
+
+    // Remove ```json and ``` if present
+    if (cleaned.startsWith('```json')) {
+      cleaned = cleaned.replace(/^```json\s*/, '');
+    }
+    if (cleaned.startsWith('```')) {
+      cleaned = cleaned.replace(/^```\s*/, '');
+    }
+    if (cleaned.endsWith('```')) {
+      cleaned = cleaned.replace(/\s*```$/, '');
+    }
+
+    // Find the first [ or { and last ] or } to extract just the JSON part
+    const firstBrace = Math.min(
+      cleaned.indexOf('[') !== -1 ? cleaned.indexOf('[') : Infinity,
+      cleaned.indexOf('{') !== -1 ? cleaned.indexOf('{') : Infinity
+    );
+
+    if (firstBrace !== Infinity) {
+      cleaned = cleaned.substring(firstBrace);
+
+      // Find the matching closing brace/bracket
+      let depth = 0;
+      let inString = false;
+      let escapeNext = false;
+
+      for (let i = 0; i < cleaned.length; i++) {
+        const char = cleaned[i];
+
+        if (escapeNext) {
+          escapeNext = false;
+          continue;
+        }
+
+        if (char === '\\') {
+          escapeNext = true;
+          continue;
+        }
+
+        if (char === '"' && !escapeNext) {
+          inString = !inString;
+          continue;
+        }
+
+        if (!inString) {
+          if (char === '[' || char === '{') {
+            depth++;
+          } else if (char === ']' || char === '}') {
+            depth--;
+            if (depth === 0) {
+              cleaned = cleaned.substring(0, i + 1);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    return cleaned.trim();
   }
 
   /**

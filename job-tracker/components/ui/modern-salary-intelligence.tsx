@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   TrendingUp,
   Target,
@@ -21,7 +22,9 @@ import {
   Clock,
   BarChart3,
   Lightbulb,
-  ArrowRight
+  ArrowRight,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PersonalizedSalaryAnalysis } from '@/lib/services/enhanced-salary-rag';
@@ -59,6 +62,8 @@ export default function ModernSalaryIntelligence({
     analysis: null,
     error: null,
   });
+
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
 
   const runAnalysis = async () => {
     setState({
@@ -267,8 +272,8 @@ export default function ModernSalaryIntelligence({
             <CardTitle className="flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-green-600" />
               Salary Intelligence
-              <Badge className={`${getConfidenceColor(analysis.salaryIntelligence.confidence)} border`}>
-                {Math.round(analysis.salaryIntelligence.confidence * 100)}% confidence
+              <Badge className={`${getConfidenceColor(analysis.salaryIntelligence.range.confidence)} border`}>
+                {Math.round(analysis.salaryIntelligence.range.confidence * 100)}% confidence
               </Badge>
             </CardTitle>
           </CardHeader>
@@ -439,18 +444,29 @@ export default function ModernSalaryIntelligence({
 
         {/* Sources */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ExternalLink className="w-5 h-5 text-gray-600" />
-              Data Sources
-              <Badge variant="outline" className="text-xs">
-                {analysis.sources.webSources.length} sources
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {analysis.sources.webSources.slice(0, 6).map((source, index) => (
+          <Collapsible open={sourcesExpanded} onOpenChange={setSourcesExpanded}>
+            <CardHeader>
+              <CollapsibleTrigger className="w-full">
+                <CardTitle className="flex items-center justify-between gap-2 hover:text-blue-600 transition-colors cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <ExternalLink className="w-5 h-5 text-gray-600" />
+                    Data Sources
+                    <Badge variant="outline" className="text-xs">
+                      {analysis.sources.webSources.length} sources
+                    </Badge>
+                  </div>
+                  {sourcesExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-gray-500" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-gray-500" />
+                  )}
+                </CardTitle>
+              </CollapsibleTrigger>
+            </CardHeader>
+            <CollapsibleContent>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {analysis.sources.webSources.map((source, index) => (
                 <a
                   key={index}
                   href={source.url}
@@ -474,9 +490,11 @@ export default function ModernSalaryIntelligence({
                     <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-blue-500" />
                   </div>
                 </a>
-              ))}
-            </div>
-          </CardContent>
+                  ))}
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
         </Card>
 
         <div className="flex justify-center">

@@ -337,7 +337,7 @@ export class FinancialImpactCalculator {
   }
 
   private determineSalary(job: ExtractedJobData, salaryAnalysis: ContextualSalaryAnalysis): number {
-    // Priority: job posted salary > estimated salary > fallback
+    // Priority: job posted salary > estimated salary > throw error
     if (job.salaryMin && job.salaryMax) {
       return (job.salaryMin + job.salaryMax) / 2;
     } else if (job.salaryMin) {
@@ -345,11 +345,14 @@ export class FinancialImpactCalculator {
     } else if (salaryAnalysis.salaryData.estimated?.min) {
       return (salaryAnalysis.salaryData.estimated.min + salaryAnalysis.salaryData.estimated.max) / 2;
     }
-    return 80000; // Fallback for tech roles
+    throw new Error('No salary data available - cannot calculate financial impact without real salary information');
   }
 
   private extractLocation(job: ExtractedJobData): string {
-    return job.location || 'US National Average';
+    if (!job.location) {
+      throw new Error('No location data available - cannot calculate financial impact without location information');
+    }
+    return job.location;
   }
 
   private calculateSalaryBreakdown(salary: number, currency: string) {

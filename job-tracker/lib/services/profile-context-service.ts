@@ -126,7 +126,7 @@ export class ProfileContextService {
       },
 
       professionalProfile: {
-        careerLevel: this.inferCareerLevel(resumeContent, user.profile?.currentSalary),
+        careerLevel: this.inferCareerLevel(resumeContent, user.profile?.currentSalary ?? null),
         yearsOfExperience: this.inferExperience(resumeContent),
         industryFocus: this.inferIndustryFocus(resumeContent),
         keySkills,

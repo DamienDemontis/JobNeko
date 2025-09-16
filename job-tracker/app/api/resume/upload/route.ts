@@ -131,7 +131,10 @@ export async function GET(request: NextRequest) {
     });
 
     if (!activeResume) {
-      return NextResponse.json({ error: 'No active resume found' }, { status: 404 });
+      return NextResponse.json({
+        hasResume: false,
+        message: 'No resume uploaded'
+      });
     }
 
     if (!activeResume.content) {

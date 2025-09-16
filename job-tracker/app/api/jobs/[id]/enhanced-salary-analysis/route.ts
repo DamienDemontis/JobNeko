@@ -5,9 +5,10 @@ import { enhancedSalaryRAG } from '@/lib/services/enhanced-salary-rag';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     // Check if Tavily API is configured for real web search
     if (!process.env.TAVILY_API_KEY) {
       return NextResponse.json(
@@ -34,7 +35,7 @@ export async function POST(
     // Get job details
     const job = await prisma.job.findFirst({
       where: {
-        id: params.id,
+        id: id,
         userId: user.id,
       },
     });
@@ -49,7 +50,7 @@ export async function POST(
     const analysis = await enhancedSalaryRAG.analyzeWithContext({
       jobTitle: job.title,
       company: job.company,
-      location: job.location,
+      location: job.location || undefined,
       description: job.description || undefined,
       requirements: job.requirements || undefined,
       userId: user.id,
@@ -65,7 +66,7 @@ export async function POST(
         id: job.id,
         title: job.title,
         company: job.company,
-        location: job.location,
+        location: job.location || undefined,
       },
     });
   } catch (error) {

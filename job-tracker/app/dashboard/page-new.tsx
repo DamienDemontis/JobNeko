@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
-import { MatchScoreDonut } from '@/components/ui/match-score-donut';
 
 interface Job {
   id: string;
@@ -89,13 +88,9 @@ export default function ProfessionalDashboard() {
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<string>('createdAt');
   const [hasResume, setHasResume] = useState(false);
-  const [resumePromptDismissed, setResumePromptDismissed] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    // Check if resume prompt was dismissed
-    const dismissed = localStorage.getItem('resumePromptDismissed') === 'true';
-    setResumePromptDismissed(dismissed);
   }, []);
 
   useEffect(() => {
@@ -154,15 +149,9 @@ export default function ProfessionalDashboard() {
         headers: { Authorization: `Bearer ${currentToken}` },
       });
 
-      console.log('Resume status response:', response.status);
-
       if (response.ok) {
         const data = await response.json();
-        console.log('Resume status data:', data);
-        setHasResume(Boolean(data.hasResume));
-      } else {
-        console.log('Resume check failed with status:', response.status);
-        setHasResume(false);
+        setHasResume(data.hasResume);
       }
     } catch (error) {
       console.error('Failed to check resume status:', error);
@@ -348,32 +337,20 @@ export default function ProfessionalDashboard() {
         </div>
 
         {/* Resume Status */}
-        {!hasResume && !resumePromptDismissed && (
+        {!hasResume && (
           <Card className="mb-8 border border-gray-200 bg-gray-50">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
-                <div className="flex-1">
+                <div>
                   <h3 className="font-semibold text-black mb-1">Upload Your Resume</h3>
                   <p className="text-sm text-gray-600">Enable AI-powered job matching and salary analysis</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setResumePromptDismissed(true);
-                      localStorage.setItem('resumePromptDismissed', 'true');
-                    }}
-                  >
-                    Don't ask again
-                  </Button>
-                  <Button asChild>
-                    <Link href="/profile#resume">
-                      <FileText className="w-4 h-4 mr-2" />
-                      Upload Resume
-                    </Link>
-                  </Button>
-                </div>
+                <Button asChild>
+                  <Link href="/profile#resume">
+                    <FileText className="w-4 h-4 mr-2" />
+                    Upload Resume
+                  </Link>
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -469,26 +446,7 @@ export default function ProfessionalDashboard() {
 
                         <div className="flex items-center gap-4 text-gray-600 mb-3">
                           <div className="flex items-center gap-2">
-                            {(job as any).companyLogoUrl ? (
-                              <img
-                                src={(job as any).companyLogoUrl}
-                                alt={`${job.company} logo`}
-                                className="w-5 h-5 object-contain rounded"
-                                onError={(e) => {
-                                  // Hide broken image and show building icon instead
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'none';
-                                  const buildingIcon = target.nextElementSibling;
-                                  if (buildingIcon) {
-                                    (buildingIcon as HTMLElement).style.display = 'block';
-                                  }
-                                }}
-                              />
-                            ) : null}
-                            <Building
-                              className="w-4 h-4"
-                              style={{ display: (job as any).companyLogoUrl ? 'none' : 'block' }}
-                            />
+                            <Building className="w-4 h-4" />
                             <span className="font-medium">{job.company}</span>
                           </div>
                           {job.location && (
@@ -550,7 +508,12 @@ export default function ProfessionalDashboard() {
                           <div className="flex items-center gap-4">
                             {/* Match Score */}
                             {job.matchScore && (
-                              <MatchScoreDonut score={job.matchScore} size={50} strokeWidth={6} />
+                              <div className="text-right">
+                                <div className="text-xs text-gray-500">Match</div>
+                                <div className={`text-sm ${matchDisplay.className}`}>
+                                  {matchDisplay.text}
+                                </div>
+                              </div>
                             )}
 
                             {/* External Link */}

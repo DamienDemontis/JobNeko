@@ -219,7 +219,7 @@ model CityData {
   city              String
   country           String
   state             String?
-  
+
   // Cost indices (NYC = 100 baseline)
   costOfLivingIndex Float
   rentIndex         Float
@@ -227,7 +227,7 @@ model CityData {
   restaurantIndex   Float
   transportIndex    Float
   utilitiesIndex    Float
-  
+
   // Quality of Life indices (0-100)
   qualityOfLifeIndex Float?
   safetyIndex       Float?
@@ -236,23 +236,55 @@ model CityData {
   trafficTimeIndex  Float?        // Average commute time
   pollutionIndex    Float?
   climateIndex      Float?
-  
+
   // Salary Data
   avgNetSalaryUSD   Float?        // Average monthly net salary in USD
   medianHousePriceUSD Float?      // Median house price in USD
-  
+
   // Tax Information
   incomeTaxRate     Float?        // Average income tax rate %
   salesTaxRate      Float?        // Sales tax rate %
-  
+
   // Additional Metadata
   population        Int?
   lastUpdated       DateTime
   source            String         // numbeo/manual/api
   dataPoints        Int?           // Number of data contributions
-  
+
   @@unique([city, country, state])
   @@index([city])
   @@index([country])
   @@index([lastUpdated])
+}
+
+model SalaryAnalysisCache {
+  id                String         @id @default(cuid())
+  jobId             String
+  userId            String
+
+  // Cache key components
+  jobTitle          String
+  company           String
+  location          String?
+  jobSalary         String?
+  userProfileHash   String         // Hash of user profile data used
+
+  // Analysis results (stored as JSON)
+  analysisData      String         // Complete analysis JSON
+  dataSources       String?        // Data sources used (JSON array)
+  confidence        Float          // Overall confidence score
+
+  // Metadata
+  version           String         @default("1.0") // Schema version for migrations
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  expiresAt         DateTime       // Cache expiration
+  lastAccessedAt    DateTime       @default(now())
+  accessCount       Int            @default(1)
+
+  @@unique([jobId, userId, userProfileHash])
+  @@index([jobId])
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([lastAccessedAt])
 }

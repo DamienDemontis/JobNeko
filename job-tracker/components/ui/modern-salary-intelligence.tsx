@@ -1,12 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   TrendingUp,
   Target,
@@ -24,11 +31,13 @@ import {
   Lightbulb,
   ArrowRight,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PersonalizedSalaryAnalysis } from '@/lib/services/enhanced-salary-rag';
 import { salaryAnalysisCache } from '@/lib/services/salary-analysis-cache';
+import { currencyConverter } from '@/lib/services/currency-converter';
 
 interface ModernSalaryIntelligenceProps {
   jobId: string;
@@ -64,17 +73,99 @@ export default function ModernSalaryIntelligence({
   });
 
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const [selectedCurrency, setSelectedCurrency] = useState<string>('USD');
+  const [convertedSalaries, setConvertedSalaries] = useState<{
+    min: number;
+    max: number;
+    median: number;
+    currency: string;
+  } | null>(null);
+  const [convertingCurrency, setConvertingCurrency] = useState(false);
 
-  const runAnalysis = async () => {
+  // Auto-load cached analysis on mount
+  useEffect(() => {
+    checkForCachedAnalysis();
+  }, [jobId]);
+
+  const checkForCachedAnalysis = async () => {
+    try {
+      const cacheCheckResponse = await fetch(`/api/jobs/${jobId}/enhanced-salary-analysis?checkCache=true`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (cacheCheckResponse.ok) {
+        const cacheData = await cacheCheckResponse.json();
+        if (cacheData.cached && cacheData.analysis) {
+          // Found cached data, load it automatically
+          setState({
+            status: 'complete',
+            progress: 100,
+            currentStep: '',
+            analysis: cacheData.analysis,
+            error: null,
+          });
+        }
+      }
+    } catch (error) {
+      console.log('No cached analysis found');
+    }
+  };
+
+  const runAnalysis = async (forceRefresh: boolean = false) => {
     setState({
       status: 'searching',
-      progress: 10,
-      currentStep: 'Gathering your profile context...',
+      progress: 5,
+      currentStep: forceRefresh ? 'Running fresh analysis...' : 'Checking for cached analysis...',
       analysis: null,
       error: null,
     });
 
     try {
+      // Only check cache if not forcing refresh
+      if (!forceRefresh) {
+        // First check for cached analysis
+        const cacheCheckResponse = await fetch(`/api/jobs/${jobId}/enhanced-salary-analysis?checkCache=true`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (cacheCheckResponse.ok) {
+          const cacheData = await cacheCheckResponse.json();
+          if (cacheData.cached && cacheData.analysis) {
+            // Found cached data, use it immediately
+            setState({
+              status: 'complete',
+              progress: 100,
+              currentStep: 'Analysis loaded from cache!',
+              analysis: cacheData.analysis,
+              error: null,
+            });
+            toast.success('Salary analysis loaded from cache', {
+              description: `Cached on ${new Date(cacheData.analysis.cachedAt).toLocaleDateString()}`
+            });
+            return;
+          }
+        }
+      } else {
+        // Clear existing analysis when forcing refresh
+        setState(prev => ({
+          ...prev,
+          analysis: null,
+        }));
+      }
+
+      // No cache found, proceed with fresh analysis
+      setState(prev => ({
+        ...prev,
+        progress: 10,
+        currentStep: 'Gathering your profile context...',
+      }));
+
       // Step 1: Profile context
       await new Promise(resolve => setTimeout(resolve, 800));
       setState(prev => ({
@@ -99,7 +190,7 @@ export default function ModernSalaryIntelligence({
         currentStep: 'Generating personalized insights...',
       }));
 
-      const response = await fetch(`/api/jobs/${jobId}/enhanced-salary-analysis`, {
+      const response = await fetch(`/api/jobs/${jobId}/enhanced-salary-analysis${forceRefresh ? '?forceRefresh=true' : ''}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -121,7 +212,7 @@ export default function ModernSalaryIntelligence({
         analysis: data.analysis,
       }));
 
-      toast.success('Salary analysis completed successfully!');
+      toast.success(forceRefresh ? 'Fresh salary analysis completed!' : 'Salary analysis completed successfully!');
     } catch (error) {
       console.error('Salary analysis failed:', error);
       setState(prev => ({
@@ -134,12 +225,58 @@ export default function ModernSalaryIntelligence({
   };
 
   const formatCurrency = (amount: number, currency: string = 'USD') => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
+    return currencyConverter.formatCurrency(amount, currency);
   };
+
+  const handleCurrencyChange = async (newCurrency: string) => {
+    if (!state.analysis?.salaryIntelligence?.range) return;
+
+    setSelectedCurrency(newCurrency);
+    setConvertingCurrency(true);
+
+    try {
+      const originalCurrency = state.analysis.salaryIntelligence.range.currency || 'USD';
+
+      if (newCurrency === originalCurrency) {
+        // Reset to original values
+        setConvertedSalaries(null);
+      } else {
+        // Convert to new currency
+        const converted = await currencyConverter.convertSalaryRange(
+          {
+            min: state.analysis.salaryIntelligence.range.min,
+            max: state.analysis.salaryIntelligence.range.max,
+            median: state.analysis.salaryIntelligence.range.median,
+          },
+          originalCurrency,
+          newCurrency
+        );
+
+        if (converted) {
+          setConvertedSalaries({
+            ...converted,
+            currency: newCurrency
+          });
+        } else {
+          toast.error('Currency conversion failed. Please try again.');
+          setSelectedCurrency(originalCurrency);
+        }
+      }
+    } catch (error) {
+      console.error('Currency conversion error:', error);
+      toast.error('Failed to convert currency');
+    } finally {
+      setConvertingCurrency(false);
+    }
+  };
+
+  // Reset currency when new analysis is loaded
+  useEffect(() => {
+    if (state.analysis?.salaryIntelligence?.range?.currency) {
+      setSelectedCurrency(state.analysis.salaryIntelligence.range.currency);
+      setConvertedSalaries(null);
+    }
+  }, [state.analysis]);
 
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 0.8) return 'text-green-600 bg-green-50 border-green-200';
@@ -202,7 +339,7 @@ export default function ModernSalaryIntelligence({
           </div>
         )}
 
-        <Button onClick={runAnalysis} className="w-full" size="lg">
+        <Button onClick={() => runAnalysis(false)} className="w-full" size="lg">
           <TrendingUp className="w-4 h-4 mr-2" />
           Start Intelligent Analysis
         </Button>
@@ -269,35 +406,80 @@ export default function ModernSalaryIntelligence({
         {/* Salary Intelligence Overview */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-green-600" />
-              Salary Intelligence
-              <Badge className={`${getConfidenceColor(analysis.salaryIntelligence.range.confidence)} border`}>
-                {Math.round(analysis.salaryIntelligence.range.confidence * 100)}% confidence
-              </Badge>
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-green-600" />
+                Salary Intelligence
+                <Badge className={`${getConfidenceColor(analysis.salaryIntelligence.range.confidence)} border`}>
+                  {Math.round(analysis.salaryIntelligence.range.confidence * 100)}% confidence
+                </Badge>
+              </CardTitle>
+              <Select
+                value={selectedCurrency}
+                onValueChange={handleCurrencyChange}
+                disabled={convertingCurrency}
+              >
+                <SelectTrigger className="w-32">
+                  <SelectValue>
+                    {convertingCurrency ? (
+                      <span className="flex items-center gap-2">
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                        Converting...
+                      </span>
+                    ) : (
+                      selectedCurrency
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {currencyConverter.SUPPORTED_CURRENCIES.map((currency) => (
+                    <SelectItem key={currency.code} value={currency.code}>
+                      <span className="flex items-center gap-2">
+                        <span className="font-mono">{currency.code}</span>
+                        <span className="text-muted-foreground text-sm">{currency.symbol}</span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
                 <div className="text-2xl font-bold text-green-700">
-                  {formatCurrency(analysis.salaryIntelligence.range.min, analysis.salaryIntelligence.range.currency)}
+                  {formatCurrency(
+                    convertedSalaries?.min ?? analysis.salaryIntelligence.range.min,
+                    convertedSalaries?.currency ?? analysis.salaryIntelligence.range.currency
+                  )}
                 </div>
                 <div className="text-sm text-green-600">Minimum</div>
               </div>
               <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <div className="text-2xl font-bold text-blue-700">
-                  {formatCurrency(analysis.salaryIntelligence.range.median, analysis.salaryIntelligence.range.currency)}
+                  {formatCurrency(
+                    convertedSalaries?.median ?? analysis.salaryIntelligence.range.median,
+                    convertedSalaries?.currency ?? analysis.salaryIntelligence.range.currency
+                  )}
                 </div>
                 <div className="text-sm text-blue-600">Market Rate</div>
               </div>
               <div className="text-center p-4 bg-purple-50 rounded-lg border border-purple-200">
                 <div className="text-2xl font-bold text-purple-700">
-                  {formatCurrency(analysis.salaryIntelligence.range.max, analysis.salaryIntelligence.range.currency)}
+                  {formatCurrency(
+                    convertedSalaries?.max ?? analysis.salaryIntelligence.range.max,
+                    convertedSalaries?.currency ?? analysis.salaryIntelligence.range.currency
+                  )}
                 </div>
                 <div className="text-sm text-purple-600">Maximum</div>
               </div>
             </div>
+
+            {convertedSalaries && (
+              <div className="text-xs text-muted-foreground text-center bg-blue-50 p-2 rounded">
+                Converted from {analysis.salaryIntelligence.range.currency} at current rates
+              </div>
+            )}
 
             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
               <div className="flex items-center gap-3">
@@ -325,10 +507,37 @@ export default function ModernSalaryIntelligence({
         {/* Personalized Insights */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-blue-600" />
-              Personalized for Your Profile
-            </CardTitle>
+            <div className="space-y-2">
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-600" />
+                Personalized for Your Profile
+              </CardTitle>
+              {/* Profile Usage Indicator */}
+              <div className="flex items-center gap-2 text-sm">
+                {analysis.profileContext?.contextCompleteness >= 70 ? (
+                  <>
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                    <span className="text-green-700">
+                      Analysis personalized with your resume, skills, and {analysis.profileContext?.keyFactors?.length || 0} profile factors
+                    </span>
+                  </>
+                ) : analysis.profileContext?.contextCompleteness >= 40 ? (
+                  <>
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    <span className="text-amber-700">
+                      Partial profile used - {analysis.profileContext?.improvementSuggestions?.join(', ')}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-4 h-4 text-red-600" />
+                    <span className="text-red-700">
+                      Limited profile data - upload resume for accurate personalization
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -339,18 +548,87 @@ export default function ModernSalaryIntelligence({
                     {analysis.personalizedInsights.fitForProfile}
                   </Badge>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Skills Match</span>
-                  <div className="flex items-center gap-2">
-                    <Progress value={analysis.personalizedInsights.skillsMatch} className="w-16 h-2" />
-                    <span className="text-sm">{analysis.personalizedInsights.skillsMatch}%</span>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Skills Match</span>
+                    <div className="flex items-center gap-2">
+                      <Progress value={analysis.personalizedInsights.skillsMatch} className="w-16 h-2" />
+                      <span className="text-sm">{analysis.personalizedInsights.skillsMatch}%</span>
+                    </div>
                   </div>
+
+                  {analysis.personalizedInsights.skillsBreakdown && (
+                    <Collapsible>
+                      <CollapsibleTrigger className="flex items-center gap-2 text-xs text-blue-600 hover:text-blue-700">
+                        <ChevronDown className="w-3 h-3" />
+                        View detailed breakdown
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="mt-2 space-y-2">
+                        <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
+                          {analysis.personalizedInsights.skillsBreakdown.matchExplanation}
+                        </div>
+
+                        {analysis.personalizedInsights.skillsBreakdown.matchingSkills.length > 0 && (
+                          <div>
+                            <div className="text-xs font-medium text-green-700 mb-1">✓ Matching Skills</div>
+                            <div className="flex flex-wrap gap-1">
+                              {analysis.personalizedInsights.skillsBreakdown.matchingSkills.map((skill, index) => (
+                                <Badge key={index} variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200">
+                                  {skill}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {analysis.personalizedInsights.skillsBreakdown.partialMatches.length > 0 && (
+                          <div>
+                            <div className="text-xs font-medium text-orange-700 mb-1">⚡ Partial Matches</div>
+                            <div className="space-y-1">
+                              {analysis.personalizedInsights.skillsBreakdown.partialMatches.map((match, index) => (
+                                <div key={index} className="text-xs text-orange-700 bg-orange-50 p-1 rounded">
+                                  {match}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {analysis.personalizedInsights.skillsBreakdown.missingSkills.length > 0 && (
+                          <div>
+                            <div className="text-xs font-medium text-red-700 mb-1">◯ Missing Skills</div>
+                            <div className="flex flex-wrap gap-1">
+                              {analysis.personalizedInsights.skillsBreakdown.missingSkills.map((skill, index) => (
+                                <Badge key={index} variant="outline" className="text-xs text-red-700 border-red-200">
+                                  {skill}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
                 </div>
               </div>
               <div className="space-y-3">
                 <div>
                   <span className="text-sm font-medium text-gray-600">Experience Alignment</span>
                   <p className="text-sm text-gray-700 mt-1">{analysis.personalizedInsights.experienceAlignment}</p>
+                  {analysis.personalizedInsights.experienceJustification && (
+                    <div className="mt-2 text-xs text-gray-600 bg-blue-50 p-2 rounded border border-blue-200">
+                      <strong>Experience Assessment:</strong> {analysis.personalizedInsights.experienceJustification}
+                    </div>
+                  )}
+                  {analysis.personalizedInsights.experiencePositioning && (
+                    <div className="mt-2">
+                      <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                        <span>Position in salary range</span>
+                        <span>{Math.round(analysis.personalizedInsights.experiencePositioning * 100)}th percentile</span>
+                      </div>
+                      <Progress value={analysis.personalizedInsights.experiencePositioning * 100} className="w-full h-1" />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -499,9 +777,10 @@ export default function ModernSalaryIntelligence({
 
         <div className="flex justify-center">
           <Button
-            onClick={() => setState(prev => ({ ...prev, status: 'idle', analysis: null }))}
+            onClick={() => runAnalysis(true)}
             variant="outline"
           >
+            <RefreshCw className="w-4 h-4 mr-2" />
             Run New Analysis
           </Button>
         </div>
@@ -519,7 +798,7 @@ export default function ModernSalaryIntelligence({
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-gray-700">{state.error}</p>
-        <Button onClick={runAnalysis} variant="outline">
+        <Button onClick={() => runAnalysis(false)} variant="outline">
           Try Again
         </Button>
       </CardContent>

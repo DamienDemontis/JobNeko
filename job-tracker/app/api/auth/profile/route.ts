@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { validateToken } from '@/lib/auth';
-import { 
-  withErrorHandling, 
-  AuthenticationError, 
+import {
+  withErrorHandling,
+  AuthenticationError,
   ConflictError,
   ValidationError
 } from '@/lib/error-handling';
+import { salaryAnalysisPersistence } from '@/lib/services/salary-analysis-persistence';
 
 const updateUserSchema = z.object({
   name: z.string().optional(),
@@ -224,6 +225,10 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
           ...profileUpdateData,
         },
       });
+
+      // Clear salary analysis cache when profile is updated
+      const clearedCount = await salaryAnalysisPersistence.clearUserCache(session.id);
+      console.log(`Cleared ${clearedCount} cached salary analyses after profile update for user ${session.id}`);
     }
 
     // Get the complete user with profile for response

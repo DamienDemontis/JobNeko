@@ -67,10 +67,10 @@ export function MatchScoreDonut({ score, size = 80, strokeWidth = 12 }: MatchSco
       </svg>
       {/* Score text in center */}
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <div className={`text-lg font-bold ${getColorClass(score)} leading-none`}>
+        <div className={`${size > 60 ? 'text-lg' : 'text-sm'} font-bold ${getColorClass(score)} leading-none`}>
           {score}%
         </div>
-        <div className="text-xs text-gray-500 mt-1">
+        <div className={`${size > 60 ? 'text-xs' : 'text-[10px]'} text-gray-500 ${size > 60 ? 'mt-0.5' : ''}`}>
           match
         </div>
       </div>

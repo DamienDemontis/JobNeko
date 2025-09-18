@@ -17,6 +17,7 @@ export interface SalaryAnalysisRequest {
   requirements?: string;
   userId: string;
   postedSalary?: string;
+  forceRefresh?: boolean;
 }
 
 export interface PersonalizedSalaryAnalysis {
@@ -27,6 +28,11 @@ export interface PersonalizedSalaryAnalysis {
       median: number;
       currency: string;
       confidence: number;
+      originalValues?: {
+        min: number;
+        max: number;
+        median: number;
+      };
     };
     marketPosition: 'below_market' | 'at_market' | 'above_market';
     negotiationPower: number; // 0-100
@@ -36,8 +42,24 @@ export interface PersonalizedSalaryAnalysis {
     fitForProfile: 'excellent' | 'good' | 'fair' | 'poor';
     careerProgression: string;
     skillsMatch: number; // 0-100
+    skillsBreakdown: {
+      matchingSkills: string[];
+      missingSkills: string[];
+      partialMatches: string[];
+      strengthAreas: string[];
+      improvementAreas: string[];
+      matchExplanation: string;
+    };
     experienceAlignment: string;
+    experiencePositioning?: number; // 0-1 where user falls in range
+    experienceJustification: string;
     locationAnalysis: string;
+    negotiationRange?: {
+      walkAway: number;
+      target: number;
+      stretch: number;
+      reasoning: string;
+    };
     salaryProgression: {
       currentVsOffer?: string;
       expectedVsOffer?: string;
@@ -62,6 +84,12 @@ export interface PersonalizedSalaryAnalysis {
     contextCompleteness: number; // 0-100
     keyFactors: string[];
     improvementSuggestions: string[];
+    dataUsed?: {
+      resumeUsed: boolean;
+      skillsUsed: boolean;
+      experienceUsed: boolean;
+      salaryHistoryUsed: boolean;
+    };
   };
 
   // New comprehensive analysis sections
@@ -110,26 +138,30 @@ export class EnhancedSalaryRAG {
       const userContext = await profileContextService.getUserProfileContext(request.userId);
       const aiContext = profileContextService.generateAIContextPrompt(userContext);
 
-      // Step 2: Check cache first
-      const userProfileHash = this.generateUserProfileHash(userContext);
-      const inputHash = salaryAnalysisCache.generateInputHash({
-        title: request.jobTitle,
-        company: request.company,
-        location: request.location || 'Remote/Not specified',
-        description: request.description,
-        requirements: request.requirements,
-        salary: request.postedSalary
-      }, userProfileHash);
+      // Step 2: Check cache first (unless forcing refresh)
+      if (!request.forceRefresh) {
+        const userProfileHash = this.generateUserProfileHash(userContext);
+        const inputHash = salaryAnalysisCache.generateInputHash({
+          title: request.jobTitle,
+          company: request.company,
+          location: request.location || 'Remote/Not specified',
+          description: request.description,
+          requirements: request.requirements,
+          salary: request.postedSalary
+        }, userProfileHash);
 
-      const cachedAnalysis = await salaryAnalysisCache.getCachedAnalysis(
-        request.jobTitle + '_' + request.company, // Use job identifier
-        request.userId,
-        inputHash
-      );
+        const cachedAnalysis = await salaryAnalysisCache.getCachedAnalysis(
+          request.jobTitle + '_' + request.company, // Use job identifier
+          request.userId,
+          inputHash
+        );
 
-      if (cachedAnalysis) {
-        console.log('🚀 Returning cached salary analysis');
-        return cachedAnalysis.analysis;
+        if (cachedAnalysis) {
+          console.log('🚀 Returning cached salary analysis');
+          return cachedAnalysis.analysis;
+        }
+      } else {
+        console.log('🔄 Bypassing cache due to forceRefresh flag');
       }
 
       // Step 3: Detect edge cases
@@ -193,6 +225,58 @@ export class EnhancedSalaryRAG {
         throw new Error('Invalid salary data returned. Analysis must contain real market-based numbers.');
       }
 
+      // Fix salary values if they appear to be in thousands
+      // This handles cases where AI returns 56, 89, 120 instead of 56000, 89000, 120000
+      const detectAndFixSalaryValues = (range: any) => {
+        const { min, max, median, currency } = range;
+
+        // Determine if values need multiplication based on currency and magnitude
+        let multiplier = 1;
+
+        // For USD, EUR, GBP, CAD, AUD - salaries under 10,000 are likely in thousands
+        const majorCurrencies = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'SGD', 'CHF'];
+        if (majorCurrencies.includes(currency) && median < 10000) {
+          multiplier = 1000;
+          console.log(`Detected salary in thousands for ${currency}, multiplying by 1000`);
+        }
+
+        // For KRW, JPY - salaries under 1,000,000 are likely in thousands
+        const asianCurrencies = ['KRW', 'JPY'];
+        if (asianCurrencies.includes(currency) && median < 1000000) {
+          multiplier = 1000;
+          console.log(`Detected salary in thousands for ${currency}, multiplying by 1000`);
+        }
+
+        // For INR - salaries under 100,000 are likely in thousands
+        if (currency === 'INR' && median < 100000) {
+          multiplier = 1000;
+          console.log(`Detected salary in thousands for ${currency}, multiplying by 1000`);
+        }
+
+        return {
+          ...range,
+          min: min * multiplier,
+          max: max * multiplier,
+          median: median * multiplier,
+          originalValues: multiplier > 1 ? { min, max, median } : undefined
+        };
+      };
+
+      // Apply salary value fixes
+      coreAnalysis.salaryIntelligence.range = detectAndFixSalaryValues(
+        coreAnalysis.salaryIntelligence.range
+      );
+
+      // Also fix negotiation range if present
+      if (coreAnalysis.personalizedInsights?.negotiationRange) {
+        const multiplier = coreAnalysis.salaryIntelligence.range.originalValues ? 1000 : 1;
+        if (multiplier > 1) {
+          coreAnalysis.personalizedInsights.negotiationRange.walkAway *= multiplier;
+          coreAnalysis.personalizedInsights.negotiationRange.target *= multiplier;
+          coreAnalysis.personalizedInsights.negotiationRange.stretch *= multiplier;
+        }
+      }
+
       // Step 7: Combine all analysis results
       const finalAnalysis: PersonalizedSalaryAnalysis = {
         ...coreAnalysis,
@@ -218,7 +302,17 @@ export class EnhancedSalaryRAG {
         },
       };
 
-      // Step 8: Cache the successful analysis
+      // Step 8: Cache the successful analysis (generate hash for caching)
+      const userProfileHash = this.generateUserProfileHash(userContext);
+      const inputHash = salaryAnalysisCache.generateInputHash({
+        title: request.jobTitle,
+        company: request.company,
+        location: request.location || 'Remote/Not specified',
+        description: request.description,
+        requirements: request.requirements,
+        salary: request.postedSalary
+      }, userProfileHash);
+
       await salaryAnalysisCache.cacheAnalysis(
         request.jobTitle + '_' + request.company,
         request.userId,
@@ -306,19 +400,84 @@ export class EnhancedSalaryRAG {
    * Build intelligent search query based on user context
    */
   private buildBaseSearchQuery(request: SalaryAnalysisRequest, context: UserProfileContext): string {
-    const { jobTitle, location } = request;
-    const { professionalProfile, currentLocation, salaryContext } = context;
+    const { jobTitle, location, company } = request;
+    const { professionalProfile, currentLocation } = context;
 
     // Include experience level
     const experienceLevel = this.mapCareerLevelToSearchTerm(professionalProfile.careerLevel);
 
-    // Use best available location
-    const searchLocation = location || currentLocation.fullLocation || 'United States';
+    // Parse location for better specificity
+    const locationParts = this.parseLocation(location || currentLocation.fullLocation || 'United States');
+    const searchLocation = locationParts.city ?
+      `${locationParts.city} ${locationParts.country}` :
+      locationParts.country;
 
-    // Include currency preference
-    const currency = salaryContext.currency;
+    // Auto-detect currency from location
+    const currency = this.detectCurrencyFromLocation(searchLocation);
 
-    return `${experienceLevel} ${jobTitle} ${searchLocation} ${currency}`;
+    // Build hierarchical search
+    const baseQuery = `${experienceLevel} ${jobTitle} salary ${searchLocation} ${new Date().getFullYear()}`;
+    const companyQuery = `${company} ${jobTitle} salary compensation`;
+
+    return baseQuery;
+  }
+
+  /**
+   * Parse location string into components
+   */
+  private parseLocation(location: string): { city?: string; state?: string; country: string } {
+    const parts = location.split(',').map(p => p.trim());
+    if (parts.length === 3) {
+      return { city: parts[0], state: parts[1], country: parts[2] };
+    } else if (parts.length === 2) {
+      return { city: parts[0], country: parts[1] };
+    }
+    return { country: location };
+  }
+
+  /**
+   * Auto-detect currency from location
+   */
+  private detectCurrencyFromLocation(location: string): string {
+    const currencyMap: Record<string, string> = {
+      'korea': 'KRW',
+      'seoul': 'KRW',
+      'japan': 'JPY',
+      'tokyo': 'JPY',
+      'uk': 'GBP',
+      'united kingdom': 'GBP',
+      'london': 'GBP',
+      'europe': 'EUR',
+      'germany': 'EUR',
+      'france': 'EUR',
+      'spain': 'EUR',
+      'italy': 'EUR',
+      'canada': 'CAD',
+      'toronto': 'CAD',
+      'australia': 'AUD',
+      'sydney': 'AUD',
+      'singapore': 'SGD',
+      'india': 'INR',
+      'mumbai': 'INR',
+      'bangalore': 'INR',
+      'china': 'CNY',
+      'beijing': 'CNY',
+      'shanghai': 'CNY',
+      'hong kong': 'HKD',
+      'mexico': 'MXN',
+      'brazil': 'BRL',
+      'switzerland': 'CHF',
+      'sweden': 'SEK',
+      'stockholm': 'SEK'
+    };
+
+    const lowerLocation = location.toLowerCase();
+    for (const [key, currency] of Object.entries(currencyMap)) {
+      if (lowerLocation.includes(key)) {
+        return currency;
+      }
+    }
+    return 'USD';
   }
 
   /**
@@ -631,11 +790,23 @@ ${webIntelligence.marketResults.results?.map((r: any, i: number) => `
 ## CRITICAL REQUIREMENTS - NO HARDCODED VALUES ALLOWED
 1. Base salary ranges EXCLUSIVELY on the web search results provided above
 2. Use ONLY numerical values found in the actual web content
-3. Calculate confidence as a decimal between 0.0 and 1.0 based on quantity and quality of web sources
-4. NEVER return confidence as null, undefined, or NaN - always use a valid decimal number
-5. Use the user's complete profile for personalized insights
-6. Compare against user's current/expected salary if available
-7. Provide actionable career progression advice based on real market data
+3. Weight sources by relevance score: 80%+ relevance = 3x weight, 60-79% = 2x weight, <60% = 1x weight
+4. If salary values appear unrealistically low (< 10,000), they are likely in thousands - multiply by 1000
+5. Calculate confidence as weighted average: (source_count * 0.3) + (avg_relevance * 0.4) + (consistency * 0.3)
+6. NEVER return confidence as null, undefined, or NaN - always use a valid decimal number
+7. Position salary based on experience: If user has MORE experience than required, position at 60-70th percentile
+8. Use the user's complete profile for personalized insights
+9. Compare against user's current/expected salary if available
+10. Provide specific negotiation range based on all factors
+
+## DETAILED SKILLS ANALYSIS REQUIREMENTS
+1. **Skills Match Breakdown**: Analyze EXACTLY which skills from user's profile match job requirements
+2. **Missing Skills Assessment**: Identify specific skills mentioned in job requirements that user lacks
+3. **Experience Level Justification**: Explain WHY user is positioned at their skill match percentage
+4. **Leadership Recognition**: If user has leadership/management experience, factor this into positioning
+5. **Technical Depth Analysis**: Assess depth of technical skills vs job requirements
+6. **Skill Transferability**: Identify related skills that partially match requirements
+7. **Growth Recommendations**: Provide specific skills to develop for better fit
 
 ## CONFIDENCE CALCULATION GUIDE
 - High confidence (0.8-0.9): 5+ quality sources with consistent salary data
@@ -643,15 +814,28 @@ ${webIntelligence.marketResults.results?.map((r: any, i: number) => `
 - Low confidence (0.3-0.6): 1-2 sources or inconsistent data
 - Minimum confidence (0.3): Always use at least 0.3, never lower
 
+## EDGE CASE HANDLING
+1. **Remote positions**: Use global salary data, mention location flexibility impact
+2. **No salary posted**: Use market data only, provide wider range
+3. **Startup/Unknown company**: Use industry averages, mention equity potential
+4. **Senior role with junior pay**: Flag as red flag, suggest verification
+5. **Currency conversion**: Always detect and use local currency based on job location
+6. **Limited data**: Clearly state confidence is lower, suggest additional research
+
 ## RESPONSE FORMAT
 Provide analysis in this exact JSON structure (no additional text, ensure all numbers are valid decimals):
+
+IMPORTANT: All salary values must be FULL AMOUNTS in the specified currency, NOT thousands or abbreviated.
+Example: For a $85,000 salary, use 85000, NOT 85 or 85k
+
+CRITICAL: If you detect values that seem to be in thousands (like 56, 89, 120 for salaries), multiply by 1000!
 
 {
   "salaryIntelligence": {
     "range": {
-      "min": number,
-      "max": number,
-      "median": number,
+      "min": number (full amount, e.g., 75000 for $75,000),
+      "max": number (full amount, e.g., 120000 for $120,000),
+      "median": number (full amount, e.g., 95000 for $95,000),
       "currency": "${userContext.salaryContext.currency}",
       "confidence": number (0-1)
     },
@@ -663,8 +847,24 @@ Provide analysis in this exact JSON structure (no additional text, ensure all nu
     "fitForProfile": "excellent|good|fair|poor",
     "careerProgression": "detailed analysis of career fit and growth potential",
     "skillsMatch": number (0-100),
+    "skillsBreakdown": {
+      "matchingSkills": ["skill1", "skill2", "skill3"],
+      "missingSkills": ["missing1", "missing2"],
+      "partialMatches": ["partial1: explanation", "partial2: explanation"],
+      "strengthAreas": ["area1", "area2"],
+      "improvementAreas": ["area1", "area2"],
+      "matchExplanation": "detailed explanation of why this percentage was calculated"
+    },
     "experienceAlignment": "how role aligns with user's experience level",
+    "experiencePositioning": number (0.0-1.0, where user falls in salary range based on experience),
+    "experienceJustification": "specific explanation of experience level assessment",
     "locationAnalysis": "analysis considering user's location context",
+    "negotiationRange": {
+      "walkAway": number (minimum acceptable),
+      "target": number (ideal salary to negotiate for),
+      "stretch": number (maximum possible with strong negotiation),
+      "reasoning": "specific justification for these numbers"
+    },
     "salaryProgression": {
       ${userContext.salaryContext.hasCurrentSalary ?
         `"currentVsOffer": "comparison with current salary",` : ''}
@@ -689,10 +889,92 @@ Provide analysis in this exact JSON structure (no additional text, ensure all nu
   },
   "profileContext": {
     "contextCompleteness": ${userContext.contextCompleteness.score},
-    "keyFactors": ["factor1", "factor2", "factor3"],
-    "improvementSuggestions": ["suggestion1", "suggestion2"]
+    "keyFactors": ["list actual factors used like resume, skills, experience"],
+    "improvementSuggestions": ["specific missing data like 'Add current salary', 'Upload resume'"],
+    "dataUsed": {
+      "resumeUsed": ${userContext.professionalProfile.hasResume},
+      "skillsUsed": ${userContext.professionalProfile.keySkills.length > 0},
+      "experienceUsed": ${userContext.professionalProfile.yearsOfExperience > 0},
+      "salaryHistoryUsed": ${userContext.salaryContext.hasCurrentSalary}
+    }
   }
-}`;
+}
+
+## EXAMPLE RESPONSE
+Here's a complete example of the expected response for a Software Engineer role in Seoul, South Korea:
+
+{
+  "salaryIntelligence": {
+    "range": {
+      "min": 75000000,
+      "max": 130000000,
+      "median": 95000000,
+      "currency": "KRW",
+      "confidence": 0.85
+    },
+    "marketPosition": "at_market",
+    "negotiationPower": 70,
+    "dataQuality": "excellent"
+  },
+  "personalizedInsights": {
+    "fitForProfile": "good",
+    "careerProgression": "This senior backend engineering role aligns well with your 4 years of experience and leadership background",
+    "skillsMatch": 85,
+    "skillsBreakdown": {
+      "matchingSkills": ["Node.js", "TypeScript", "React", "API Development", "Database Management", "Git"],
+      "missingSkills": ["Kubernetes", "Microservices Architecture"],
+      "partialMatches": ["AI/ML: You have AI integration experience, role needs ML model deployment", "Leadership: You have team lead experience, role involves mentoring junior developers"],
+      "strengthAreas": ["Full-stack development", "Project management", "Team leadership"],
+      "improvementAreas": ["Cloud infrastructure", "Large-scale system design"],
+      "matchExplanation": "85% match based on strong technical foundation with Node.js/TypeScript (exact match), leadership experience (valued for senior role), and transferable AI skills. Missing some infrastructure skills but your startup experience and full-stack background compensate well."
+    },
+    "experienceAlignment": "4 years with leadership experience positions you as strong mid-senior level",
+    "experiencePositioning": 0.65,
+    "experienceJustification": "Your 4 years of experience plus Technical Lead role puts you above typical mid-level (2-3 years) and approaching senior level (5+ years). Leadership experience and startup background accelerate your positioning.",
+    "locationAnalysis": "Seoul has a competitive tech market with high demand for backend engineers",
+    "salaryProgression": {
+      "currentVsOffer": "The median offer represents a 20% increase from your current salary",
+      "expectedVsOffer": "The range overlaps with your expected salary of 100M KRW",
+      "growthPotential": "Strong growth potential with AI/ML skills development and leadership path"
+    }
+  },
+  "contextualRecommendations": {
+    "negotiationStrategy": [
+      "Highlight your 4 years of backend experience",
+      "Emphasize any AI/ML projects or learning",
+      "Research Coupang's compensation structure"
+    ],
+    "careerAdvice": [
+      "Focus on gaining AI/LLM experience",
+      "Consider certifications in cloud platforms",
+      "Build portfolio projects with generative AI"
+    ],
+    "actionItems": [
+      "Update resume with quantified achievements",
+      "Prepare STAR examples for behavioral questions",
+      "Research team and product deeply"
+    ],
+    "redFlags": [],
+    "opportunities": [
+      "Growing AI/ML team with learning opportunities",
+      "Potential for rapid career progression"
+    ]
+  },
+  "marketIntelligence": {
+    "demandLevel": 85,
+    "competitionLevel": 65,
+    "industryOutlook": "Strong growth in AI/ML roles in Korean tech sector",
+    "timeToHire": "2-4 weeks typical for senior roles",
+    "alternativeOpportunities": 150
+  },
+  "profileContext": {
+    "contextCompleteness": 85,
+    "keyFactors": ["Strong backend experience", "Location match", "Salary expectations aligned"],
+    "improvementSuggestions": ["Add AI/ML skills", "Obtain cloud certifications"]
+  }
+}
+
+Remember: ALWAYS provide salary values as full amounts in the specified currency, never as thousands or abbreviated.`;
   }
 
   /**

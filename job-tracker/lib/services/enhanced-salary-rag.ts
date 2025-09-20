@@ -177,7 +177,7 @@ export class EnhancedSalaryRAG {
       );
 
       if (validSources.length === 0 && !edgeCaseInfo.isRemotePosition) {
-        throw new Error('No valid web sources found. Analysis requires real market data.');
+        throw new Error('No web search data available. Cannot generate analysis without real market data.');
       }
 
       // Step 5: Run comprehensive analysis in parallel
@@ -298,7 +298,7 @@ export class EnhancedSalaryRAG {
           analysisId,
           timestamp: new Date().toISOString(),
           processingTime: Date.now() - startTime,
-          version: '6.0.0-comprehensive',
+          version: '5.0.0-no-fallbacks',
         },
       };
 

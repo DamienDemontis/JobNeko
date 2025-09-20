@@ -78,28 +78,16 @@ export class AIResumeExtractor {
 
       console.log(`Extracted ${textContent.length} characters from PDF`);
 
-      // Return simple extraction with raw text - let AI services parse when needed
+      // Use AI to parse the resume data from the extracted text
+      const aiResult = await this.parseResumeWithAI(textContent);
+
+      if (!aiResult) {
+        throw new Error('Failed to extract resume content. AI service unavailable.');
+      }
+
       const extraction: ResumeExtraction = {
-        name: 'Resume uploaded successfully',
-        email: '',
-        phone: '',
-        location: '',
-        summary: textContent.substring(0, 500) + '...', // Preview
-        technicalSkills: [],
-        softSkills: [],
-        languages: [],
-        certifications: [],
-        experience: [],
-        education: [],
-        projects: [],
-        awards: [],
-        publications: [],
-        volunteering: [],
-        careerLevel: 'entry',
-        yearsOfExperience: 0,
-        industryFocus: [],
-        keyStrengths: [],
-        confidence: 1.0,
+        ...aiResult,
+        confidence: aiResult.confidence || 1.0,
         extractionDate: new Date().toISOString(),
         processingTimeMs: Date.now() - startTime,
         rawText: textContent // Store the full raw text for AI services
@@ -117,11 +105,31 @@ export class AIResumeExtractor {
     try {
       console.log('Starting PDF text extraction, buffer size:', pdfBuffer.length);
 
+      // Set up PDF.js worker source before parsing
+      const path = require('path');
+
+      // Set worker source for different environments
+      if (typeof global !== 'undefined' && (global as any).PDFJS) {
+        // Already configured in test environment
+      } else {
+        // Production environment - configure dynamically
+        const pdfjs = require('pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js');
+        if (pdfjs.GlobalWorkerOptions) {
+          pdfjs.GlobalWorkerOptions.workerSrc = require.resolve('pdf-parse/lib/pdf.js/v1.10.100/build/pdf.worker.js');
+        }
+      }
+
       // Use require for server-side module loading
       const pdfParse = require('pdf-parse');
 
-      // Extract text from PDF buffer
-      const data = await pdfParse(pdfBuffer);
+      // Extract text from PDF buffer with options to handle worker issues
+      const options = {
+        // Disable worker in test environment to avoid worker issues
+        max: 0,
+        version: 'v1.10.100'
+      };
+
+      const data = await pdfParse(pdfBuffer, options);
 
       console.log('PDF parsing successful, text length:', data.text?.length || 0);
 
@@ -146,10 +154,12 @@ export class AIResumeExtractor {
     }
   }
 
-  private buildExtractionPrompt(fileName: string): string {
+  private buildExtractionPrompt(textContent: string, fileName: string): string {
     return `You are an expert resume parser. Extract ALL information from this PDF resume with perfect accuracy.
 
 RESUME FILE: ${fileName}
+
+${textContent}
 
 Extract the following information in JSON format. If information is not present, use null or empty arrays.
 
@@ -216,6 +226,39 @@ Do NOT wrap the response in code blocks or any markdown formatting.
 Return the raw JSON object starting with { and ending with }.`;
   }
 
+  private async parseResumeWithAI(textContent: string): Promise<ResumeExtraction | null> {
+    try {
+      console.log('Starting AI resume parsing...');
+
+      // Check if OpenAI is available
+      if (!process.env.OPENAI_API_KEY) {
+        console.error('❌ OpenAI API key not configured for resume extraction');
+        throw new Error('AI service not configured. Please set OPENAI_API_KEY in environment variables.');
+      }
+
+      const prompt = this.buildExtractionPrompt(textContent, 'unknown.pdf');
+      console.log('Generated prompt for AI, calling generateCompletion...');
+
+      const result = await generateCompletion(prompt, { max_tokens: 4000, temperature: 0.1 });
+
+      if (!result || !result.content) {
+        console.error('❌ No content received from AI for resume extraction');
+        throw new Error('AI service failed to generate content for resume extraction');
+      }
+
+      console.log('✅ AI completion received, parsing response...');
+      return this.parseAIResponse(result.content);
+    } catch (error) {
+      console.error('❌ AI resume parsing failed:', error);
+      // If it's a parsing error, rethrow it to preserve the specific error message
+      if (error instanceof Error && error.message.includes('Resume extraction failed')) {
+        throw error;
+      }
+      // Rethrow AI service errors
+      throw error;
+    }
+  }
+
   private parseAIResponse(aiResponse: string): ResumeExtraction {
     try {
       // Clean the AI response by removing markdown code blocks
@@ -240,13 +283,13 @@ Return the raw JSON object starting with { and ending with }.`;
         throw new Error('Invalid AI response: not a valid object');
       }
 
-      // Ensure arrays exist
+      // Ensure arrays exist and null/undefined handling
       const extraction: ResumeExtraction = {
-        name: parsed.name,
-        email: parsed.email,
-        phone: parsed.phone,
-        location: parsed.location,
-        summary: parsed.summary,
+        name: parsed.name || null,
+        email: parsed.email || null,
+        phone: parsed.phone || null,
+        location: parsed.location || null,
+        summary: parsed.summary || null,
         technicalSkills: parsed.technicalSkills || [],
         softSkills: parsed.softSkills || [],
         languages: parsed.languages || [],

@@ -22,6 +22,8 @@ model User {
   ratings       Rating[]
   resumes       Resume[]
   profile       UserProfile?
+  aiUsage       AIUsageTracking[]
+  jobAnalysisCache JobAnalysisCache[]
   
   @@index([email])
 }
@@ -92,6 +94,7 @@ model Job {
   user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   ratings           Rating[]
   activities        JobActivity[]
+  analysisCache     JobAnalysisCache[]
   
   @@index([userId])
   @@index([company])
@@ -196,6 +199,7 @@ model UserProfile {
   additionalInfo    String?        // Additional context not in resume
   skills            String?        // JSON array of skills
   education         String?        // Education background
+  linkedinUrl       String?        // LinkedIn profile URL for network analysis
   certifications    String?        // Professional certifications
   achievements      String?        // Key career achievements
   negotiationHistory String?       // Past negotiation experiences
@@ -287,4 +291,55 @@ model SalaryAnalysisCache {
   @@index([userId])
   @@index([expiresAt])
   @@index([lastAccessedAt])
+}
+
+model AIUsageTracking {
+  id           String   @id @default(cuid())
+  userId       String
+  taskType     String   // job_analysis, resume_optimization, etc.
+  monthKey     String   // YYYY-MM format for monthly tracking
+  requestCount Int      @default(0)
+  tokensUsed   Int      @default(0)
+  lastUsedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, taskType, monthKey])
+  @@index([userId])
+  @@index([taskType])
+  @@index([monthKey])
+}
+
+model AIResponseCache {
+  id        String   @id @default(cuid())
+  cacheKey  String   @unique
+  response  String   // JSON response from AI
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([cacheKey])
+  @@index([expiresAt])
+}
+
+model JobAnalysisCache {
+  id           String   @id @default(cuid())
+  jobId        String
+  userId       String
+  analysisType String   // job_analysis, requirements_analysis, etc.
+  analysisData String   // JSON analysis results
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job  Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, userId, analysisType])
+  @@index([jobId])
+  @@index([userId])
+  @@index([analysisType])
+  @@index([expiresAt])
 }

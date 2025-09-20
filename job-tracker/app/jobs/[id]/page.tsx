@@ -13,6 +13,22 @@ import { AdaptiveSalaryIntelligence } from '@/components/ui/adaptive-salary-inte
 import ModernSalaryIntelligence from '@/components/ui/modern-salary-intelligence';
 import JobEditForm from '@/components/ui/job-edit-form';
 import { MatchScoreDonut } from '@/components/ui/match-score-donut';
+import { JobAnalysisCard } from '@/components/ui/job-analysis-card';
+import { SmartRequirements } from '@/components/ui/smart-requirements';
+import { ResumeOptimizer } from '@/components/ui/resume-optimizer';
+import ApplicationTimelineIntelligenceSmart from '@/components/ui/application-timeline-intelligence-smart';
+import CommunicationAssistantSmart from '@/components/ui/communication-assistant-smart';
+import InterviewPipelineManagerSmart from '@/components/ui/interview-pipeline-manager-smart';
+import SmartQuestionsSmart from '@/components/ui/smart-questions-smart';
+import { LinkedInNetworkIntegration } from '@/components/ui/linkedin-network-integration';
+import { CompanyIntelligenceCenter } from '@/components/ui/company-intelligence-center';
+import { SmartNotes } from '@/components/ui/smart-notes';
+import { CompanyInterviewAnalysis } from '@/components/ui/company-interview-analysis';
+import { InterviewCoach } from '@/components/ui/interview-coach';
+import { CultureAnalysis } from '@/components/ui/culture-analysis';
+import { CompetitiveAnalysis } from '@/components/ui/competitive-analysis';
+import { InsiderIntelligence } from '@/components/ui/insider-intelligence';
+import { OutreachAssistant } from '@/components/ui/outreach-assistant';
 import { toast } from 'sonner';
 import {
   ArrowTopRightOnSquareIcon as ExternalLinkIcon,
@@ -541,7 +557,7 @@ export default function JobDetailPage() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 md:grid-cols-4 lg:grid-cols-7 bg-white border rounded-lg p-2 gap-1 h-auto min-h-[52px]">
+          <TabsList className="grid w-full grid-cols-4 md:grid-cols-5 lg:grid-cols-10 bg-white border rounded-lg p-2 gap-1 h-auto min-h-[52px]">
             <TabsTrigger
               value="overview"
               className="flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 hover:bg-gray-50 transition-all duration-200"
@@ -567,6 +583,22 @@ export default function JobDetailPage() {
               <span className="sm:hidden text-xs">App</span>
             </TabsTrigger>
             <TabsTrigger
+              value="interview"
+              className="flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 hover:bg-gray-50 transition-all duration-200"
+            >
+              <span className="text-base">🎯</span>
+              <span className="hidden md:inline font-medium">Interview</span>
+              <span className="md:hidden text-xs">Int</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="network"
+              className="flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700 hover:bg-gray-50 transition-all duration-200"
+            >
+              <span className="text-base">🔗</span>
+              <span className="hidden lg:inline font-medium">Network</span>
+              <span className="lg:hidden text-xs">Net</span>
+            </TabsTrigger>
+            <TabsTrigger
               value="timeline"
               className="flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-orange-50 data-[state=active]:text-orange-700 hover:bg-gray-50 transition-all duration-200"
             >
@@ -581,6 +613,13 @@ export default function JobDetailPage() {
               <span className="text-base">👥</span>
               <span className="hidden lg:inline font-medium">Contacts</span>
               <span className="lg:hidden text-xs">People</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="company"
+              className="hidden lg:flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700 hover:bg-gray-50 transition-all duration-200"
+            >
+              <span className="text-base">🏢</span>
+              <span className="font-medium">Company</span>
             </TabsTrigger>
             <TabsTrigger
               value="research"
@@ -738,6 +777,30 @@ export default function JobDetailPage() {
                     </CardContent>
                   </Card>
                 )}
+
+                {/* AI Job Analysis Card */}
+                <JobAnalysisCard
+                  jobId={job.id}
+                  jobTitle={job.title}
+                  company={job.company}
+                  description={job.description}
+                  requirements={job.requirements}
+                  salary={job.salary}
+                  location={job.location}
+                  userId={user?.id || ''}
+                  token={token || ''}
+                />
+
+                {/* Smart Requirements Categorization */}
+                <SmartRequirements
+                  jobId={job.id}
+                  jobTitle={job.title}
+                  company={job.company}
+                  requirements={job.requirements}
+                  description={job.description}
+                  userId={user?.id || ''}
+                  token={token || ''}
+                />
 
                 {/* Enhanced Skills & Technologies */}
                 {(job.skills || extractedData?.programmingLanguages || extractedData?.frameworks) && (
@@ -947,19 +1010,109 @@ export default function JobDetailPage() {
             />
           </TabsContent>
 
-          {/* Other tabs will be implemented similarly... */}
-          <TabsContent value="application">
-            <Card>
-              <CardHeader>
-                <CardTitle>Application Tracking</CardTitle>
-                <CardDescription>Track your application progress and important dates</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-gray-500">
-                  Application tracking interface coming soon...
-                </div>
-              </CardContent>
-            </Card>
+          {/* Application Strategy Tab */}
+          <TabsContent value="application" className="space-y-6">
+            {/* Resume Optimizer */}
+            <ResumeOptimizer
+              jobId={job.id}
+              jobTitle={job.title}
+              company={job.company}
+              description={job.description || ''}
+              requirements={job.requirements || ''}
+              userId={user?.id || ''}
+              token={token || ''}
+              hasResume={hasResume}
+            />
+
+            {/* Application Timeline Intelligence */}
+            <ApplicationTimelineIntelligenceSmart
+              jobId={job.id}
+              jobTitle={job.title}
+              company={job.company}
+              userId={user?.id || ''}
+              token={token || ''}
+              jobData={{
+                applicationDeadline: job.applicationDeadline ? new Date(job.applicationDeadline) : undefined,
+                location: job.location,
+                requirements: job.requirements || '',
+              }}
+            />
+
+            {/* Communication Assistant */}
+            <CommunicationAssistantSmart
+              jobId={job.id}
+              jobTitle={job.title}
+              company={job.company}
+              userId={user?.id || ''}
+              token={token || ''}
+              jobData={{
+                description: job.description || '',
+                requirements: job.requirements || '',
+                location: job.location,
+              }}
+            />
+          </TabsContent>
+
+          {/* Interview Pipeline Manager Tab */}
+          <TabsContent value="interview" className="space-y-6">
+            <InterviewPipelineManagerSmart
+              jobId={job.id}
+              jobTitle={job.title}
+              company={job.company}
+              userId={user?.id || ''}
+              token={token || ''}
+            />
+
+            <CompanyInterviewAnalysis
+              companyName={job.company}
+              jobTitle={job.title}
+              userId={user?.id || ''}
+            />
+
+            <InterviewCoach
+              jobId={job.id}
+              userId={user?.id || ''}
+              jobData={{
+                title: job.title,
+                company: job.company,
+                description: job.description || '',
+                requirements: job.requirements || '',
+              }}
+            />
+
+            <SmartQuestionsSmart
+              jobId={job.id}
+              jobTitle={job.title}
+              company={job.company}
+              userId={user?.id || ''}
+              token={token || ''}
+            />
+          </TabsContent>
+
+          {/* Network Intelligence Hub Tab */}
+          <TabsContent value="network" className="space-y-6">
+            <LinkedInNetworkIntegration
+              jobId={job.id}
+              userId={user?.id || ''}
+              jobData={{
+                title: job.title,
+                company: job.company,
+                location: job.location,
+                description: job.description,
+              }}
+            />
+
+            <InsiderIntelligence
+              companyName={job.company}
+              jobTitle={job.title}
+              userId={user?.id || ''}
+            />
+
+            <OutreachAssistant
+              companyName={job.company}
+              jobTitle={job.title}
+              userId={user?.id || ''}
+            />
           </TabsContent>
 
           <TabsContent value="timeline">
@@ -1013,6 +1166,33 @@ export default function JobDetailPage() {
             </Card>
           </TabsContent>
 
+          {/* Company Intelligence Center Tab */}
+          <TabsContent value="company" className="space-y-6">
+            <CompanyIntelligenceCenter
+              jobId={job.id}
+              userId={user?.id || ''}
+              jobData={{
+                title: job.title,
+                company: job.company,
+                location: job.location,
+                description: job.description,
+                requirements: job.requirements,
+              }}
+            />
+
+            <CultureAnalysis
+              companyName={job.company}
+              jobTitle={job.title}
+              userId={user?.id || ''}
+            />
+
+            <CompetitiveAnalysis
+              companyName={job.company}
+              jobTitle={job.title}
+              userId={user?.id || ''}
+            />
+          </TabsContent>
+
           <TabsContent value="research">
             <Card>
               <CardHeader>
@@ -1027,18 +1207,16 @@ export default function JobDetailPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="notes">
-            <Card>
-              <CardHeader>
-                <CardTitle>Notes & Thoughts</CardTitle>
-                <CardDescription>Keep track of your thoughts, interview prep, and private notes</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-gray-500">
-                  Notes interface coming soon...
-                </div>
-              </CardContent>
-            </Card>
+          {/* Smart Notes Tab */}
+          <TabsContent value="notes" className="space-y-6">
+            <SmartNotes
+              jobId={job.id}
+              userId={user?.id || ''}
+              jobData={{
+                title: job.title,
+                company: job.company,
+              }}
+            />
           </TabsContent>
         </Tabs>
       </div>

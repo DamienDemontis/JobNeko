@@ -3,11 +3,26 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRouter } from 'next/navigation';
 import RegisterPage from '../../../app/register/page';
-import { TestWrapper } from '../../../test-utils';
+import { useAuth } from '@/contexts/AuthContext';
+
+// Create a custom test wrapper that provides a fresh AuthContext for each test
+const TestWrapperWithFreshAuth = ({ children }: { children: React.ReactNode }) => {
+  return (
+    <div data-testid="auth-wrapper">
+      {children}
+    </div>
+  );
+};
 
 // Mock Next.js router
 jest.mock('next/navigation', () => ({
   useRouter: jest.fn(),
+}));
+
+// Mock the AuthContext to prevent state leakage between tests
+jest.mock('@/contexts/AuthContext', () => ({
+  useAuth: jest.fn(),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 // Mock sonner toast
@@ -27,6 +42,13 @@ const mockRouter = {
   prefetch: jest.fn(),
 };
 
+const mockLogin = jest.fn((user, token) => {
+  // Simulate the real login function behavior
+  mockLocalStorage.setItem('token', token);
+  mockLocalStorage.setItem('user', JSON.stringify(user));
+});
+const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
+
 const mockLocalStorage = {
   setItem: jest.fn(),
   getItem: jest.fn(),
@@ -41,12 +63,50 @@ Object.defineProperty(window, 'localStorage', {
 describe('RegisterPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+
+    // Reset all router mocks completely
+    mockRouter.push.mockClear();
+    mockRouter.replace.mockClear();
+    mockRouter.prefetch.mockClear();
     (useRouter as jest.Mock).mockReturnValue(mockRouter);
+
+    // Reset AuthContext mock - no user logged in by default
+    mockLogin.mockClear();
+    mockUseAuth.mockReturnValue({
+      user: null,
+      token: null,
+      isLoading: false,
+      login: mockLogin,
+      logout: jest.fn(),
+    });
+
+    // Clear fetch mock completely
     (fetch as jest.Mock).mockClear();
+    (fetch as jest.Mock).mockReset();
+
+    // Reset localStorage to ensure clean state between tests
+    mockLocalStorage.getItem.mockClear();
+    mockLocalStorage.setItem.mockClear();
+    mockLocalStorage.removeItem.mockClear();
+
+    // Ensure localStorage returns null for all keys initially
+    mockLocalStorage.getItem.mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    // Additional cleanup to ensure no state leaks between tests
+    jest.clearAllMocks();
+
+    // Clear any remaining mock call history
+    mockRouter.push.mockClear();
+    mockLocalStorage.setItem.mockClear();
+
+    // Reset fetch mock completely for next test
+    (fetch as jest.Mock).mockReset();
   });
 
   it('renders registration form correctly', () => {
-    render(<RegisterPage />, { wrapper: TestWrapper });
+    render(<RegisterPage />, { wrapper: TestWrapperWithFreshAuth });
 
     expect(screen.getByText('Job Tracker')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /name/i })).toBeInTheDocument();
@@ -68,7 +128,7 @@ describe('RegisterPage', () => {
 
     (fetch as jest.Mock).mockResolvedValueOnce(mockResponse);
 
-    render(<RegisterPage />, { wrapper: TestWrapper });
+    render(<RegisterPage />, { wrapper: TestWrapperWithFreshAuth });
 
     // Fill in the form
     await user.type(screen.getByRole('textbox', { name: /name/i }), 'Test User');
@@ -101,9 +161,11 @@ describe('RegisterPage', () => {
       json: async () => ({ error: 'User already exists' }),
     };
 
-    (fetch as jest.Mock).mockResolvedValueOnce(mockResponse);
+    // Clear any previous mock implementations and set new one
+    (fetch as jest.Mock).mockClear();
+    (fetch as jest.Mock).mockResolvedValue(mockResponse);
 
-    render(<RegisterPage />, { wrapper: TestWrapper });
+    render(<RegisterPage />, { wrapper: TestWrapperWithFreshAuth });
 
     // Fill in the form
     await user.type(screen.getByRole('textbox', { name: /email/i }), 'existing@example.com');
@@ -116,14 +178,28 @@ describe('RegisterPage', () => {
       expect(fetch).toHaveBeenCalled();
     });
 
-    // Should not redirect or set localStorage
-    expect(mockRouter.push).not.toHaveBeenCalled();
-    expect(mockLocalStorage.setItem).not.toHaveBeenCalled();
+    // Verify the fetch was called with the right parameters
+    expect(fetch).toHaveBeenCalledWith('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'existing@example.com',
+        password: 'password123',
+        name: ''
+      })
+    });
+
+    // Wait for async operations to complete
+    await waitFor(() => {
+      // Should not redirect or set localStorage on failure
+      expect(mockRouter.push).not.toHaveBeenCalled();
+      expect(mockLocalStorage.setItem).not.toHaveBeenCalled();
+    }, { timeout: 1000 });
   });
 
   it('validates password length', async () => {
     const user = userEvent.setup();
-    render(<RegisterPage />, { wrapper: TestWrapper });
+    render(<RegisterPage />, { wrapper: TestWrapperWithFreshAuth });
 
     const passwordInput = screen.getByLabelText(/password/i);
     expect(passwordInput).toHaveAttribute('minLength', '6');
@@ -145,7 +221,7 @@ describe('RegisterPage', () => {
 
     (fetch as jest.Mock).mockReturnValueOnce(mockPromise);
 
-    render(<RegisterPage />, { wrapper: TestWrapper });
+    render(<RegisterPage />, { wrapper: TestWrapperWithFreshAuth });
 
     // Fill in the form
     await user.type(screen.getByRole('textbox', { name: /email/i }), 'test@example.com');
@@ -184,7 +260,7 @@ describe('RegisterPage', () => {
 
     (fetch as jest.Mock).mockResolvedValueOnce(mockResponse);
 
-    render(<RegisterPage />, { wrapper: TestWrapper });
+    render(<RegisterPage />, { wrapper: TestWrapperWithFreshAuth });
 
     // Fill in form without name
     await user.type(screen.getByRole('textbox', { name: /email/i }), 'test@example.com');
@@ -204,7 +280,7 @@ describe('RegisterPage', () => {
   });
 
   it('has accessible form elements', () => {
-    render(<RegisterPage />, { wrapper: TestWrapper });
+    render(<RegisterPage />, { wrapper: TestWrapperWithFreshAuth });
 
     const nameInput = screen.getByRole('textbox', { name: /name/i });
     const emailInput = screen.getByRole('textbox', { name: /email/i });

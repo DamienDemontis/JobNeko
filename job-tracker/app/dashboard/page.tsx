@@ -17,6 +17,9 @@ import {
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { MatchScoreDonut } from '@/components/ui/match-score-donut';
+import { AIJobDiscovery } from '@/components/ui/ai-job-discovery';
+import { PerformanceAnalytics } from '@/components/ui/performance-analytics';
+import { SmartRecommendations } from '@/components/ui/smart-recommendations';
 
 interface Job {
   id: string;
@@ -90,6 +93,7 @@ export default function ProfessionalDashboard() {
   const [sortBy, setSortBy] = useState<string>('createdAt');
   const [hasResume, setHasResume] = useState(false);
   const [resumePromptDismissed, setResumePromptDismissed] = useState(false);
+  const [dashboardView, setDashboardView] = useState<'jobs' | 'discovery' | 'analytics' | 'recommendations'>('jobs');
 
   useEffect(() => {
     setMounted(true);
@@ -272,8 +276,51 @@ export default function ProfessionalDashboard() {
       </header>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+        {/* Navigation Tabs */}
+        <div className="flex gap-1 p-1 bg-gray-100 rounded-lg mb-8 max-w-2xl">
+          <Button
+            variant={dashboardView === 'jobs' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setDashboardView('jobs')}
+            className="flex-1"
+          >
+            <Briefcase className="w-4 h-4 mr-2" />
+            My Jobs
+          </Button>
+          <Button
+            variant={dashboardView === 'discovery' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setDashboardView('discovery')}
+            className="flex-1"
+          >
+            <Target className="w-4 h-4 mr-2" />
+            Job Discovery
+          </Button>
+          <Button
+            variant={dashboardView === 'analytics' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setDashboardView('analytics')}
+            className="flex-1"
+          >
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Analytics
+          </Button>
+          <Button
+            variant={dashboardView === 'recommendations' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setDashboardView('recommendations')}
+            className="flex-1"
+          >
+            <Star className="w-4 h-4 mr-2" />
+            Recommendations
+          </Button>
+        </div>
+
+        {/* Jobs View */}
+        {dashboardView === 'jobs' && (
+          <>
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
           <Card className="border border-gray-200">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -579,6 +626,23 @@ export default function ProfessionalDashboard() {
               );
             })}
           </div>
+        )}
+          </>
+        )}
+
+        {/* AI Job Discovery View */}
+        {dashboardView === 'discovery' && (
+          <AIJobDiscovery />
+        )}
+
+        {/* Performance Analytics View */}
+        {dashboardView === 'analytics' && (
+          <PerformanceAnalytics />
+        )}
+
+        {/* Smart Recommendations View */}
+        {dashboardView === 'recommendations' && (
+          <SmartRecommendations />
         )}
       </div>
     </div>

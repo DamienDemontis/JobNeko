@@ -40,6 +40,8 @@ export default function ProfilePage() {
     // Preferences
     workModePreference: 'hybrid',
     willingToRelocate: false,
+    // Professional Networks
+    linkedinUrl: '',
   });
 
   useEffect(() => {
@@ -70,6 +72,7 @@ export default function ProfilePage() {
             currentCity: data.profile.currentCity || '',
             currentCountry: data.profile.currentCountry || '',
             currentState: data.profile.currentState || '',
+            linkedinUrl: data.profile.linkedinUrl || '',
           }));
         }
       }
@@ -289,7 +292,22 @@ export default function ProfilePage() {
                     />
                   </div>
                 </div>
-                
+
+                {/* Professional Networks */}
+                <div>
+                  <Label htmlFor="linkedinUrl">LinkedIn Profile URL</Label>
+                  <Input
+                    id="linkedinUrl"
+                    value={userProfile.linkedinUrl}
+                    onChange={(e) => setUserProfile(prev => ({ ...prev, linkedinUrl: e.target.value }))}
+                    placeholder="https://linkedin.com/in/your-profile"
+                    type="url"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Used for network analysis and intelligent outreach features
+                  </p>
+                </div>
+
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="workModePreference">Preferred Work Mode</Label>

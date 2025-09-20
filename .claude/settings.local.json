@@ -29,7 +29,8 @@
       "WebFetch(domain:tavily.com)",
       "WebFetch(domain:docs.tavily.com)",
       "Bash(npx next:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,7 +1,7 @@
 /**
  * Smart AI Communication Assistant
  * Context-aware generation of multiple communication types
- * Uses user profile + job context for personalized content
+ * Shows tool interface directly with on-demand generation
  */
 
 "use client";
@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   MessageSquare,
   Mail,
@@ -24,10 +25,12 @@ import {
   Brain,
   Sparkles,
   Eye,
-  CheckCircle
+  CheckCircle,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
-import SmartAIComponent from './smart-ai-component';
+import { enhancedUserContextClient } from '@/lib/services/enhanced-user-context-client';
+import { aiServiceManagerClient } from '@/lib/services/ai-service-manager-client';
 
 interface CommunicationAssistantProps {
   jobId: string;
@@ -42,51 +45,12 @@ interface CommunicationAssistantProps {
   };
 }
 
-interface CommunicationType {
-  id: string;
-  name: string;
-  description: string;
-  icon: React.ReactNode;
-  enabled: boolean;
+interface GeneratedContent {
+  type: string;
+  title: string;
+  content: string;
+  subject?: string;
 }
-
-const COMMUNICATION_TYPES: CommunicationType[] = [
-  {
-    id: 'cover_letter',
-    name: 'Cover Letter',
-    description: 'Professional cover letter tailored to the role',
-    icon: <FileText className="h-4 w-4" />,
-    enabled: true
-  },
-  {
-    id: 'application_email',
-    name: 'Application Email',
-    description: 'Email to accompany your application',
-    icon: <Mail className="h-4 w-4" />,
-    enabled: true
-  },
-  {
-    id: 'follow_up_email',
-    name: 'Follow-up Email',
-    description: 'Professional follow-up after application',
-    icon: <Send className="h-4 w-4" />,
-    enabled: false
-  },
-  {
-    id: 'linkedin_message',
-    name: 'LinkedIn Message',
-    description: 'Connection request to hiring manager',
-    icon: <MessageSquare className="h-4 w-4" />,
-    enabled: false
-  },
-  {
-    id: 'thank_you_note',
-    name: 'Thank You Note',
-    description: 'Post-interview thank you message',
-    icon: <CheckCircle className="h-4 w-4" />,
-    enabled: false
-  }
-];
 
 export default function CommunicationAssistantSmart({
   jobId,
@@ -96,86 +60,185 @@ export default function CommunicationAssistantSmart({
   token,
   jobData = {}
 }: CommunicationAssistantProps) {
-  const [selectedTypes, setSelectedTypes] = useState<string[]>(['cover_letter', 'application_email']);
+  const [selectedType, setSelectedType] = useState('cover_letter');
   const [communicationTone, setCommunicationTone] = useState('professional');
-  const [contentLength, setContentLength] = useState('standard');
+  const [contentLength, setContentLength] = useState('medium');
   const [customInstructions, setCustomInstructions] = useState('');
-  const [activeTab, setActiveTab] = useState('cover_letter');
+  const [generatedContent, setGeneratedContent] = useState<GeneratedContent[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [activeTab, setActiveTab] = useState('generator');
 
-  const handleTypeToggle = (typeId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedTypes(prev => [...prev, typeId]);
-    } else {
-      setSelectedTypes(prev => prev.filter(id => id !== typeId));
+  const COMMUNICATION_TYPES = [
+    {
+      id: 'cover_letter',
+      name: 'Cover Letter',
+      description: 'Personalized cover letter for job application',
+      icon: <FileText className="h-4 w-4" />
+    },
+    {
+      id: 'linkedin_message',
+      name: 'LinkedIn Message',
+      description: 'Connection request or direct message to recruiters',
+      icon: <MessageSquare className="h-4 w-4" />
+    },
+    {
+      id: 'follow_up_email',
+      name: 'Follow-up Email',
+      description: 'Professional follow-up after application',
+      icon: <Mail className="h-4 w-4" />
+    },
+    {
+      id: 'thank_you_email',
+      name: 'Thank You Email',
+      description: 'Post-interview thank you message',
+      icon: <Send className="h-4 w-4" />
+    }
+  ];
+
+  const handleGenerate = async () => {
+    if (!selectedType) {
+      toast.error('Please select a communication type');
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const userContext = await enhancedUserContextClient.buildEnhancedContext();
+
+      const selectedTypeData = COMMUNICATION_TYPES.find(t => t.id === selectedType);
+
+      const prompt = `
+Generate a ${selectedTypeData?.name} for a job application.
+
+JOB CONTEXT:
+Title: ${jobTitle}
+Company: ${company}
+Description: ${jobData.description || 'Not provided'}
+Requirements: ${jobData.requirements || 'Not provided'}
+
+USER CONTEXT:
+Name: ${userContext.name}
+Industry Focus: ${userContext.industryFocus?.join(', ') || 'Not specified'}
+Experience Level: ${userContext.experienceLevel || 'Not specified'}
+Skills: ${userContext.professionalProfile.skills?.join(', ') || 'Not specified'}
+Current Role: ${userContext.profile.currentRole || 'Not specified'}
+
+GENERATION SETTINGS:
+Communication Type: ${selectedTypeData?.name}
+Tone: ${communicationTone}
+Length: ${contentLength}
+Custom Instructions: ${customInstructions || 'None'}
+
+Generate a ${communicationTone} ${selectedTypeData?.name.toLowerCase()} that:
+1. Is personalized using the user's background
+2. Specifically addresses this ${company} ${jobTitle} role
+3. Demonstrates genuine interest and relevant qualifications
+4. Follows ${contentLength} length guidelines
+5. Incorporates any custom instructions provided
+
+For email subjects, provide a compelling subject line.
+For LinkedIn messages, keep it concise and connection-focused.
+For cover letters, include proper business formatting.
+
+Return in JSON format:
+{
+  "type": "${selectedType}",
+  "title": "${selectedTypeData?.name}",
+  "subject": "Subject line (if applicable)",
+  "content": "The generated content"
+}
+`;
+
+      const response = await aiServiceManagerClient.generateJSON(
+        prompt,
+        'communication_generation',
+        userId,
+        { temperature: 0.7, max_tokens: 2000 }
+      );
+
+      const newContent: GeneratedContent = {
+        type: response.type,
+        title: response.title,
+        content: response.content,
+        subject: response.subject
+      };
+
+      setGeneratedContent(prev => [newContent, ...prev]);
+      setActiveTab('results');
+      toast.success(`${selectedTypeData?.name} generated successfully!`);
+
+    } catch (error) {
+      console.error('Error generating communication:', error);
+      toast.error('Failed to generate content. Please try again.');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
-  const copyToClipboard = (content: string, type: string) => {
+  const copyToClipboard = (content: string) => {
     navigator.clipboard.writeText(content);
-    toast.success(`${type} copied to clipboard`);
+    toast.success('Copied to clipboard!');
   };
 
-  const downloadAsFile = (content: string, filename: string) => {
-    const blob = new Blob([content], { type: 'text/plain' });
+  const downloadContent = (content: GeneratedContent) => {
+    const blob = new Blob([content.content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = filename;
+    a.download = `${content.title.replace(/\s+/g, '_')}_${company}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    toast.success(`Downloaded ${filename}`);
+    toast.success(`Downloaded ${content.title}`);
   };
 
   return (
-    <SmartAIComponent
-      jobId={jobId}
-      userId={userId}
-      token={token}
-      analysisType="communication_generation"
-      title="AI Communication Assistant"
-      description="Generate personalized cover letters, emails, and LinkedIn messages optimized for this specific role"
-      icon={<Brain className="h-5 w-5" />}
-      autoLoad={false}
-      additionalData={{
-        communicationTypes: selectedTypes,
-        tone: communicationTone,
-        length: contentLength,
-        customInstructions: customInstructions,
-        jobData
-      }}
-    >
-      {(data, helpers) => (
-        <div className="space-y-6">
-          {/* Generation Controls */}
-          <div className="border rounded-lg p-4 bg-gray-50">
-            <h4 className="font-semibold text-gray-900 mb-4">Generation Settings</h4>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Brain className="h-5 w-5 text-blue-600" />
+          AI Communication Assistant
+        </CardTitle>
+        <CardDescription>
+          Generate personalized cover letters, emails, and LinkedIn messages for {company} - {jobTitle}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="generator">Generator</TabsTrigger>
+            <TabsTrigger value="results">Generated Content ({generatedContent.length})</TabsTrigger>
+          </TabsList>
 
-            {/* Communication Types Selection */}
-            <div className="space-y-3 mb-4">
-              <Label className="text-sm font-medium">Select Communication Types:</Label>
+          {/* Generator Tab */}
+          <TabsContent value="generator" className="space-y-6">
+            {/* Communication Type Selection */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Communication Type</Label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {COMMUNICATION_TYPES.map((type) => (
-                  <div key={type.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={type.id}
-                      checked={selectedTypes.includes(type.id)}
-                      onCheckedChange={(checked) => handleTypeToggle(type.id, checked as boolean)}
-                    />
-                    <div className="flex items-center gap-2">
+                  <div
+                    key={type.id}
+                    className={`p-3 border rounded-lg cursor-pointer transition-all hover:shadow-md ${
+                      selectedType === type.id
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                    onClick={() => setSelectedType(type.id)}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
                       {type.icon}
-                      <Label htmlFor={type.id} className="text-sm font-medium cursor-pointer">
-                        {type.name}
-                      </Label>
+                      <span className="font-medium text-sm">{type.name}</span>
                     </div>
+                    <p className="text-xs text-gray-600">{type.description}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Generation Options */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {/* Generation Settings */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label className="text-sm font-medium mb-2 block">Communication Tone</Label>
                 <Select value={communicationTone} onValueChange={setCommunicationTone}>
@@ -199,181 +262,97 @@ export default function CommunicationAssistantSmart({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="concise">Concise</SelectItem>
-                    <SelectItem value="standard">Standard</SelectItem>
-                    <SelectItem value="detailed">Detailed</SelectItem>
+                    <SelectItem value="short">Short & Concise</SelectItem>
+                    <SelectItem value="medium">Medium Length</SelectItem>
+                    <SelectItem value="long">Comprehensive</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
             {/* Custom Instructions */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Custom Instructions (Optional)</Label>
+            <div>
+              <Label className="text-sm font-medium mb-2 block">
+                Custom Instructions (Optional)
+              </Label>
               <Textarea
-                placeholder="Add specific requirements, experiences to highlight, or tone adjustments..."
                 value={customInstructions}
                 onChange={(e) => setCustomInstructions(e.target.value)}
+                placeholder="Any specific points you want to highlight or include..."
                 className="min-h-[80px]"
               />
             </div>
 
             {/* Generate Button */}
-            <div className="flex justify-center mt-4">
-              <Button
-                onClick={() => helpers.refresh(true)}
-                disabled={selectedTypes.length === 0 || helpers.isLoading}
-                className="flex items-center gap-2"
-                size="lg"
-              >
-                <Sparkles className="h-4 w-4" />
-                {helpers.isLoading ? 'Generating...' : `Generate ${selectedTypes.length} Communication${selectedTypes.length > 1 ? 's' : ''}`}
-              </Button>
-            </div>
-          </div>
+            <Button
+              onClick={handleGenerate}
+              disabled={isGenerating || !selectedType}
+              className="w-full"
+              size="lg"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Generate {COMMUNICATION_TYPES.find(t => t.id === selectedType)?.name}
+                </>
+              )}
+            </Button>
+          </TabsContent>
 
-          {/* Generated Content */}
-          {data && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="font-semibold text-gray-900">Generated Communications</h4>
-                <Badge variant="secondary" className="flex items-center gap-1">
-                  <CheckCircle className="h-3 w-3" />
-                  {selectedTypes.length} Generated
-                </Badge>
+          {/* Results Tab */}
+          <TabsContent value="results" className="space-y-4">
+            {generatedContent.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <Brain className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p>No content generated yet. Use the Generator tab to create your first communication.</p>
               </div>
-
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-3 md:grid-cols-5">
-                  {selectedTypes.map((typeId) => {
-                    const type = COMMUNICATION_TYPES.find(t => t.id === typeId);
-                    return (
-                      <TabsTrigger key={typeId} value={typeId} className="flex items-center gap-1">
-                        {type?.icon}
-                        <span className="hidden md:inline">{type?.name}</span>
-                      </TabsTrigger>
-                    );
-                  })}
-                </TabsList>
-
-                {selectedTypes.map((typeId) => (
-                  <TabsContent key={typeId} value={typeId} className="space-y-4">
-                    <div className="border rounded-lg">
-                      <div className="flex items-center justify-between p-4 border-b bg-gray-50">
-                        <div className="flex items-center gap-2">
-                          {COMMUNICATION_TYPES.find(t => t.id === typeId)?.icon}
-                          <h5 className="font-semibold text-gray-900">
-                            {COMMUNICATION_TYPES.find(t => t.id === typeId)?.name}
-                          </h5>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => copyToClipboard(
-                              helpers.safeGet(`generated.${typeId}.content`, ''),
-                              COMMUNICATION_TYPES.find(t => t.id === typeId)?.name || ''
-                            )}
-                          >
-                            <Copy className="h-3 w-3 mr-1" />
-                            Copy
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => downloadAsFile(
-                              helpers.safeGet(`generated.${typeId}.content`, ''),
-                              `${typeId}_${company}_${jobTitle.replace(/\s+/g, '_')}.txt`
-                            )}
-                          >
-                            <Download className="h-3 w-3 mr-1" />
-                            Download
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="p-4">
-                        {/* Preview/Edit Toggle */}
-                        <div className="mb-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Eye className="h-4 w-4 text-gray-500" />
-                            <span className="text-sm font-medium text-gray-700">Preview</span>
-                          </div>
-                          <div className="bg-white border rounded p-4 min-h-[300px] whitespace-pre-wrap font-mono text-sm">
-                            {helpers.safeGet(`generated.${typeId}.content`, 'Content will appear here after generation...')}
-                          </div>
-                        </div>
-
-                        {/* Content Analysis */}
-                        <div className="border-t pt-4">
-                          <h6 className="font-medium text-gray-700 mb-2">Content Analysis</h6>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                            <div>
-                              <span className="text-gray-500">Word Count:</span>
-                              <p className="font-medium">{helpers.safeGet(`generated.${typeId}.analysis.wordCount`, 'N/A')}</p>
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Tone Score:</span>
-                              <p className="font-medium">{helpers.safeGet(`generated.${typeId}.analysis.toneScore`, 'N/A')}/10</p>
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Personalization:</span>
-                              <p className="font-medium">{helpers.safeGet(`generated.${typeId}.analysis.personalizationLevel`, 'High')}</p>
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Impact:</span>
-                              <p className="font-medium">{helpers.safeGet(`generated.${typeId}.analysis.impactScore`, 'Strong')}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Key Points Highlighted */}
-                        {helpers.safeGet(`generated.${typeId}.keyPoints`, []).length > 0 && (
-                          <div className="border-t pt-4 mt-4">
-                            <h6 className="font-medium text-gray-700 mb-2">Key Points Highlighted</h6>
-                            <ul className="space-y-1">
-                              {helpers.safeMap(helpers.safeGet(`generated.${typeId}.keyPoints`, []), (point, index) => (
-                                <li key={index} className="flex items-center gap-2 text-sm">
-                                  <CheckCircle className="h-3 w-3 text-green-500" />
-                                  <span className="text-gray-600">{point}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
+            ) : (
+              <div className="space-y-4">
+                {generatedContent.map((content, index) => (
+                  <div key={index} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">{content.title}</Badge>
+                        {content.subject && (
+                          <span className="text-sm text-gray-600">Subject: {content.subject}</span>
                         )}
                       </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => copyToClipboard(content.content)}
+                        >
+                          <Copy className="h-3 w-3 mr-1" />
+                          Copy
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => downloadContent(content)}
+                        >
+                          <Download className="h-3 w-3 mr-1" />
+                          Download
+                        </Button>
+                      </div>
                     </div>
-                  </TabsContent>
+                    <Textarea
+                      value={content.content}
+                      readOnly
+                      className="min-h-[200px] bg-gray-50"
+                    />
+                  </div>
                 ))}
-              </Tabs>
-
-              {/* Context Information */}
-              <div className="border rounded-lg p-4 bg-blue-50">
-                <h6 className="font-medium text-blue-900 mb-2">Context Used in Generation</h6>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-blue-700 font-medium">Profile Context:</span>
-                    <ul className="mt-1 space-y-1">
-                      <li className="text-blue-600">• Experience Level: {helpers.safeGet('context.userProfile.experienceLevel', 'Professional')}</li>
-                      <li className="text-blue-600">• Key Skills: {helpers.safeJoin(helpers.safeGet('context.userProfile.skills', []))}</li>
-                      <li className="text-blue-600">• Industry Focus: {helpers.safeJoin(helpers.safeGet('context.userProfile.industryFocus', []))}</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <span className="text-blue-700 font-medium">Job Context:</span>
-                    <ul className="mt-1 space-y-1">
-                      <li className="text-blue-600">• Company: {company}</li>
-                      <li className="text-blue-600">• Role: {jobTitle}</li>
-                      <li className="text-blue-600">• Tone: {communicationTone}</li>
-                      <li className="text-blue-600">• Length: {contentLength}</li>
-                    </ul>
-                  </div>
-                </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
-    </SmartAIComponent>
+            )}
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
   );
 }

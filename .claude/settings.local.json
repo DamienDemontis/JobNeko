@@ -30,7 +30,8 @@
       "WebFetch(domain:docs.tavily.com)",
       "Bash(npx next:*)",
       "Bash(npx eslint:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

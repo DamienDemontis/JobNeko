@@ -129,9 +129,9 @@ Description: ${jobData.description}
 Requirements: ${jobData.requirements}
 
 USER CONTEXT:
-Experience Level: ${userContext.marketPositioning.experienceLevel}
-Key Skills: ${userContext.professionalProfile.keySkills.join(', ')}
-Industry Focus: ${userContext.professionalProfile.industryFocus?.join(', ') || 'Not specified'}
+Experience Level: ${userContext.experienceLevel || 'Not specified'}
+Key Skills: ${userContext.professionalProfile.skills?.join(', ') || 'Not specified'}
+Industry Focus: ${userContext.industryFocus?.join(', ') || 'Not specified'}
 
 SESSION TYPE: ${type}
 DIFFICULTY: ${difficultyLevel}
@@ -166,7 +166,7 @@ REQUIREMENTS:
 - Include realistic time expectations
 - Provide evaluation criteria for each question
 - Add helpful hints without giving away answers
-- Consider user's experience level: ${userContext.marketPositioning.experienceLevel}
+- Consider user's experience level: ${userContext.experienceLevel || 'Not specified'}
 `;
 
       const response = await aiServiceManagerClient.generateCompletion(

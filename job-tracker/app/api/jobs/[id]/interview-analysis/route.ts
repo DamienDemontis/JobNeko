@@ -95,18 +95,24 @@ export const GET = withErrorHandling(async (
 
   const cacheKey = generateCacheKey(id, user.id, job);
 
-  // Check for cached analysis (simple cache in database)
-  const cachedAnalysis = await prisma.aIResponseCache.findFirst({
+  // Check for cached analysis using unified cache system
+  const cachedAnalysis = await prisma.jobAnalysisCache.findFirst({
     where: {
-      cacheKey,
+      jobId: id,
+      userId: user.id,
+      analysisType: 'interview_analysis',
       expiresAt: { gt: new Date() }
+    },
+    orderBy: {
+      createdAt: 'desc'
     }
   });
 
   if (cachedAnalysis) {
     return NextResponse.json({
       cached: true,
-      analysis: JSON.parse(cachedAnalysis.response)
+      analysis: JSON.parse(cachedAnalysis.analysisData),
+      cacheKey: `interview_analysis_${id}_${user.id}`
     });
   }
 
@@ -252,10 +258,22 @@ Return ONLY the JSON object, no markdown formatting or explanations.`;
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24); // Cache for 24 hours
 
-    await prisma.aIResponseCache.create({
+    // Delete existing cache entries for this analysis type
+    await prisma.jobAnalysisCache.deleteMany({
+      where: {
+        jobId: id,
+        userId: user.id,
+        analysisType: 'interview_analysis'
+      }
+    });
+
+    // Create new cache entry using unified cache system
+    await prisma.jobAnalysisCache.create({
       data: {
-        cacheKey,
-        response: JSON.stringify(analysisData),
+        jobId: id,
+        userId: user.id,
+        analysisType: 'interview_analysis',
+        analysisData: JSON.stringify(analysisData),
         expiresAt
       }
     });

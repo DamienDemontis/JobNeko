@@ -372,18 +372,7 @@ Return ONLY the JSON object, no markdown formatting.`
   }
 };
 
-// Helper functions
-function generateCacheKey(type: string, jobId: string, userId: string, jobData: any): string {
-  const data = { type, jobId, userId, company: jobData?.company, title: jobData?.title };
-  const input = JSON.stringify(data);
-  let hash = 0;
-  for (let i = 0; i < input.length; i++) {
-    const char = input.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return `ai_analysis_${type}_${hash.toString(36)}`;
-}
+// Helper functions removed - using unified cache system
 
 // GET - Check for cached analysis
 export const GET = withErrorHandling(async (
@@ -418,21 +407,24 @@ export const GET = withErrorHandling(async (
     throw new ValidationError('Job not found');
   }
 
-  const cacheKey = generateCacheKey(type, jobId, user.id, job);
-
-  // Check cache
-  const cachedAnalysis = await prisma.aIResponseCache.findFirst({
+  // Check cache using JobAnalysisCache (unified cache system)
+  const cachedAnalysis = await prisma.jobAnalysisCache.findFirst({
     where: {
-      cacheKey,
+      jobId,
+      userId: user.id,
+      analysisType: type,
       expiresAt: { gt: new Date() }
+    },
+    orderBy: {
+      createdAt: 'desc'
     }
   });
 
   if (cachedAnalysis) {
     return NextResponse.json({
       cached: true,
-      analysis: JSON.parse(cachedAnalysis.response),
-      cacheKey
+      analysis: JSON.parse(cachedAnalysis.analysisData),
+      cacheKey: `${type}_${jobId}_${user.id}`
     });
   }
 
@@ -540,15 +532,26 @@ export const POST = withErrorHandling(async (
       console.warn(`${type} analysis missing required fields:`, config.requiredFields);
     }
 
-    // Cache the result
-    const cacheKey = generateCacheKey(type, jobId, user.id, job);
+    // Cache the result using JobAnalysisCache (unified cache system)
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + config.cacheHours);
 
-    await prisma.aIResponseCache.create({
+    // Delete existing cache entries for this analysis type
+    await prisma.jobAnalysisCache.deleteMany({
+      where: {
+        jobId,
+        userId: user.id,
+        analysisType: type
+      }
+    });
+
+    // Create new cache entry
+    await prisma.jobAnalysisCache.create({
       data: {
-        cacheKey,
-        response: JSON.stringify(analysisData),
+        jobId,
+        userId: user.id,
+        analysisType: type,
+        analysisData: JSON.stringify(analysisData),
         expiresAt
       }
     });
@@ -558,7 +561,7 @@ export const POST = withErrorHandling(async (
     return NextResponse.json({
       analysis: analysisData,
       cached: false,
-      cacheKey
+      cacheKey: `${type}_${jobId}_${user.id}`
     });
 
   } catch (error) {

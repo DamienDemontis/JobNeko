@@ -163,11 +163,11 @@ Description: ${jobData.description}
 Requirements: ${jobData.requirements}
 
 USER CONTEXT:
-Experience Level: ${userContext.marketPositioning.experienceLevel}
-Key Skills: ${userContext.professionalProfile.keySkills.join(', ')}
-Career Level: ${userContext.marketPositioning.experienceLevel}
-Industry Focus: ${userContext.professionalProfile.industryFocus?.join(', ') || 'Not specified'}
-Communication Style: ${userContext.communicationStyle.tone}
+Experience Level: ${userContext.experienceLevel || 'Not specified'}
+Key Skills: ${userContext.professionalProfile.skills?.join(', ') || 'Not specified'}
+Industry Focus: ${userContext.industryFocus?.join(', ') || 'Not specified'}
+Current Role: ${userContext.profile.currentRole || 'Not specified'}
+Years Experience: ${userContext.professionalProfile.yearsOfExperience}
 
 COMPANY INTELLIGENCE:
 Industry: ${companyIntel.industry}

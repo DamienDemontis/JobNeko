@@ -63,6 +63,7 @@ model Job {
   applicationStatus String         @default("not_applied")
   appliedAt         DateTime?
   applicationDeadline DateTime?
+  postedDate        DateTime?      // When the job was originally posted by the company
   priority          String         @default("medium") // low/medium/high
   
   // Contact Information

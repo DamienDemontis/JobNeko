@@ -21,14 +21,20 @@ import CommunicationAssistantSmart from '@/components/ui/communication-assistant
 import InterviewPipelineManagerSmart from '@/components/ui/interview-pipeline-manager-smart';
 import SmartQuestionsSmart from '@/components/ui/smart-questions-smart';
 import { LinkedInNetworkIntegration } from '@/components/ui/linkedin-network-integration';
+import { LinkedInNetworkIntegrationEnhanced } from '@/components/ui/linkedin-network-integration-enhanced';
 import { CompanyIntelligenceCenter } from '@/components/ui/company-intelligence-center';
+import { CompanyIntelligenceCenterEnhanced } from '@/components/ui/company-intelligence-center-enhanced';
+import { CachePreloader } from '@/components/ui/cache-preloader';
 import { SmartNotes } from '@/components/ui/smart-notes';
 import { CompanyInterviewAnalysis } from '@/components/ui/company-interview-analysis';
 import { InterviewCoach } from '@/components/ui/interview-coach';
+import { UnifiedInterviewCenter } from '@/components/ui/unified-interview-center';
 import { CultureAnalysis } from '@/components/ui/culture-analysis';
 import { CompetitiveAnalysis } from '@/components/ui/competitive-analysis';
 import { InsiderIntelligence } from '@/components/ui/insider-intelligence';
+import { InsiderIntelligenceEnhanced } from '@/components/ui/insider-intelligence-enhanced';
 import { OutreachAssistant } from '@/components/ui/outreach-assistant';
+import { OutreachAssistantEnhanced } from '@/components/ui/outreach-assistant-enhanced';
 import { toast } from 'sonner';
 import {
   ArrowTopRightOnSquareIcon as ExternalLinkIcon,
@@ -73,6 +79,7 @@ interface Job {
   rating?: number;
   appliedAt?: string;
   applicationDeadline?: string;
+  postedDate?: string;
   phoneScreeningAt?: string;
   firstInterviewAt?: string;
   secondInterviewAt?: string;
@@ -190,6 +197,7 @@ export default function JobDetailPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [userProfile, setUserProfile] = useState<any>(null);
   const [hasResume, setHasResume] = useState(false);
+  const [cacheStatus, setCacheStatus] = useState<Map<string, boolean>>(new Map());
 
   // Parse extracted data from job
   const extractedData = job?.extractedData ? (() => {
@@ -440,6 +448,17 @@ export default function JobDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
+      {/* Cache Preloader - Invisible component that preloads AI caches */}
+      {user && token && job && (
+        <CachePreloader
+          jobId={job.id}
+          userId={user.id}
+          token={token}
+          activeTab={activeTab}
+          onCacheStatus={setCacheStatus}
+        />
+      )}
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
@@ -515,6 +534,18 @@ export default function JobDetailPage() {
                       </div>
                     );
                   })()}
+                  {job.postedDate && (
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <ClockIcon className="h-5 w-5" />
+                      <span>Posted: {new Date(job.postedDate).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                  {job.applicationDeadline && (
+                    <div className="flex items-center gap-2 text-red-600">
+                      <ClockIcon className="h-5 w-5" />
+                      <span>Deadline: {new Date(job.applicationDeadline).toLocaleDateString()}</span>
+                    </div>
+                  )}
                   {job.matchScore && (
                     <div className="flex items-center gap-3">
                       <MatchScoreDonut score={job.matchScore} size={60} strokeWidth={6} />
@@ -1033,6 +1064,7 @@ export default function JobDetailPage() {
               token={token || ''}
               jobData={{
                 applicationDeadline: job.applicationDeadline ? new Date(job.applicationDeadline) : undefined,
+                postedDate: job.postedDate ? new Date(job.postedDate) : undefined,
                 location: job.location,
                 requirements: job.requirements || '',
               }}
@@ -1053,25 +1085,14 @@ export default function JobDetailPage() {
             />
           </TabsContent>
 
-          {/* Interview Pipeline Manager Tab */}
+          {/* Unified Interview Center Tab */}
           <TabsContent value="interview" className="space-y-6">
-            <InterviewPipelineManagerSmart
+            <UnifiedInterviewCenter
               jobId={job.id}
               jobTitle={job.title}
               company={job.company}
               userId={user?.id || ''}
               token={token || ''}
-            />
-
-            <CompanyInterviewAnalysis
-              companyName={job.company}
-              jobTitle={job.title}
-              userId={user?.id || ''}
-            />
-
-            <InterviewCoach
-              jobId={job.id}
-              userId={user?.id || ''}
               jobData={{
                 title: job.title,
                 company: job.company,
@@ -1091,9 +1112,11 @@ export default function JobDetailPage() {
 
           {/* Network Intelligence Hub Tab */}
           <TabsContent value="network" className="space-y-6">
-            <LinkedInNetworkIntegration
+            {/* Using Enhanced LinkedIn Network Integration with unified caching */}
+            <LinkedInNetworkIntegrationEnhanced
               jobId={job.id}
               userId={user?.id || ''}
+              token={token || ''}
               jobData={{
                 title: job.title,
                 company: job.company,
@@ -1102,16 +1125,22 @@ export default function JobDetailPage() {
               }}
             />
 
-            <InsiderIntelligence
+            {/* Using Enhanced Insider Intelligence with unified caching */}
+            <InsiderIntelligenceEnhanced
               companyName={job.company}
               jobTitle={job.title}
               userId={user?.id || ''}
+              token={token || ''}
+              jobId={job.id}
             />
 
-            <OutreachAssistant
+            {/* Using Enhanced Outreach Assistant with unified caching */}
+            <OutreachAssistantEnhanced
               companyName={job.company}
               jobTitle={job.title}
               userId={user?.id || ''}
+              token={token || ''}
+              jobId={job.id}
             />
           </TabsContent>
 
@@ -1168,7 +1197,8 @@ export default function JobDetailPage() {
 
           {/* Company Intelligence Center Tab */}
           <TabsContent value="company" className="space-y-6">
-            <CompanyIntelligenceCenter
+            {/* Using Enhanced Company Intelligence with unified caching */}
+            <CompanyIntelligenceCenterEnhanced
               jobId={job.id}
               userId={user?.id || ''}
               jobData={{
@@ -1178,6 +1208,7 @@ export default function JobDetailPage() {
                 description: job.description,
                 requirements: job.requirements,
               }}
+              token={token || ''}
             />
 
             <CultureAnalysis

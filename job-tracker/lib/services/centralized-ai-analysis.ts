@@ -13,7 +13,10 @@ export type AnalysisType =
   | 'interview_coaching'
   | 'smart_questions'
   | 'timeline_analysis'
-  | 'communication_generation';
+  | 'communication_generation'
+  | 'company_intelligence'
+  | 'culture_analysis'
+  | 'competitive_analysis';
 
 export interface AnalysisResult<T = any> {
   data: T;

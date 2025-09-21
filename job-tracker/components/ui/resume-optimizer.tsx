@@ -6,13 +6,15 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   FileText,
   TrendingUp,
@@ -26,7 +28,10 @@ import {
   ChevronUp,
   Eye,
   Edit,
-  Copy
+  Copy,
+  Upload,
+  X,
+  FileCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { aiServiceManagerClient } from '@/lib/services/ai-service-manager-client';
@@ -42,6 +47,9 @@ export interface ResumeOptimizationData {
   improvementSuggestions: ImprovementSuggestion[];
   lastOptimized: Date;
   confidence: number;
+  // Resume source metadata
+  resumeSource?: 'profile' | 'upload';
+  fileName?: string;
 }
 
 export interface ATSAnalysis {
@@ -226,16 +234,90 @@ export function ResumeOptimizer({
   const [activeTab, setActiveTab] = useState('overview');
   const [error, setError] = useState<string | null>(null);
 
+  // Job-specific resume upload functionality
+  const [resumeSource, setResumeSource] = useState<'profile' | 'upload'>('profile');
+  const [uploadedResume, setUploadedResume] = useState<File | null>(null);
+  const [uploadedResumeData, setUploadedResumeData] = useState<any>(null);
+  const [isProcessingUpload, setIsProcessingUpload] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Auto-load optimization if user has resume
   useEffect(() => {
-    if (hasResume && description && description.length > 50) {
+    if (hasResume && description && description.length > 50 && resumeSource === 'profile') {
       loadOptimization();
     }
-  }, [jobId, hasResume, description]);
+  }, [jobId, hasResume, description, resumeSource]);
+
+  // Handle file upload
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload a PDF, DOC, DOCX, or TXT file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size must be less than 5MB');
+      return;
+    }
+
+    setUploadedResume(file);
+    setIsProcessingUpload(true);
+
+    try {
+      // Extract text from the uploaded resume
+      const formData = new FormData();
+      formData.append('resume', file);
+
+      const extractResponse = await fetch('/api/resumes/extract', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      if (!extractResponse.ok) {
+        throw new Error('Failed to process resume');
+      }
+
+      const extractedData = await extractResponse.json();
+      setUploadedResumeData(extractedData);
+      setResumeSource('upload');
+      toast.success('Resume uploaded and processed successfully!');
+
+    } catch (error) {
+      console.error('Error processing uploaded resume:', error);
+      toast.error('Failed to process uploaded resume');
+      setUploadedResume(null);
+    } finally {
+      setIsProcessingUpload(false);
+    }
+  };
+
+  // Remove uploaded resume
+  const removeUploadedResume = () => {
+    setUploadedResume(null);
+    setUploadedResumeData(null);
+    setResumeSource('profile');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   const loadOptimization = async () => {
-    if (!hasResume) {
+    if (!hasResume && resumeSource === 'profile') {
       setError('Resume required for optimization analysis');
+      return;
+    }
+
+    if (resumeSource === 'upload' && !uploadedResumeData) {
+      setError('Please upload a resume for job-specific optimization');
       return;
     }
 
@@ -256,14 +338,14 @@ export function ResumeOptimizer({
         return;
       }
 
-      // Get user's resume
-      const resumeData = await fetchUserResume();
+      // Get resume data based on selected source
+      const resumeData = resumeSource === 'upload' ? uploadedResumeData : await fetchUserResume();
       if (!resumeData) {
         throw new Error('Could not fetch resume data');
       }
 
       // Generate optimization analysis
-      const optimizationPrompt = buildOptimizationPrompt(resumeData);
+      const optimizationPrompt = buildOptimizationPrompt(resumeData, resumeSource);
 
       const response = await aiServiceManagerClient.generateCompletion(
         optimizationPrompt,
@@ -277,6 +359,10 @@ export function ResumeOptimizer({
       );
 
       const parsedOptimization = parseOptimizationResponse(response.content);
+
+      // Add metadata about the resume source
+      parsedOptimization.resumeSource = resumeSource;
+      parsedOptimization.fileName = resumeSource === 'upload' ? uploadedResume?.name : 'Profile Resume';
 
       // Save to cache
       await saveOptimizationToCache(parsedOptimization);
@@ -294,8 +380,15 @@ export function ResumeOptimizer({
     }
   };
 
-  const buildOptimizationPrompt = (resumeData: any): string => {
+  const buildOptimizationPrompt = (resumeData: any, source: 'profile' | 'upload' = 'profile'): string => {
+    const resumeContext = source === 'upload'
+      ? 'This is a job-specific resume uploaded specifically for this position'
+      : 'This is the user\'s general profile resume';
+
     return `Analyze and optimize the resume for this specific job opportunity:
+
+RESUME CONTEXT: ${resumeContext}
+
 
 JOB DETAILS:
 Title: ${jobTitle}
@@ -613,7 +706,81 @@ IMPORTANT: Base all suggestions on actual job requirements and resume content. P
     }
   };
 
-  if (!hasResume) {
+  // Render helper for resume source selection
+  const renderResumeSourceSelection = () => (
+    <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+      <Label className="text-sm font-medium">Resume Source</Label>
+      <RadioGroup value={resumeSource} onValueChange={(value: 'profile' | 'upload') => setResumeSource(value)}>
+        {hasResume && (
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="profile" id="profile" />
+            <Label htmlFor="profile" className="text-sm cursor-pointer">
+              Use Profile Resume
+            </Label>
+          </div>
+        )}
+        <div className="flex items-center space-x-2">
+          <RadioGroupItem value="upload" id="upload" />
+          <Label htmlFor="upload" className="text-sm cursor-pointer">
+            Upload Job-Specific Resume
+          </Label>
+        </div>
+      </RadioGroup>
+
+      {resumeSource === 'upload' && (
+        <div className="space-y-3">
+          {!uploadedResume ? (
+            <div>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept=".pdf,.doc,.docx,.txt"
+                className="hidden"
+              />
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                variant="outline"
+                className="w-full"
+                disabled={isProcessingUpload}
+              >
+                {isProcessingUpload ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Choose Resume File
+                  </>
+                )}
+              </Button>
+              <p className="text-xs text-gray-500 mt-1">
+                Supported formats: PDF, DOC, DOCX, TXT (max 5MB)
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between p-3 bg-white border rounded">
+              <div className="flex items-center gap-2">
+                <FileCheck className="w-4 h-4 text-green-600" />
+                <span className="text-sm font-medium">{uploadedResume.name}</span>
+              </div>
+              <Button
+                onClick={removeUploadedResume}
+                variant="ghost"
+                size="sm"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  if (!hasResume && resumeSource === 'profile') {
     return (
       <Card>
         <CardHeader>
@@ -625,16 +792,17 @@ IMPORTANT: Base all suggestions on actual job requirements and resume content. P
             </Badge>
           </CardTitle>
           <CardDescription>
-            AI-powered resume optimization requires an uploaded resume
+            AI-powered resume optimization for this specific job
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {renderResumeSourceSelection()}
           <div className="text-center py-8 text-gray-500">
             <FileText className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-            <p>No resume uploaded</p>
-            <p className="text-sm">Upload your resume in your profile to enable optimization</p>
+            <p>No profile resume found</p>
+            <p className="text-sm">Upload a job-specific resume or add one to your profile</p>
             <Button className="mt-4" variant="outline" asChild>
-              <a href="/profile">Upload Resume</a>
+              <a href="/profile">Upload to Profile</a>
             </Button>
           </div>
         </CardContent>
@@ -658,6 +826,9 @@ IMPORTANT: Base all suggestions on actual job requirements and resume content. P
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Resume Source Selection */}
+        {renderResumeSourceSelection()}
+
         {error ? (
           <div className="text-center py-8">
             <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500" />
@@ -667,14 +838,21 @@ IMPORTANT: Base all suggestions on actual job requirements and resume content. P
               Retry Optimization
             </Button>
           </div>
-        ) : !optimization && !isLoading ? (
+        ) : !optimization && !isLoading && ((resumeSource === 'profile' && hasResume) || (resumeSource === 'upload' && uploadedResumeData)) ? (
           <div className="text-center py-8">
             <FileText className="w-12 h-12 mx-auto mb-4 text-blue-500" />
-            <p className="text-gray-600 mb-4">Ready to optimize your resume for this job</p>
+            <p className="text-gray-600 mb-4">
+              Ready to optimize your {resumeSource === 'upload' ? 'job-specific' : 'profile'} resume for this job
+            </p>
             <Button onClick={loadOptimization} className="bg-blue-600 hover:bg-blue-700">
               <Sparkles className="w-4 h-4 mr-2" />
               Start Optimization
             </Button>
+          </div>
+        ) : !optimization && !isLoading && resumeSource === 'upload' && !uploadedResumeData ? (
+          <div className="text-center py-8 text-gray-500">
+            <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+            <p>Upload a job-specific resume to begin optimization</p>
           </div>
         ) : isLoading ? (
           <div className="text-center py-8">
@@ -833,28 +1011,44 @@ IMPORTANT: Base all suggestions on actual job requirements and resume content. P
               </TabsContent>
 
               <TabsContent value="experience" className="space-y-4 mt-4">
-                {/* Experience Reordering */}
-                {optimization.experienceOptimization.reorderSuggestions.length > 0 && (
-                  <div>
-                    <h4 className="font-semibold text-purple-700 mb-3">Experience Reordering</h4>
-                    <div className="space-y-2">
-                      {optimization.experienceOptimization.reorderSuggestions.map((reorder, index) => (
-                        <div key={index} className="p-3 bg-purple-50 rounded border border-purple-200">
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="font-medium text-purple-900">{reorder.experience}</div>
-                              <div className="text-sm text-purple-700 mt-1">{reorder.reasoning}</div>
-                            </div>
-                            <div className="text-center">
-                              <div className="text-xs text-purple-600">Position {reorder.originalOrder} → {reorder.suggestedOrder}</div>
-                              <div className="text-xs text-green-600">Relevance: {reorder.relevanceScore}%</div>
+                {/* Experience Reordering - Only show actual reordering suggestions */}
+                {(() => {
+                  const actualReorders = optimization.experienceOptimization.reorderSuggestions.filter(
+                    reorder => reorder.originalOrder !== reorder.suggestedOrder
+                  );
+
+                  return actualReorders.length > 0 ? (
+                    <div>
+                      <h4 className="font-semibold text-purple-700 mb-3">Experience Reordering</h4>
+                      <div className="space-y-2">
+                        {actualReorders.map((reorder, index) => (
+                          <div key={index} className="p-3 bg-purple-50 rounded border border-purple-200">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="font-medium text-purple-900">{reorder.experience}</div>
+                                <div className="text-sm text-purple-700 mt-1">{reorder.reasoning}</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-xs text-purple-600">Position {reorder.originalOrder} → {reorder.suggestedOrder}</div>
+                                <div className="text-xs text-green-600">Relevance: {reorder.relevanceScore}%</div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <div className="p-4 bg-green-50 rounded border border-green-200">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <span className="text-green-700 font-medium">Experience Order Optimized</span>
+                      </div>
+                      <p className="text-sm text-green-600 mt-1">
+                        Your experience is already ordered optimally for this position.
+                      </p>
+                    </div>
+                  );
+                })()}
 
                 {/* Bullet Point Optimizations */}
                 {optimization.experienceOptimization.bulletPointOptimizations.length > 0 && (

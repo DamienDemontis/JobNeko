@@ -136,10 +136,10 @@ You are an expert outreach strategist and communication specialist. Generate hig
 CONTEXT:
 Target Company: ${companyName}
 Target Role: ${jobTitle}
-User Experience Level: ${userContext.marketPositioning.experienceLevel}
-User Skills: ${userContext.professionalProfile.keySkills.join(', ')}
-User Industry Focus: ${userContext.professionalProfile.industryFocus?.join(', ') || 'Not specified'}
-Communication Style: ${userContext.communicationStyle.tone}
+User Experience Level: ${userContext.experienceLevel || 'Not specified'}
+User Skills: ${userContext.professionalProfile.skills?.join(', ') || 'Not specified'}
+User Industry Focus: ${userContext.industryFocus?.join(', ') || 'Not specified'}
+Current Role: ${userContext.profile.currentRole || 'Not specified'}
 
 Generate diverse, effective message templates for different outreach scenarios and platforms.
 

@@ -148,10 +148,10 @@ Description: ${jobData.description ? jobData.description.substring(0, 500) : 'No
 
 USER PROFILE:
 LinkedIn: ${linkedinUrl || 'Not connected'}
-Career Level: ${userContext.marketPositioning.experienceLevel}
-Industry: ${userContext.professionalProfile.industryFocus?.join(', ') || 'Not specified'}
+Career Level: ${userContext.experienceLevel || 'Not specified'}
+Industry: ${userContext.industryFocus?.join(', ') || 'Not specified'}
 Experience: ${userContext.professionalProfile.yearsOfExperience} years
-Location: ${userContext.currentLocation.fullLocation}
+Location: ${userContext.currentLocation || 'Not specified'}
 
 COMPANY DATA:
 Industry: ${companyIntel.industry}

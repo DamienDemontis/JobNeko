@@ -144,10 +144,10 @@ Founded: ${companyIntel.foundedYear || 'Unknown'}
 Business Model: ${companyIntel.businessModel}
 
 USER BACKGROUND:
-Key Skills: ${userContext.professionalProfile.keySkills.join(', ')}
-Industry Focus: ${userContext.professionalProfile.industryFocus?.join(', ') || 'Not specified'}
-Experience Level: ${userContext.marketPositioning.experienceLevel}
-Career Level: ${userContext.professionalProfile.careerLevel}
+Key Skills: ${userContext.professionalProfile.skills?.join(', ') || 'Not specified'}
+Industry Focus: ${userContext.industryFocus?.join(', ') || 'Not specified'}
+Experience Level: ${userContext.experienceLevel || 'Not specified'}
+Current Role: ${userContext.profile.currentRole || 'Not specified'}
 
 Generate realistic insider intelligence based on typical networking patterns for companies of this size and industry.
 

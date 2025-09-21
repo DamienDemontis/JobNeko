@@ -103,6 +103,7 @@ export interface ExtractedJobData {
   // Application Process
   applicationProcess?: string;
   applicationDeadline?: string;
+  postedDate?: string;
   startDate?: string;
   interviewProcess?: string;
   timeToHire?: string;
@@ -334,6 +335,8 @@ EXAMPLE OUTPUT FORMAT:
   "requirements": "5+ years of backend development experience with Python and Django. Strong understanding of relational databases, particularly PostgreSQL. Experience with cloud platforms like AWS, containerization with Docker, and orchestration with Kubernetes. Knowledge of caching strategies with Redis. Proven track record of building and maintaining production systems at scale.",
   "perks": "Comprehensive health insurance including dental and vision. Flexible work arrangements with remote options. Professional development budget of $3,000 annually. Stock options and 401k matching. Unlimited PTO policy. Modern equipment and home office stipend. Team retreats and learning conferences.",
   "workMode": "remote",
+  "postedDate": "2024-01-15T10:00:00Z",
+  "applicationDeadline": "2024-02-15T23:59:59Z",
   "summary": "Senior Backend Engineer role at TechCorp focusing on scalable microservices development with Python and Django. Remote-friendly position offering excellent benefits, professional development opportunities, and the chance to work on high-impact systems serving millions of users."
 }
 
@@ -412,6 +415,8 @@ ENHANCED EXTRACTION REQUIREMENTS FOR RICH OVERVIEW DISPLAY:
 33. **Impact**: Extract information about role impact and outcomes
 34. **CultureHighlights**: Extract company culture keywords (collaborative, innovative, etc.)
 35. **WorkLifeBalance**: Extract work-life balance information (flexible hours, PTO, etc.)
+36. **PostedDate**: Extract job posting date in ISO format (look for "Posted", "Published", "Added", date stamps). Use exact dates when available.
+37. **ApplicationDeadline**: Extract application deadline in ISO format (look for "Apply by", "Deadline", "Close date", "Applications close"). Return null if no deadline specified.
 
 COMPREHENSIVE BREAKDOWN INSTRUCTIONS:
 - **SKILLS CATEGORIZATION**: Separate technical skills into specific categories

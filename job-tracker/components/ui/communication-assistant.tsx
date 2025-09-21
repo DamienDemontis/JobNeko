@@ -118,12 +118,11 @@ Recruiter Email: ${jobData.recruiterEmail || 'Not specified'}
 
 USER CONTEXT:
 Name: ${userContext.name}
-Industry Focus: ${userContext.professionalProfile.industryFocus?.join(', ') || 'Not specified'}
-Career Level: ${userContext.marketPositioning.experienceLevel}
-Communication Style: ${userContext.communicationStyle.tone}
-Key Skills: ${userContext.professionalProfile.keySkills.join(', ')}
+Industry Focus: ${userContext.industryFocus?.join(', ') || 'Not specified'}
+Career Level: ${userContext.experienceLevel || 'Not specified'}
+Skills: ${userContext.professionalProfile.skills?.join(', ') || 'Not specified'}
 Years Experience: ${userContext.professionalProfile.yearsOfExperience}
-Unique Value Props: ${userContext.marketPositioning.uniqueValueProps.join(', ')}
+Current Role: ${userContext.profile.currentRole || 'Not specified'}
 
 COMPANY INTELLIGENCE:
 Industry: ${companyIntel.industry}

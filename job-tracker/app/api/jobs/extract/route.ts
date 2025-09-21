@@ -131,6 +131,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         perks: extractedData.perks,
         workMode: extractedData.workMode,
         summary: extractedData.summary,
+        postedDate: extractedData.postedDate ? new Date(extractedData.postedDate) : null,
+        applicationDeadline: extractedData.applicationDeadline ? new Date(extractedData.applicationDeadline) : null,
         extractedData: JSON.stringify(extractedData),
       },
     });

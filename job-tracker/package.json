@@ -1,5 +1,5 @@
 {
-  "name": "job-tracker",
+  "name": "jobneko",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -46,6 +46,7 @@
     "date-fns": "^4.1.0",
     "jsonwebtoken": "^9.0.2",
     "lodash": "^4.17.21",
+    "lottie-react": "^2.4.1",
     "lucide-react": "^0.542.0",
     "multer": "^2.0.2",
     "next": "15.5.2",

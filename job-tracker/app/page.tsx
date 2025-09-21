@@ -1,18 +1,18 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { JobNekoLogo } from '@/components/ui/jobneko-logo';
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="container mx-auto px-4 py-16">
         <div className="text-center mb-16">
-          <h1 className="text-5xl font-bold text-gray-900 mb-6">
-            Job Tracker
-          </h1>
+          <div className="flex justify-center mb-6">
+            <JobNekoLogo size={120} textClassName="text-6xl" />
+          </div>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-8">
-            Extract, organize, and track job applications with AI-powered matching. 
-            Never lose track of an opportunity again.
+            Your AI-powered companion for job hunting. Extract, optimize, and land your dream job with intelligent insights and real-time market analysis.
           </p>
           <div className="space-x-4">
             <Button asChild size="lg">

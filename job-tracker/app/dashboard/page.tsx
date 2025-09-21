@@ -20,6 +20,7 @@ import { MatchScoreDonut } from '@/components/ui/match-score-donut';
 import { AIJobDiscovery } from '@/components/ui/ai-job-discovery';
 import { PerformanceAnalytics } from '@/components/ui/performance-analytics';
 import { SmartRecommendations } from '@/components/ui/smart-recommendations';
+import { JobNekoLogo } from '@/components/ui/jobneko-logo';
 
 interface Job {
   id: string;
@@ -249,9 +250,11 @@ export default function ProfessionalDashboard() {
       <header className="border-b border-gray-200 bg-white">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-black">Job Tracker</h1>
-              <p className="text-gray-600 text-sm mt-1">Welcome back, {user?.name || user?.email}</p>
+            <div className="flex items-center gap-4">
+              <JobNekoLogo size={60} textClassName="text-3xl" />
+              <div>
+                <p className="text-gray-600 text-sm">Welcome back, {user?.name || user?.email}</p>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <Button variant="outline" size="sm" asChild>

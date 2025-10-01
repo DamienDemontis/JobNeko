@@ -59,9 +59,8 @@ export class AnalyticsEngine {
         'job_analysis',
         userId,
         {
-          max_tokens: 2000,
-          temperature: 0.7,
-          model: 'gpt-4o-mini'
+          // No token limits - using unified AI architecture
+          model: 'gpt-5-mini'
         }
       );
 
@@ -150,9 +149,8 @@ export class AnalyticsEngine {
         'job_analysis',
         userId,
         {
-          max_tokens: 1500,
-          temperature: 0.6,
-          model: 'gpt-4o-mini'
+          // No token limits - using unified AI architecture
+          model: 'gpt-5-mini'
         }
       );
 

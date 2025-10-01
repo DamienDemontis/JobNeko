@@ -3,7 +3,7 @@
  * Analyzes resume vs job requirements to identify skill gaps and salary impact
  */
 
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 import { aiWebSearch } from './ai-web-search';
 
 export interface SkillProfile {
@@ -184,17 +184,16 @@ Return a JSON array of skills with this structure:
 Focus on concrete, specific skills. Avoid generic terms.`;
 
     try {
-      const response = await generateCompletion(prompt, {
-        temperature: 0.1,
-        max_tokens: 1500
-      });
-
-      if (!response || !response.content) {
+      const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt
+    });
+      if (!response || !(typeof response.data === 'string' ? response.data : JSON.stringify(response.data))) {
         throw new Error('Failed to get valid response from AI service');
       }
 
       // Clean the response to extract JSON from markdown code blocks
-      const cleanedContent = this.cleanJsonResponse(response.content);
+      const cleanedContent = this.cleanJsonResponse((typeof response.data === 'string' ? response.data : JSON.stringify(response.data)));
 
       if (!cleanedContent) {
         console.error('No valid JSON content found in AI response');
@@ -207,7 +206,7 @@ Focus on concrete, specific skills. Avoid generic terms.`;
       } catch (parseError) {
         console.error('JSON parsing failed:', parseError);
         console.error('Cleaned content:', cleanedContent);
-        console.error('Original content:', response.content);
+        console.error('Original content:', (typeof response.data === 'string' ? response.data : JSON.stringify(response.data)));
 
         // Try to salvage partial data by looking for valid JSON fragments
         try {
@@ -434,16 +433,15 @@ Return a JSON array of skills with this structure:
 Include both explicitly mentioned skills and commonly required skills for this role.`;
 
     try {
-      const response = await generateCompletion(prompt, {
-        temperature: 0.1,
-        max_tokens: 1500
-      });
-
-      if (!response || !response.content) {
+      const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt
+    });
+      if (!response || !(typeof response.data === 'string' ? response.data : JSON.stringify(response.data))) {
         throw new Error('Failed to get valid response from AI service');
       }
 
-      const cleanedContent = this.cleanJsonResponse(response.content);
+      const cleanedContent = this.cleanJsonResponse((typeof response.data === 'string' ? response.data : JSON.stringify(response.data)));
 
       if (!cleanedContent) {
         console.error('No valid JSON content found in AI response');
@@ -456,7 +454,7 @@ Include both explicitly mentioned skills and commonly required skills for this r
       } catch (parseError) {
         console.error('JSON parsing failed:', parseError);
         console.error('Cleaned content:', cleanedContent);
-        console.error('Original content:', response.content);
+        console.error('Original content:', (typeof response.data === 'string' ? response.data : JSON.stringify(response.data)));
 
         // Try to salvage partial data by looking for valid JSON fragments
         try {

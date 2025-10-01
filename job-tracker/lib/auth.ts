@@ -29,7 +29,6 @@ export function generateToken(userId: string, email: string, name?: string): str
 export function verifyToken(token: string): UserPayload | null {
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as UserPayload;
-    console.log('JWT verified successfully:', decoded);
     return decoded;
   } catch (error) {
     console.error('JWT verification error:', error instanceof Error ? error.message : error);
@@ -52,9 +51,7 @@ export async function createToken(userId: string): Promise<string> {
 }
 
 // Simplified: Validate JWT and return user data
-export async function validateToken(token: string) {
-  console.log('validateToken called with token:', token.substring(0, 30) + '...');
-  
+export async function validateToken(token: string) {  
   const payload = verifyToken(token);
   
   if (!payload) {
@@ -62,8 +59,6 @@ export async function validateToken(token: string) {
     return null;
   }
   
-  console.log('Token payload:', payload);
-
   // Verify user still exists in database
   const user = await prisma.user.findUnique({
     where: { id: payload.id },

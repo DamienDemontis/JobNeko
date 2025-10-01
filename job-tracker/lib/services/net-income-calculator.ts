@@ -1,7 +1,7 @@
 // AI-Powered Net Income Calculator with Location-Aware Tax Calculations
 // Uses RAG to get accurate tax data for any location including remote scenarios
 
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 import { PrismaClient } from '@prisma/client';
 import { internationalTaxRAG } from './international-tax-rag';
 
@@ -137,16 +137,15 @@ export class NetIncomeCalculatorService {
     // Generate AI-powered tax calculation with REAL data
     const prompt = this.buildCalculationPrompt(request, ragContext, taxData);
 
-    const aiResponse = await generateCompletion(prompt, {
-      max_tokens: 2500,
-      temperature: 0.1 // Low temperature for accurate calculations
+    const aiResponse = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt
     });
-
-    if (!aiResponse || !aiResponse.content) {
+    if (!aiResponse || !(typeof aiResponse.data === 'string' ? aiResponse.data : JSON.stringify(aiResponse.data))) {
       throw new Error('Failed to calculate net income. AI service unavailable.');
     }
 
-    return this.parseAIResponse(aiResponse.content, request);
+    return this.parseAIResponse((typeof aiResponse.data === 'string' ? aiResponse.data : JSON.stringify(aiResponse.data)), request);
   }
 
   private async buildTaxContext(request: NetIncomeRequest, taxData: any): Promise<string> {

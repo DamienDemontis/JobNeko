@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Select,
   SelectContent,
@@ -22,6 +23,7 @@ import {
   MapPin,
   DollarSign,
   AlertTriangle,
+  AlertCircle,
   CheckCircle,
   ExternalLink,
   Zap,
@@ -82,10 +84,10 @@ export default function ModernSalaryIntelligence({
   } | null>(null);
   const [convertingCurrency, setConvertingCurrency] = useState(false);
 
-  // Auto-load cached analysis on mount
-  useEffect(() => {
-    checkForCachedAnalysis();
-  }, [jobId]);
+  // Manual triggering only - NO AUTO-LOAD
+  // useEffect(() => {
+  //   checkForCachedAnalysis();
+  // }, [jobId]);
 
   const checkForCachedAnalysis = async () => {
     try {
@@ -203,13 +205,24 @@ export default function ModernSalaryIntelligence({
       }
 
       const data = await response.json();
+      console.log('🔍 API Response structure:', data);
+
+      // Handle different response structures
+      let analysisData = data.analysis || data;
+
+      // If we get raw AI format, try to access the transformed version
+      if (analysisData.compensation && !analysisData.salaryIntelligence) {
+        console.warn('⚠️ Received raw AI format instead of transformed format:', analysisData);
+        // The transformation should have happened on the server
+        throw new Error('Server returned invalid analysis format');
+      }
 
       setState(prev => ({
         ...prev,
         status: 'complete',
         progress: 100,
         currentStep: 'Analysis complete!',
-        analysis: data.analysis,
+        analysis: analysisData,
       }));
 
       toast.success(forceRefresh ? 'Fresh salary analysis completed!' : 'Salary analysis completed successfully!');
@@ -399,7 +412,10 @@ export default function ModernSalaryIntelligence({
 
   const renderAnalysis = () => {
     const { analysis } = state;
-    if (!analysis) return null;
+    if (!analysis || !analysis.salaryIntelligence || !analysis.salaryIntelligence.range) {
+      console.error('Invalid analysis structure:', analysis);
+      return null;
+    }
 
     return (
       <div className="space-y-6">
@@ -410,6 +426,11 @@ export default function ModernSalaryIntelligence({
               <CardTitle className="flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-green-600" />
                 Salary Intelligence
+                {(analysis as any).jobType && (analysis as any).jobType !== 'standard' && (
+                  <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300">
+                    {(analysis as any).jobType.toUpperCase()}
+                  </Badge>
+                )}
                 <Badge className={`${getConfidenceColor(analysis.salaryIntelligence.range.confidence)} border`}>
                   {Math.round(analysis.salaryIntelligence.range.confidence * 100)}% confidence
                 </Badge>
@@ -445,35 +466,67 @@ export default function ModernSalaryIntelligence({
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
-                <div className="text-2xl font-bold text-green-700">
-                  {formatCurrency(
-                    convertedSalaries?.min ?? analysis.salaryIntelligence.range.min,
-                    convertedSalaries?.currency ?? analysis.salaryIntelligence.range.currency
-                  )}
-                </div>
-                <div className="text-sm text-green-600">Minimum</div>
-              </div>
-              <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="text-2xl font-bold text-blue-700">
+            {/* Job Type Note for special cases */}
+            {(analysis as any).jobType && (analysis as any).jobType !== 'standard' && (analysis as any).jobTypeNotes && (
+              <Alert className="bg-yellow-50 border-yellow-200">
+                <AlertCircle className="w-4 h-4 text-yellow-600" />
+                <AlertDescription className="text-yellow-800">
+                  <strong>{(analysis as any).jobType.toUpperCase()} Position:</strong> {(analysis as any).jobTypeNotes}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Check if compensation is fixed (VIE, internship, etc.) */}
+            {(analysis.salaryIntelligence.range as any).isFixed ? (
+              <div className="text-center p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
+                <div className="text-3xl font-bold text-blue-700">
                   {formatCurrency(
                     convertedSalaries?.median ?? analysis.salaryIntelligence.range.median,
                     convertedSalaries?.currency ?? analysis.salaryIntelligence.range.currency
                   )}
                 </div>
-                <div className="text-sm text-blue-600">Market Rate</div>
-              </div>
-              <div className="text-center p-4 bg-purple-50 rounded-lg border border-purple-200">
-                <div className="text-2xl font-bold text-purple-700">
-                  {formatCurrency(
-                    convertedSalaries?.max ?? analysis.salaryIntelligence.range.max,
-                    convertedSalaries?.currency ?? analysis.salaryIntelligence.range.currency
-                  )}
+                <div className="text-sm text-blue-600 mt-2">
+                  {(analysis as any).jobType === 'vie' ? 'Fixed VIE Gratification' :
+                   (analysis as any).jobType === 'internship' ? 'Fixed Internship Stipend' :
+                   'Fixed Compensation'}
                 </div>
-                <div className="text-sm text-purple-600">Maximum</div>
+                {(analysis as any).jobTypeNotes && (
+                  <div className="text-xs text-gray-600 mt-2">
+                    {(analysis as any).jobTypeNotes}
+                  </div>
+                )}
               </div>
-            </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
+                  <div className="text-2xl font-bold text-green-700">
+                    {formatCurrency(
+                      convertedSalaries?.min ?? analysis.salaryIntelligence.range.min,
+                      convertedSalaries?.currency ?? analysis.salaryIntelligence.range.currency
+                    )}
+                  </div>
+                  <div className="text-sm text-green-600">Minimum</div>
+                </div>
+                <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="text-2xl font-bold text-blue-700">
+                    {formatCurrency(
+                      convertedSalaries?.median ?? analysis.salaryIntelligence.range.median,
+                      convertedSalaries?.currency ?? analysis.salaryIntelligence.range.currency
+                    )}
+                  </div>
+                  <div className="text-sm text-blue-600">Market Rate</div>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg border border-purple-200">
+                  <div className="text-2xl font-bold text-purple-700">
+                    {formatCurrency(
+                      convertedSalaries?.max ?? analysis.salaryIntelligence.range.max,
+                      convertedSalaries?.currency ?? analysis.salaryIntelligence.range.currency
+                    )}
+                  </div>
+                  <div className="text-sm text-purple-600">Maximum</div>
+                </div>
+              </div>
+            )}
 
             {convertedSalaries && (
               <div className="text-xs text-muted-foreground text-center bg-blue-50 p-2 rounded">
@@ -730,7 +783,7 @@ export default function ModernSalaryIntelligence({
                     <ExternalLink className="w-5 h-5 text-gray-600" />
                     Data Sources
                     <Badge variant="outline" className="text-xs">
-                      {analysis.sources.webSources.length} sources
+                      {analysis.sources?.webSources?.length || 0} sources
                     </Badge>
                   </div>
                   {sourcesExpanded ? (
@@ -744,7 +797,7 @@ export default function ModernSalaryIntelligence({
             <CollapsibleContent>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {analysis.sources.webSources.map((source, index) => (
+                  {(analysis.sources?.webSources || []).map((source, index) => (
                 <a
                   key={index}
                   href={source.url}

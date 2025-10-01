@@ -1,4 +1,4 @@
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 import { worldBankApi } from './world-bank-api';
 import { webScraper } from './web-scraper';
 import type { CityData } from '@prisma/client';
@@ -117,18 +117,17 @@ export class AIDataProcessor {
       
       console.log(`🧠 AI gap filling for ${params.city}, ${params.country}`);
 
-      const aiResponse = await generateCompletion(prompt, {
-        max_tokens: 800,
-        temperature: 0.3, // Lower temperature for more consistent data
-      });
-
-      if (!aiResponse?.content) {
+      const aiResponse = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt
+    });
+      if (!aiResponse.success) {
         console.warn('No AI response for gap filling');
         return null;
       }
 
       // Parse AI response
-      const parsedData = this.parseAIGapFillingResponse(aiResponse.content, params);
+      const parsedData = this.parseAIGapFillingResponse((typeof aiResponse.data === 'string' ? aiResponse.data : JSON.stringify(aiResponse.data)), params);
       
       if (parsedData) {
         console.log(`✅ AI successfully filled gaps for ${params.city}`);
@@ -311,13 +310,9 @@ OUTPUT: Confidence score (0.0-1.0) and any corrections needed.
 
 Response format: {"confidence": 0.8, "corrections": {"rentIndex": 85}, "reasoning": "explanation"}`;
 
-      const validationResponse = await generateCompletion(validationPrompt, {
-        max_tokens: 300,
-        temperature: 0.2
-      });
-
-      if (validationResponse?.content) {
-        const jsonMatch = validationResponse.content.match(/\{[\s\S]*\}/);
+      const validationResponse = await unifiedAI.complete(validationPrompt, 'gpt-5-mini', 'medium');
+      if (validationResponse?.success && validationResponse.data) {
+        const jsonMatch = (typeof validationResponse.data === 'string' ? validationResponse.data : JSON.stringify(validationResponse.data)).match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const validation = JSON.parse(jsonMatch[0]);
           
@@ -367,13 +362,9 @@ Common patterns:
 
 OUTPUT (JSON): {"city": "CityName", "country": "CountryName", "state": "State/Region", "isRemote": boolean, "confidence": 0.0-1.0}`;
 
-      const response = await generateCompletion(prompt, {
-        max_tokens: 200,
-        temperature: 0.3
-      });
-
-      if (response?.content) {
-        const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      const response = await unifiedAI.complete(prompt, 'gpt-5-mini', 'medium');
+      if (response?.success && response.data) {
+        const jsonMatch = (typeof response.data === 'string' ? response.data : JSON.stringify(response.data)).match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const resolved = JSON.parse(jsonMatch[0]);
           return {
@@ -421,13 +412,9 @@ Consider local cost of living, not US standards.
 
 OUTPUT (JSON): {"struggling": 30000, "tight": 45000, "comfortable": 75000, "thriving": 120000, "luxurious": 180000}`;
 
-      const response = await generateCompletion(prompt, {
-        max_tokens: 200,
-        temperature: 0.3
-      });
-
-      if (response?.content) {
-        const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      const response = await unifiedAI.complete(prompt, 'gpt-5-mini', 'medium');
+      if (response?.success && response.data) {
+        const jsonMatch = (typeof response.data === 'string' ? response.data : JSON.stringify(response.data)).match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const thresholds = JSON.parse(jsonMatch[0]);
           return thresholds;

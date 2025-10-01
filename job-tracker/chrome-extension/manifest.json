@@ -37,5 +37,11 @@
       "js": ["src/content.js"],
       "run_at": "document_idle"
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/black-cat.json"],
+      "matches": ["<all_urls>"]
+    }
   ]
 }

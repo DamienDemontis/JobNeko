@@ -3,7 +3,7 @@
  * Provides real, consistent resume-to-job matching with actionable feedback
  */
 
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 import { skillsGapAnalysis, type SkillsAnalysisResult } from './skills-gap-analysis';
 
 export interface ResumeMatchResult {
@@ -237,16 +237,15 @@ Extract and return JSON with:
 }`;
 
     try {
-      const response = await generateCompletion(prompt, {
-        temperature: 0.1,
-        max_tokens: 1500
-      });
-
-      if (!response || !response.content) {
+      const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt
+    });
+      if (!response || !(typeof response.data === 'string' ? response.data : JSON.stringify(response.data))) {
         throw new Error('Failed to get valid response from AI service');
       }
 
-      const cleanedContent = this.cleanJsonResponse(response.content);
+      const cleanedContent = this.cleanJsonResponse((typeof response.data === 'string' ? response.data : JSON.stringify(response.data)));
       return JSON.parse(cleanedContent);
     } catch (error) {
       console.error('Failed to extract resume components:', error);
@@ -316,16 +315,15 @@ Extract and return JSON with:
 }`;
 
     try {
-      const response = await generateCompletion(prompt, {
-        temperature: 0.1,
-        max_tokens: 1500
-      });
-
-      if (!response || !response.content) {
+      const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt
+    });
+      if (!response || !(typeof response.data === 'string' ? response.data : JSON.stringify(response.data))) {
         throw new Error('Failed to get valid response from AI service');
       }
 
-      const cleanedContent = this.cleanJsonResponse(response.content);
+      const cleanedContent = this.cleanJsonResponse((typeof response.data === 'string' ? response.data : JSON.stringify(response.data)));
       return JSON.parse(cleanedContent);
     } catch (error) {
       console.error('Failed to extract job components:', error);

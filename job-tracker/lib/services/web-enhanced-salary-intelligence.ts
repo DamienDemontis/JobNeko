@@ -3,12 +3,8 @@
  * Uses real web search to gather actual salary data and market information
  */
 
-import OpenAI from 'openai';
-import { aiWebSearch } from './ai-web-search';
-
-const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  : null;
+import { gpt5Service } from './gpt5-service';
+import { gpt5WebSearch } from './ai-web-search-gpt5';
 
 export interface WebEnhancedSalaryAnalysis {
   role: {
@@ -153,7 +149,7 @@ export class WebEnhancedSalaryIntelligence {
     postedSalary?: string,
     userLocation?: string
   ): Promise<WebEnhancedSalaryAnalysis> {
-    if (!openai) {
+    if (!process.env.OPENAI_API_KEY) {
       throw new Error('OpenAI API key not configured');
     }
 
@@ -218,7 +214,7 @@ export class WebEnhancedSalaryIntelligence {
     console.log(`🔍 Searching salary data for ${jobTitle} in ${location}...`);
     const query = `"${jobTitle}" salary range ${location} ${currentYear} levels.fyi glassdoor payscale`;
     searchQueries.push(query);
-    return await aiWebSearch.searchWeb(query);
+    return await gpt5WebSearch.searchWeb(query);
   }
 
   private async searchCostOfLivingWithProgress(location: string, searchQueries: string[]) {
@@ -226,7 +222,7 @@ export class WebEnhancedSalaryIntelligence {
     console.log(`🏠 Searching cost of living data for ${location}...`);
     const query = `cost of living ${location} ${currentYear} rent housing expenses numbeo`;
     searchQueries.push(query);
-    return await aiWebSearch.searchWeb(query);
+    return await gpt5WebSearch.searchWeb(query);
   }
 
   private async searchCompanyDataWithProgress(company: string, searchQueries: string[]) {
@@ -234,7 +230,7 @@ export class WebEnhancedSalaryIntelligence {
     console.log(`🏢 Searching company information for ${company}...`);
     const query = `"${company}" salary benefits compensation glassdoor company culture ${currentYear}`;
     searchQueries.push(query);
-    return await aiWebSearch.searchWeb(query);
+    return await gpt5WebSearch.searchWeb(query);
   }
 
   private async synthesizeAnalysis(
@@ -260,12 +256,7 @@ export class WebEnhancedSalaryIntelligence {
       companyData
     );
 
-    const completion = await openai!.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `You are an expert salary analyst synthesizing real web search data.
+    const systemPrompt = `You are an expert salary analyst synthesizing real web search data.
 
 Your analysis is based on:
 1. Real salary data from job sites and salary databases
@@ -273,18 +264,19 @@ Your analysis is based on:
 3. Real company information from reviews and corporate data
 
 Provide realistic assessments based on this real data, not estimates.
-Be transparent about data quality and confidence levels.`
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      temperature: 0.2,
-      response_format: { type: 'json_object' }
+Be transparent about data quality and confidence levels.
+
+Return ONLY valid JSON.`;
+
+    const fullPrompt = `${systemPrompt}\n\n${prompt}`;
+
+    const completion = await gpt5Service.complete(fullPrompt, {
+      model: 'gpt-5',
+      reasoning: 'high', // High reasoning for complex analysis
+      verbosity: 'medium'
     });
 
-    const result = JSON.parse(completion.choices[0].message.content || '{}');
+    const result = JSON.parse(completion || '{}');
     return this.validateAndEnrichSynthesis(result, salaryData, costOfLivingData, companyData);
   }
 
@@ -302,7 +294,7 @@ Be transparent about data quality and confidence levels.`
 
     return `Create a clean, well-presented web search report for: ${jobTitle} at ${company} in ${location}
 
-Present ONLY the web search findings from TAVILY in a professional report format. Do not add any calculations or synthetic data.
+Present ONLY the web search findings from GPT-5 native web search in a professional report format. Do not add any calculations or synthetic data.
 
 ## 📊 SALARY INTELLIGENCE REPORT
 

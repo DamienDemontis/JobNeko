@@ -9,6 +9,12 @@ const nextConfig: NextConfig = {
     // Disable type checking during builds for faster compilation
     ignoreBuildErrors: false,
   },
+  env: {
+    // Make sure environment variables are available
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    DATABASE_URL: process.env.DATABASE_URL,
+    JWT_SECRET: process.env.JWT_SECRET,
+  },
   webpack: (config: any, { isServer }: any) => {
     // Fix for pdf-parse module on server side
     if (isServer) {

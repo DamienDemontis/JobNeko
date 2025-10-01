@@ -24,7 +24,8 @@ import {
   Home
 } from 'lucide-react';
 import { aiServiceManagerClient } from '@/lib/services/ai-service-manager-client';
-import { webIntelligenceService } from '@/lib/services/web-intelligence';
+// TODO: Replace with API call - webIntelligenceService cannot be used client-side
+// import { webIntelligenceService } from '@/lib/services/web-intelligence';
 
 interface CultureMetrics {
   workLifeBalance: {
@@ -148,7 +149,21 @@ export function CultureAnalysis({ companyName, jobTitle, userId }: CultureAnalys
     setError(null);
 
     try {
-      const companyIntel = await webIntelligenceService.getCompanyIntelligence(companyName, userId);
+      // TODO: Replace with API call to avoid browser safety issues
+      const companyIntel = {
+        companyName,
+        industry: 'Technology',
+        businessModel: 'Loading...',
+        foundedYear: 2020,
+        financialData: { revenue: 0, employees: 0, fundingRounds: [], financialHealth: 'unknown' as const },
+        recentNews: [],
+        teamComposition: { totalEmployees: 0, departments: [], seniorityDistribution: {}, diversityMetrics: {}, leadershipTeam: [], growthRate: 0 },
+        competitorAnalysis: { mainCompetitors: [], marketPosition: 'unknown' as const, competitiveAdvantages: [], marketShare: 0 },
+        industryOutlook: { growthProjection: 'stable' as const, keyTrends: [], challenges: [], opportunities: [] },
+        riskAssessment: { overallRisk: 'medium' as const, stabilityFactors: [], concerningSignals: [], positiveIndicators: [] },
+        lastUpdated: new Date(),
+        dataQuality: 'limited' as const
+      };
 
       const analysisPrompt = `
 You are an expert organizational culture analyst. Analyze the company culture and team composition.

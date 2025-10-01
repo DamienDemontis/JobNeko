@@ -90,7 +90,7 @@ class AIServiceManagerClient {
           taskType,
           prompt,
           options: {
-            max_tokens: options.max_tokens || 2000,
+            // No token limits - using unified AI architecture
             temperature: options.temperature || 0.7,
             model: options.model
           },
@@ -112,7 +112,7 @@ class AIServiceManagerClient {
           completion_tokens: Math.floor(data.estimatedTokens * 0.6),
           total_tokens: data.estimatedTokens
         },
-        model: 'gpt-4o-mini',
+        model: 'gpt-5',
         cached: false
       };
 

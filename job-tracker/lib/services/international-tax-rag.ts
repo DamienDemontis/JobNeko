@@ -1,7 +1,7 @@
 // Real International Tax RAG System
 // Uses live data sources and AI to get accurate tax rates for ANY country
 
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 
 export interface InternationalTaxData {
   country: string;
@@ -65,16 +65,15 @@ export class InternationalTaxRAG {
   ): Promise<InternationalTaxData> {
     const prompt = this.buildTaxDataPrompt(location, workMode, employerLocation);
 
-    const aiResponse = await generateCompletion(prompt, {
-      max_tokens: 2500,
-      temperature: 0.1 // Very low for accurate tax data
+    const aiResponse = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt
     });
-
-    if (!aiResponse || !aiResponse.content) {
+    if (!aiResponse || !(typeof aiResponse.data === 'string' ? aiResponse.data : JSON.stringify(aiResponse.data))) {
       throw new Error(`Failed to get tax data for ${location}. AI service unavailable.`);
     }
 
-    return this.parseAITaxResponse(aiResponse.content, location);
+    return this.parseAITaxResponse((typeof aiResponse.data === 'string' ? aiResponse.data : JSON.stringify(aiResponse.data)), location);
   }
 
   private buildTaxDataPrompt(location: string, workMode: string, employerLocation?: string): string {

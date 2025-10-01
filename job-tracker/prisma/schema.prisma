@@ -17,14 +17,15 @@ model User {
   name          String?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
-  
+
   jobs          Job[]
   ratings       Rating[]
   resumes       Resume[]
   profile       UserProfile?
   aiUsage       AIUsageTracking[]
   jobAnalysisCache JobAnalysisCache[]
-  
+  extractionQueue ExtractionQueue[]
+
   @@index([email])
 }
 
@@ -343,4 +344,38 @@ model JobAnalysisCache {
   @@index([userId])
   @@index([analysisType])
   @@index([expiresAt])
+}
+
+
+enum ExtractionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  RETRY
+}
+
+model ExtractionQueue {
+  id           String           @id @default(cuid())
+  userId       String
+  url          String
+  status       ExtractionStatus @default(PENDING)
+  progress     Int              @default(0)
+  currentStep  String?
+  result       Json?
+  error        String?
+  retryCount   Int              @default(0)
+  maxRetries   Int              @default(3)
+  priority     Int              @default(0)
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([priority, status])
 }

@@ -1,7 +1,7 @@
 // AI-Powered Resume Content Extractor
 // Directly processes PDF content with AI - no hardcoded parsing
 
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 
 export interface ResumeExtraction {
   // Personal Information
@@ -239,15 +239,19 @@ Return the raw JSON object starting with { and ending with }.`;
       const prompt = this.buildExtractionPrompt(textContent, 'unknown.pdf');
       console.log('Generated prompt for AI, calling generateCompletion...');
 
-      const result = await generateCompletion(prompt, { max_tokens: 4000, temperature: 0.1 });
+      const result = await unifiedAI.process({
+        operation: 'resume_parsing',
+        content: prompt
+      });
 
-      if (!result || !result.content) {
-        console.error('❌ No content received from AI for resume extraction');
-        throw new Error('AI service failed to generate content for resume extraction');
+      if (!result.success) {
+        console.error('❌ Resume extraction failed:', result.error);
+        throw new Error(`AI service failed: ${result.error?.message}`);
       }
 
       console.log('✅ AI completion received, parsing response...');
-      return this.parseAIResponse(result.content);
+      const responseContent = typeof result.data === 'string' ? result.data : JSON.stringify(result.data);
+      return this.parseAIResponse(responseContent);
     } catch (error) {
       console.error('❌ AI resume parsing failed:', error);
       // If it's a parsing error, rethrow it to preserve the specific error message

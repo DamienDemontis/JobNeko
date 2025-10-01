@@ -1,16 +1,10 @@
 /**
- * AI Web Search Service
- * Provides real web search capabilities for salary intelligence
+ * AI Web Search Service - GPT-5 REAL Native Web Search
+ * Uses GPT-5's built-in web_search tool via Responses API for actual web searches
+ *
+ * ⚠️ SERVER-SIDE ONLY - Do not use in client-side components
+ * Use API routes to interact with this service from the frontend
  */
-
-import OpenAI from 'openai';
-
-const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  : null;
-
-// Tavily Search API configuration
-const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 
 interface SearchResult {
   title: string;
@@ -23,84 +17,85 @@ interface WebSearchResponse {
   query: string;
   results: SearchResult[];
   answer?: string;
+  timestamp?: string;
 }
 
 export class AIWebSearchService {
   /**
-   * Search the web using Tavily API - NO FALLBACKS FOR REAL DATA
+   * Search the web using GPT-5 native web search with different analysis levels
    */
-  async searchWeb(query: string, maxResults = 5): Promise<WebSearchResponse> {
-    if (!TAVILY_API_KEY) {
-      console.error('Tavily API key not configured - REAL WEB SEARCH REQUIRED');
-      throw new Error('Web search API not configured. Cannot provide real salary data without live search capability.');
-    }
-
+  async searchWeb(
+    query: string,
+    maxResults = 5,
+    analysisLevel: 'minimal' | 'low' | 'medium' | 'high' = 'medium'
+  ): Promise<WebSearchResponse> {
     try {
-      console.log(`🔍 Searching web: "${query.substring(0, 100)}..."`);
+      console.log(`🔍 GPT-5 Web Search (${analysisLevel}): "${query.substring(0, 100)}..."`);
 
-      const response = await fetch('https://api.tavily.com/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${TAVILY_API_KEY}`
-        },
-        body: JSON.stringify({
-          query: query.substring(0, 400),
-          search_depth: 'advanced',
-          include_answer: true,
-          include_raw_content: false,
-          max_results: Math.min(maxResults, 10),
-          include_domains: [
-            'glassdoor.com',
-            'salary.com',
-            'payscale.com',
-            'levels.fyi',
-            'numbeo.com',
-            'indeed.com',
-            'linkedin.com'
-          ],
-          time_range: 'year'
-        })
+      // Dynamic import to avoid client-side initialization
+      const { gpt5Service } = await import('./gpt5-service');
+
+      const searchResult = await gpt5Service.searchWeb(query, {
+        maxResults,
+        domains: [
+          'glassdoor.com',
+          'salary.com',
+          'payscale.com',
+          'levels.fyi',
+          'numbeo.com',
+          'indeed.com',
+          'linkedin.com',
+          'comparably.com',
+          'teamblind.com'
+        ],
+        searchType: 'general',
+        reasoning: analysisLevel,
+        verbosity: analysisLevel === 'minimal' ? 'low' : analysisLevel === 'high' ? 'high' : 'medium'
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Tavily API error ${response.status}:`, errorText);
-        throw new Error(`Tavily API error: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-
-      if (!data || typeof data !== 'object') {
-        throw new Error('Invalid response format from Tavily API');
-      }
-
-      const results = data.results?.map((r: any) => ({
-        title: r.title,
-        url: r.url,
-        content: r.content,
-        score: r.score || 0.5
-      })) || [];
-
-      console.log(`✅ Found ${results.length} web results for: "${query.substring(0, 50)}..."`);
+      console.log(`✅ GPT-5 found ${searchResult.results.length} web results`);
 
       return {
         query,
-        results,
-        answer: data.answer
+        results: searchResult.results,
+        answer: searchResult.summary,
+        timestamp: new Date().toISOString()
       };
     } catch (error) {
-      console.error('Web search failed:', error);
-      throw new Error(`Web search failed: ${error instanceof Error ? error.message : 'Unknown error'}. Real market data not available.`);
+      console.error('GPT-5 web search failed:', error);
+      throw new Error(`GPT-5 web search failed: ${error instanceof Error ? error.message : 'Unknown error'}. Real market data not available.`);
     }
   }
 
   /**
-   * DEPRECATED: No fallbacks allowed for real market data
-   * This ensures we never provide hardcoded or estimated values
+   * Search for salary-specific data using GPT-5 with high analysis level
    */
-  private async noFallbackAllowed(query: string): Promise<never> {
-    throw new Error('No fallback search allowed. Real web search is required for accurate salary data.');
+  async searchSalaryData(
+    jobTitle: string,
+    location: string,
+    company?: string,
+    experience?: string
+  ): Promise<WebSearchResponse> {
+    const query = [
+      `"${jobTitle}" salary ${location} ${new Date().getFullYear()}`,
+      company ? `"${company}"` : '',
+      experience ? `${experience} years experience` : '',
+      'compensation package total'
+    ].filter(q => q).join(' ');
+
+    return this.searchWeb(query, 8, 'high'); // Use high analysis for salary data
+  }
+
+  /**
+   * Search for company information using GPT-5 with medium analysis level
+   */
+  async searchCompanyInfo(
+    company: string,
+    topics: string[] = ['culture', 'reviews', 'benefits', 'work-life balance']
+  ): Promise<WebSearchResponse> {
+    const query = `"${company}" ${topics.join(' ')} employee reviews ${new Date().getFullYear()}`;
+
+    return this.searchWeb(query, 6, 'medium'); // Use medium analysis for company info
   }
 }
 

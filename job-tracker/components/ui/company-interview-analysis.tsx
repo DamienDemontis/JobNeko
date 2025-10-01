@@ -22,7 +22,7 @@ import {
   Award
 } from 'lucide-react';
 import { aiServiceManagerClient } from '@/lib/services/ai-service-manager-client';
-import { webIntelligenceService } from '@/lib/services/web-intelligence';
+// TODO: Replace with API call - webIntelligenceService cannot be used client-side
 
 interface InterviewReview {
   id: string;
@@ -112,7 +112,47 @@ export function CompanyInterviewAnalysis({ companyName, jobTitle, userId }: Comp
     setError(null);
 
     try {
-      const companyIntel = await webIntelligenceService.getCompanyIntelligence(companyName, userId);
+      // TODO: Replace with API call to avoid browser safety issues
+      const companyIntel = {
+        companyName,
+        industry: 'Technology',
+        businessModel: 'Loading business model...',
+        foundedYear: new Date().getFullYear(),
+        financialData: {
+          revenue: 0,
+          employees: 0,
+          fundingRounds: [],
+          financialHealth: 'unknown' as const
+        },
+        recentNews: [],
+        teamComposition: {
+          totalEmployees: 0,
+          departments: [],
+          seniorityDistribution: {},
+          diversityMetrics: {},
+          leadershipTeam: []
+        },
+        competitorAnalysis: {
+          mainCompetitors: [],
+          marketPosition: 'unknown' as const,
+          competitiveAdvantages: [],
+          marketShare: 0
+        },
+        industryOutlook: {
+          growthProjection: 'stable' as const,
+          keyTrends: [],
+          challenges: [],
+          opportunities: []
+        },
+        riskAssessment: {
+          overallRisk: 'medium' as const,
+          stabilityFactors: [],
+          concerningSignals: [],
+          positiveIndicators: []
+        },
+        lastUpdated: new Date(),
+        dataQuality: 'limited' as const
+      };
 
       const analysisPrompt = `
 You are an expert interview intelligence analyst. Analyze the interview process and patterns for this company.

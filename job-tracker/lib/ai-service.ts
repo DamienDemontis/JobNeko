@@ -1,20 +1,26 @@
 import OpenAI from 'openai';
+// Import GPT5Model type only, not the service instance (to avoid client-side initialization)
+import { GPT5Model } from './services/gpt5-service';
 
-// Initialize OpenAI client if API key is available
-const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    })
-  : null;
+// Re-export types for other modules (safe for client-side)
+export type { GPT5Model };
 
-// Ollama client configuration
-const OLLAMA_BASE_URL = process.env.OLLAMA_API_URL || 'http://localhost:11434';
+// Import unified response formatting utilities
+import {
+  parseAIResponse,
+  cleanJsonResponse,
+  handleAIServiceError,
+  validateEssentialFields,
+  logAIOperation
+} from '@/lib/utils/ai-response-formatter';
 
-// Available AI models in order of preference
+// OpenAI client will be initialized lazily when needed to avoid browser issues
+
+// Available GPT-5 models - no fallbacks
 const AI_MODELS = {
-  openai: 'gpt-4o-mini', // Cheaper and better than gpt-3.5-turbo
-  ollama: 'llama3.1:8b', // Popular local model
-  fallback: 'manual'
+  openai: 'gpt-5' as GPT5Model, // Latest GPT-5 with native web search
+  openai_mini: 'gpt-5-mini' as GPT5Model, // Cost-optimized GPT-5
+  openai_nano: 'gpt-5-nano' as GPT5Model // High-throughput GPT-5
 };
 
 export interface ExtractedJobData {
@@ -140,27 +146,21 @@ export async function extractJobDataWithAI(
     structured?: Record<string, unknown>;
   }
 ): Promise<ExtractedJobData> {
-  // Try AI services in order of preference
-  const aiServices = [
-    { name: 'openai', available: !!openai },
-    { name: 'ollama', available: await isOllamaAvailable() },
-  ];
-
-  const availableService = aiServices.find(service => service.available);
-  
-  if (!availableService) {
-    throw new Error('No AI services configured. Please set up OpenAI API key or run Ollama locally. AI extraction is required for job processing.');
+  // Use only OpenAI GPT-5 - NO FALLBACKS OR AUTO-RETRIES
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OpenAI API key not configured. GPT-5 is required for job extraction.');
   }
 
-  console.log(`Using ${availableService.name} for job extraction`);
-  
-  if (availableService.name === 'openai') {
+  console.log('Using GPT-5 for job extraction - no fallbacks');
+
+  try {
     return await extractWithOpenAI(pageData);
-  } else if (availableService.name === 'ollama') {
-    return await extractWithOllama(pageData);
+  } catch (error) {
+    // Show error directly instead of trying fallback services
+    const aiError = handleAIServiceError(error, 'job_extraction', pageData.url);
+    console.error('❌ Job extraction failed:', aiError);
+    throw new Error(`Job extraction failed: ${aiError.message}`);
   }
-
-  throw new Error('AI extraction failed. No fallback available.');
 }
 
 async function extractWithOpenAI(pageData: {
@@ -170,88 +170,224 @@ async function extractWithOpenAI(pageData: {
   title?: string;
   structured?: Record<string, unknown>;
 }): Promise<ExtractedJobData> {
-  const prompt = createExtractionPrompt(pageData);
+  // Create comprehensive but structured prompt for GPT-5
+  const comprehensivePrompt = `Extract job information and return ONLY a valid JSON object. No explanations, no markdown, no code blocks.
 
-  const response = await openai!.chat.completions.create({
-    model: AI_MODELS.openai,
-    messages: [
-      {
-        role: 'system',
-        content: 'You are an expert job data extraction specialist. Your primary goal is to extract ALL relevant information from job postings comprehensively and accurately. Do NOT summarize or shorten content - preserve all important details that would be valuable to job seekers. Focus on completeness, accuracy, and maintaining all specific details about technologies, responsibilities, benefits, and requirements. Be thorough and comprehensive. CRITICAL: Always return valid JSON only - no explanations or additional text.',
-      },
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ],
-    temperature: 0,
-    response_format: { type: 'json_object' },
+Your response must start with { and end with }. Example format:
+
+EXTRACT ALL THESE FIELDS:
+{
+  "title": "exact job title (remove company name if included)",
+  "company": "company name only",
+  "companyLogoUrl": "FULL absolute URL to company logo image (CRITICAL - see extraction rules below)",
+  "location": "full location or Remote/Hybrid",
+  "salary": "complete salary info with currency and period",
+  "salaryMin": numeric_minimum_if_available,
+  "salaryMax": numeric_maximum_if_available,
+  "salaryCurrency": "USD/EUR/GBP/etc",
+  "salaryFrequency": "annual/monthly/hourly",
+  "contractType": "Full-time/Part-time/Contract/Freelance/Internship",
+  "department": "department or team name",
+  "experienceLevel": "Junior/Mid/Senior/Principal/etc",
+  "yearsExperienceRequired": numeric_years_if_specified,
+  "managementLevel": "individual_contributor/team_lead/manager/director",
+  "skills": ["skill1", "skill2", "skill3..."],
+  "programmingLanguages": ["language1", "language2..."],
+  "frameworks": ["framework1", "framework2..."],
+  "tools": ["tool1", "tool2..."],
+  "databases": ["db1", "db2..."],
+  "cloudPlatforms": ["AWS", "Azure", "GCP..."],
+  "description": "complete job description - 3-4 paragraphs with role overview, responsibilities, team info, projects, technologies, impact",
+  "requirements": "detailed requirements and qualifications",
+  "responsibilities": ["responsibility1", "responsibility2..."],
+  "qualifications": ["qual1", "qual2..."],
+  "benefits": ["benefit1", "benefit2..."],
+  "perks": "additional perks and benefits info",
+  "workMode": "Remote/Hybrid/On-site",
+  "isNegotiable": true_if_salary_negotiable,
+  "bonusStructure": {"type": "performance/annual/signing", "percentage": number_if_available},
+  "equityOffered": {"type": "RSU/options/shares", "amount": "value_if_specified"},
+  "companySize": "startup/small/medium/large/enterprise",
+  "companyStage": "startup/scale_up/established/enterprise",
+  "applicationDeadline": "deadline_if_specified",
+  "startDate": "start_date_if_specified",
+  "summary": "comprehensive 2-3 sentence summary highlighting key aspects"
+}
+
+🔴🔴🔴 CRITICAL: COMPANY LOGO URL EXTRACTION 🔴🔴🔴
+
+**YOU MUST EXTRACT THE COMPANY LOGO URL. THIS IS MANDATORY.**
+
+**THINKING PROCESS (Do this mentally before extracting):**
+
+Step 1: Identify the company name
+  → Company name: "${pageData.title?.includes(' - ') ? pageData.title.split(' - ')[0] : '[company from HTML]'}"
+
+Step 2: Search HTML for ALL <img> tags containing company name or logo keywords
+  → Look for: src attributes in <img> tags
+  → Keywords to find: "logo", "brand", company name, "header", "nav"
+
+Step 3: Examine each <img> tag and score it:
+  → High priority: Contains "logo" or company name in src, alt, or class
+  → Medium priority: In header/nav area (early in HTML)
+  → Low priority: Generic images, banners, stock photos
+
+Step 4: Convert relative URLs to absolute URLs
+  → Base domain: "${pageData.url ? new URL(pageData.url).origin : 'https://[extract-from-url]'}"
+  → If src="/path" → prepend base domain
+  → If src="//cdn..." → prepend "https:"
+  → If src="path" (relative) → prepend base domain + "/"
+
+**REAL-WORLD EXAMPLES OF LOGO EXTRACTION:**
+
+Example 1: LinkedIn
+HTML: <img class="company-logo" alt="Microsoft Logo" src="/media/companies/microsoft.png">
+URL: https://linkedin.com/jobs/view/12345
+CORRECT OUTPUT: "companyLogoUrl": "https://linkedin.com/media/companies/microsoft.png"
+
+Example 2: Indeed
+HTML: <img src="//d2q79iu7y748jz.cloudfront.net/s/_logos/google.png" class="company_logo">
+URL: https://indeed.com/viewjob?jk=abc
+CORRECT OUTPUT: "companyLogoUrl": "https://d2q79iu7y748jz.cloudfront.net/s/_logos/google.png"
+
+Example 3: Custom Job Board
+HTML: <div class="company-card"><img src="../uploads/logos/startup_logo_96x96.png" alt="Startup Inc"></div>
+URL: https://jobs-board.com/posting/456
+CORRECT OUTPUT: "companyLogoUrl": "https://jobs-board.com/uploads/logos/startup_logo_96x96.png"
+
+Example 4: Job Listing with Company Section
+HTML: <aside class="company-info"><h3>About TechCorp</h3><img src="https://cdn.example.com/companies/techcorp.svg"></aside>
+URL: https://careers.example.com/job/789
+CORRECT OUTPUT: "companyLogoUrl": "https://cdn.example.com/companies/techcorp.svg"
+
+**SEARCH STRATEGY:**
+
+1. Search the ENTIRE HTML (all 30,000 characters) for these patterns:
+   - <img ... src="[anything with 'logo']" ...>
+   - <img ... src="[anything with company name]" ...>
+   - <img ... alt="[company name]" ...>
+   - <img ... class="[anything with 'logo' or 'brand']" ...>
+
+2. Look in these HTML sections (scan the whole HTML):
+   - Company information sections (class="company", "about-company", etc.)
+   - Header/navigation areas
+   - Sidebar with company details
+   - Job listing header with employer info
+
+3. URL conversion is CRITICAL:
+   - Extract base domain from page URL: ${pageData.url ? new URL(pageData.url).origin : 'https://domain'}
+   - If src="/logo.png" → "${pageData.url ? new URL(pageData.url).origin : 'https://domain'}/logo.png"
+   - If src="//cdn.site.com/logo.png" → "https://cdn.site.com/logo.png"
+   - If src="images/logo.png" → "${pageData.url ? new URL(pageData.url).origin : 'https://domain'}/images/logo.png"
+
+4. Quality checks:
+   - Must be a valid image URL (contains .png, .jpg, .svg, .webp, .gif OR from CDN)
+   - Must start with http:// or https://
+   - Should relate to the company (not generic job site branding)
+   - Prefer smaller images (logos) over large banners
+
+**WHAT YOU MUST DO:**
+1. Scan ALL the HTML provided (30,000 chars)
+2. Find EVERY <img> tag
+3. Check each one for logo-related attributes
+4. Convert the BEST candidate to absolute URL
+5. Return it in companyLogoUrl field
+
+**WHAT TO NEVER DO:**
+- Return null if ANY logo exists (null is ONLY for truly no logo found)
+- Return relative URLs (always convert to absolute)
+- Return job site's logo instead of company logo
+- Skip searching the full HTML
+
+**CURRENT JOB PAGE DATA:**
+Base URL: ${pageData.url}
+Base Domain: ${pageData.url ? new URL(pageData.url).origin : 'https://domain'}
+Company: Look for company name in HTML
+
+SALARY EXTRACTION RULES:
+- Extract numeric ranges: "$80,000 - $120,000" → salaryMin: 80000, salaryMax: 120000
+- Convert to annual: "$50/hour" → estimate annual equivalent
+- Detect currency symbols: $=USD, £=GBP, €=EUR
+- Mark as negotiable if text contains: "negotiable", "competitive", "DOE"
+
+CONTENT TO EXTRACT FROM:
+URL: ${pageData.url}
+Page Title: ${pageData.title || 'Not provided'}
+${pageData.structured ? `Structured Data: ${JSON.stringify(pageData.structured).substring(0, 1000)}` : ''}
+
+HTML CONTENT (FULL HTML - SCAN EVERYTHING FOR LOGO):
+${pageData.html ? pageData.html : 'No HTML available'}
+
+FULL TEXT CONTENT:
+${pageData.text?.substring(0, 8000) || 'No text content available'}
+
+IMPORTANT REMINDERS:
+1. Scan the ENTIRE HTML above - don't stop early
+2. Find ALL <img> tags and examine each one
+3. Convert relative URLs to absolute using the base domain: ${pageData.url ? new URL(pageData.url).origin : 'https://domain'}
+4. Return the best logo URL candidate in companyLogoUrl field
+5. If you find a logo, you MUST convert it to absolute URL format
+
+Now return the complete JSON object (start with { and end with }). The companyLogoUrl field is MANDATORY if any logo exists in the HTML:`;
+
+  // Dynamic import to avoid client-side initialization
+  const { gpt5Service } = await import('./services/gpt5-service');
+
+  console.log('🔍 Starting job extraction with GPT-5...');
+  const response = await gpt5Service.complete(comprehensivePrompt, {
+    model: 'gpt-5-mini' // No token limit - let GPT-5 use what it needs (up to 128k max)
   });
 
-  try {
-    const extracted = JSON.parse(response.choices[0].message.content || '{}');
-    return normalizeJobData(extracted);
-  } catch (error) {
-    console.error('Failed to parse OpenAI job extraction response:', error);
-    console.error('Response was:', response.choices[0].message.content?.substring(0, 200));
-    throw new Error('AI returned invalid JSON for job extraction. Please try again.');
+  console.log('🔍 GPT-5 raw response length:', response?.length || 0);
+  console.log('🔍 GPT-5 raw response preview:', response?.substring(0, 200));
+
+  const startTime = Date.now();
+  const parseResult = parseAIResponse<Record<string, unknown>>(response);
+
+  if (!parseResult.success) {
+    console.error('❌ Failed to parse GPT-5 job extraction response:', parseResult.error);
+    logAIOperation('job_extraction', 'gpt-5-mini', pageData.text?.length || 0, 0, Date.now() - startTime, false);
+    throw new Error(`Job extraction failed: ${parseResult.error?.message}`);
   }
+
+  const extracted = parseResult.data as any;
+  console.log('✅ Parsed extraction data:', {
+    title: extracted.title,
+    company: extracted.company,
+    location: extracted.location,
+    salary: extracted.salary,
+    companyLogoUrl: extracted.companyLogoUrl,
+    hasDescription: !!extracted.description,
+    skillsCount: Array.isArray(extracted.skills) ? extracted.skills.length : 0,
+    responsibilitiesCount: Array.isArray(extracted.responsibilities) ? extracted.responsibilities.length : 0,
+    keysCount: Object.keys(extracted).length
+  });
+
+  // Validate essential fields
+  const validation = validateEssentialFields(extracted, ['title', 'company'], 'job_extraction');
+  if (!validation.success) {
+    console.error('❌ Essential fields missing:', validation.error);
+    logAIOperation('job_extraction', 'gpt-5-mini', pageData.text?.length || 0, 0, Date.now() - startTime, false);
+    throw new Error(`Job extraction validation failed: ${validation.error?.message}`);
+  }
+
+  const normalized = normalizeJobData(extracted);
+  console.log('🎯 Normalized extraction data:', {
+    title: normalized.title,
+    company: normalized.company,
+    location: normalized.location,
+    salary: normalized.salary,
+    companyLogoUrl: normalized.companyLogoUrl,
+    hasDescription: !!normalized.description,
+    skillsCount: normalized.skills?.length || 0,
+    contractType: normalized.contractType
+  });
+
+  logAIOperation('job_extraction', 'gpt-5-mini', pageData.text?.length || 0, response?.length || 0, Date.now() - startTime, true);
+  return normalized;
 }
 
-async function extractWithOllama(pageData: {
-  url: string;
-  html?: string;
-  text?: string;
-  title?: string;
-  structured?: Record<string, unknown>;
-}): Promise<ExtractedJobData> {
-  const prompt = createExtractionPrompt(pageData);
-  const systemPrompt = 'You are a professional job data extraction specialist. Extract ALL relevant information from job postings comprehensively and accurately. Do NOT summarize or shorten content - preserve all important details that would be valuable to job seekers. Focus on completeness, accuracy, and maintaining all specific details about technologies, responsibilities, benefits, and requirements.';
-
-  try {
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: AI_MODELS.ollama,
-        prompt: `${systemPrompt}\n\n${prompt}\n\nRespond only with valid JSON containing comprehensive job information:`,
-        stream: false,
-        format: 'json',
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    try {
-      const extracted = JSON.parse(data.response);
-      return normalizeJobData(extracted);
-    } catch (parseError) {
-      console.error('Failed to parse Ollama job extraction response:', parseError);
-      console.error('Response was:', data.response?.substring(0, 200));
-      throw new Error('AI returned invalid JSON for job extraction. Please try again.');
-    }
-  } catch (error) {
-    console.error('Ollama extraction error:', error);
-    throw error;
-  }
-}
-
-async function isOllamaAvailable(): Promise<boolean> {
-  try {
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(5000), // 5 second timeout
-    });
-    return response.ok;
-  } catch (error) {
-    return false;
-  }
-}
+// Ollama functions removed - using only GPT-5 with no fallbacks
 
 function createExtractionPrompt(pageData: {
   url: string;
@@ -462,54 +598,70 @@ ENHANCED OUTPUT REQUIREMENTS:
 - Categorize skills properly (programmingLanguages vs frameworks vs tools)
 - Provide actionable insights in the AI analysis fields
 
-Return ONLY the JSON object with comprehensive, detailed extraction using ALL available fields.`;
+FINAL INSTRUCTIONS FOR OUTPUT:
+1. Return ONLY a valid JSON object - no other text
+2. Start your response immediately with {
+3. End your response with }
+4. Include "title" and "company" fields as they are required
+5. If any information is missing, use null instead of generic defaults
+6. Double-check JSON syntax before responding
+
+JSON OUTPUT:`;
 }
 
 export async function extractResumeData(pdfText: string): Promise<Record<string, any>> {
-  if (!openai) {
+  if (!process.env.OPENAI_API_KEY) {
     throw new Error('OpenAI API key required for resume extraction. Please configure OPENAI_API_KEY in your environment.');
   }
 
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      {
-        role: 'system',
-        content: 'Extract structured information from resume text. Return JSON with: skills (array), experience (array of {title, company, duration, description}), education (array of {degree, institution, year}).',
-      },
-      {
-        role: 'user',
-        content: `Extract resume information from: ${pdfText.substring(0, 4000)}`,
-      },
-    ],
-    temperature: 0,
-    response_format: { type: 'json_object' },
+  const prompt = `Extract structured information from resume text.
+
+IMPORTANT: Return ONLY valid JSON - no markdown code blocks, no \`\`\`json wrapper, no explanations. Just the raw JSON object with: skills (array), experience (array of {title, company, duration, description}), education (array of {degree, institution, year}).
+
+Resume text: ${pdfText.substring(0, 4000)}`;
+
+  // Dynamic import to avoid client-side initialization
+  const { gpt5Service } = await import('./services/gpt5-service');
+  const response = await gpt5Service.complete(prompt, {
+    model: 'gpt-5-mini',
+    reasoning: 'low',
+    verbosity: 'low'
   });
 
-  return JSON.parse(response.choices[0].message.content || '{}');
+  const parseResult = parseAIResponse(response, {});
+
+  if (!parseResult.success) {
+    console.error('Failed to parse resume extraction response:', parseResult.error);
+    logAIOperation('resume_parsing', 'gpt-5-mini', pdfText.length, 0, 0, false);
+    return {};
+  }
+
+  logAIOperation('resume_parsing', 'gpt-5-mini', pdfText.length, response?.length || 0, 0, true);
+  return parseResult.data!;
 }
 
 export async function calculateJobMatch(resumeData: Record<string, any>, jobData: Record<string, any>): Promise<number> {
-  if (!openai) {
+  if (!process.env.OPENAI_API_KEY) {
     throw new Error('OpenAI API key required for job matching. Please configure OPENAI_API_KEY in your environment.');
   }
 
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      {
-        role: 'system',
-        content: 'Calculate a match percentage (0-100) between a resume and job posting. Consider skills match, experience relevance, and requirements fulfillment.',
-      },
-      {
-        role: 'user',
-        content: `Resume: ${JSON.stringify(resumeData)}\n\nJob: ${JSON.stringify(jobData)}\n\nReturn only a number between 0 and 100.`,
-      },
-    ],
-    temperature: 0,
+  const prompt = `Calculate a match percentage (0-100) between a resume and job posting. Consider skills match, experience relevance, and requirements fulfillment.
+
+Resume: ${JSON.stringify(resumeData)}
+
+Job: ${JSON.stringify(jobData)}
+
+Return only a number between 0 and 100.`;
+
+  // Dynamic import to avoid client-side initialization
+  const { gpt5Service } = await import('./services/gpt5-service');
+  const response = await gpt5Service.complete(prompt, {
+    model: 'gpt-5-mini',
+    reasoning: 'low',
+    verbosity: 'low'
   });
 
-  const score = parseFloat(response.choices[0].message.content || '0');
+  const score = parseFloat(response || '0');
   return Math.min(100, Math.max(0, score));
 }
 
@@ -521,65 +673,47 @@ export async function generateCompletion(
   options: {
     max_tokens?: number;
     temperature?: number;
+    model?: GPT5Model;
+    reasoning?: 'minimal' | 'low' | 'medium' | 'high';
+    verbosity?: 'low' | 'medium' | 'high';
   } = {}
 ): Promise<{ content: string } | null> {
-  // Try AI services in order of preference with automatic fallback
+  // Use only GPT-5 - no fallbacks or auto-retries
   const aiServices = [
-    { name: 'openai', available: !!openai },
-    { name: 'ollama', available: await isOllamaAvailable() },
+    { name: 'gpt5', available: !!process.env.OPENAI_API_KEY }
   ];
 
-  // Try each service in order until one works
-  for (const service of aiServices) {
-    if (!service.available) continue;
+  // Use only the first available service - NO AUTO-RETRIES
+  const availableService = aiServices.find(service => service.available);
 
-    try {
-      if (service.name === 'openai') {
-        const response = await openai!.chat.completions.create({
-          model: AI_MODELS.openai,
-          messages: [
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-          max_tokens: options.max_tokens || 800,
-          temperature: options.temperature || 0.3,
-        });
-
-        return {
-          content: response.choices[0].message.content || ''
-        };
-      } else if (service.name === 'ollama') {
-        const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: AI_MODELS.ollama,
-            prompt: prompt,
-            stream: false,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`Ollama API error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        return {
-          content: data.response || ''
-        };
-      }
-    } catch (error) {
-      console.warn(`AI completion failed with ${service.name}, trying next service:`, error);
-      continue; // Try the next service
-    }
+  if (!availableService) {
+    throw new Error('No AI services available. Please configure OpenAI API key or run Ollama locally.');
   }
 
-  console.error('All AI services failed for completion generation');
-  return null;
+  // Only GPT-5 supported - no fallback services
+  if (availableService.name !== 'gpt5') {
+    throw new Error('Only GPT-5 is supported. Please configure OPENAI_API_KEY.');
+  }
+
+  try {
+    // Dynamic import to avoid client-side initialization
+    const { gpt5Service } = await import('./services/gpt5-service');
+    const response = await gpt5Service.complete(prompt, {
+      model: options.model || AI_MODELS.openai,
+      reasoning: options.reasoning || 'medium',
+      verbosity: options.verbosity || 'medium',
+      maxTokens: options.max_tokens  // No default token limit - use what user specifies or GPT-5's full capacity
+    });
+
+    return {
+      content: response
+    };
+  } catch (error) {
+    // Show error directly instead of retrying
+    const aiError = handleAIServiceError(error, 'generateCompletion', prompt.substring(0, 200));
+    console.error(`❌ AI completion failed with GPT-5:`, aiError);
+    throw new Error(`GPT-5 service error: ${aiError.message}`);
+  }
 }
 
 // AI-only extraction - no fallbacks allowed
@@ -635,9 +769,11 @@ function normalizeJobData(data: Record<string, unknown>): ExtractedJobData {
                           adjustmentKeywords.test(String(data.perks || ''));
   }
   
+  // Essential field validation is now handled by unified utilities before this function
+
   return {
-    title: String(data.title || 'Unknown Position'),
-    company: String(data.company || 'Unknown Company'),
+    title: String(data.title),
+    company: String(data.company),
     location: data.location as string | undefined,
     salary: data.salary as string | undefined,
     salaryMin,

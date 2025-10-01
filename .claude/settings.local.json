@@ -31,7 +31,8 @@
       "Bash(npx next:*)",
       "Bash(npx eslint:*)",
       "Bash(find:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "WebFetch(domain:openai.com)"
     ],
     "deny": [],
     "ask": []

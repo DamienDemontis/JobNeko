@@ -11,10 +11,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AdaptiveSalaryIntelligence } from '@/components/ui/adaptive-salary-intelligence';
 import ModernSalaryIntelligence from '@/components/ui/modern-salary-intelligence';
+import LocationIntelligence from '@/components/ui/location-intelligence';
 import JobEditForm from '@/components/ui/job-edit-form';
 import { MatchScoreDonut } from '@/components/ui/match-score-donut';
-import { JobAnalysisCard } from '@/components/ui/job-analysis-card';
-import { SmartRequirements } from '@/components/ui/smart-requirements';
+// Removed: JobAnalysisCard and SmartRequirements from overview tab
 import { ResumeOptimizer } from '@/components/ui/resume-optimizer';
 import ApplicationTimelineIntelligenceSmart from '@/components/ui/application-timeline-intelligence-smart';
 import CommunicationAssistantSmart from '@/components/ui/communication-assistant-smart';
@@ -35,6 +35,7 @@ import { InsiderIntelligence } from '@/components/ui/insider-intelligence';
 import { InsiderIntelligenceEnhanced } from '@/components/ui/insider-intelligence-enhanced';
 import { OutreachAssistant } from '@/components/ui/outreach-assistant';
 import { OutreachAssistantEnhanced } from '@/components/ui/outreach-assistant-enhanced';
+import { SiteHeader } from '@/components/ui/site-header';
 import { toast } from 'sonner';
 import {
   ArrowTopRightOnSquareIcon as ExternalLinkIcon,
@@ -312,6 +313,31 @@ export default function JobDetailPage() {
     }
   };
 
+  const handleRating = async (rating: number) => {
+    if (!token || !job) return;
+
+    try {
+      const response = await fetch(`/api/jobs/${job.id}/rate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ rating }),
+      });
+
+      if (response.ok) {
+        setJob({ ...job, rating });
+        toast.success('Rating saved');
+      } else {
+        toast.error('Failed to save rating');
+      }
+    } catch (error) {
+      console.error('Error saving rating:', error);
+      toast.error('Failed to save rating');
+    }
+  };
+
   const deleteJob = async () => {
     if (!token || !job) return;
 
@@ -447,7 +473,10 @@ export default function JobDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-gray-50">
+      {/* Site Header */}
+      <SiteHeader />
+
       {/* Cache Preloader - Invisible component that preloads AI caches */}
       {user && token && job && (
         <CachePreloader
@@ -459,17 +488,20 @@ export default function JobDetailPage() {
         />
       )}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-8">
-          <Button 
-            variant="ghost" 
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Back Button */}
+        <div className="mb-6">
+          <Button
+            variant="ghost"
             onClick={() => router.push('/dashboard')}
-            className="mb-4"
           >
             <ArrowLeftIcon className="h-4 w-4 mr-2" />
             Back to Dashboard
           </Button>
+        </div>
+
+        {/* Job Header */}
+        <div className="mb-8">
 
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex items-start justify-between">
@@ -588,7 +620,7 @@ export default function JobDetailPage() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 md:grid-cols-5 lg:grid-cols-10 bg-white border rounded-lg p-2 gap-1 h-auto min-h-[52px]">
+          <TabsList className="grid w-full grid-cols-4 md:grid-cols-5 lg:grid-cols-11 bg-white border rounded-lg p-2 gap-1 h-auto min-h-[52px]">
             <TabsTrigger
               value="overview"
               className="flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 hover:bg-gray-50 transition-all duration-200"
@@ -604,6 +636,14 @@ export default function JobDetailPage() {
               <span className="text-base">💰</span>
               <span className="hidden sm:inline font-medium">Salary Intel</span>
               <span className="sm:hidden text-xs">💰</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="location"
+              className="flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-teal-50 data-[state=active]:text-teal-700 hover:bg-gray-50 transition-all duration-200"
+            >
+              <span className="text-base">🌍</span>
+              <span className="hidden sm:inline font-medium">Location</span>
+              <span className="sm:hidden text-xs">🌍</span>
             </TabsTrigger>
             <TabsTrigger
               value="application"
@@ -809,29 +849,29 @@ export default function JobDetailPage() {
                   </Card>
                 )}
 
-                {/* AI Job Analysis Card */}
-                <JobAnalysisCard
-                  jobId={job.id}
-                  jobTitle={job.title}
-                  company={job.company}
-                  description={job.description}
-                  requirements={job.requirements}
-                  salary={job.salary}
-                  location={job.location}
-                  userId={user?.id || ''}
-                  token={token || ''}
-                />
+                {/* Removed: AI Job Analysis Card and Smart Requirements from overview tab */}
 
-                {/* Smart Requirements Categorization */}
-                <SmartRequirements
-                  jobId={job.id}
-                  jobTitle={job.title}
-                  company={job.company}
-                  requirements={job.requirements}
-                  description={job.description}
-                  userId={user?.id || ''}
-                  token={token || ''}
-                />
+                {/* Key Responsibilities */}
+                {extractedData?.responsibilities?.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <CheckCircleIcon className="h-5 w-5 text-green-600" />
+                        Key Responsibilities
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-2">
+                        {extractedData.responsibilities.map((responsibility: string, index: number) => (
+                          <li key={index} className="flex items-start gap-2">
+                            <CheckCircleIcon className="w-4 h-4 text-green-600 mt-1 flex-shrink-0" />
+                            <span className="text-gray-700">{responsibility}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* Enhanced Skills & Technologies */}
                 {(job.skills || extractedData?.programmingLanguages || extractedData?.frameworks) && (
@@ -902,24 +942,7 @@ export default function JobDetailPage() {
                   </Card>
                 )}
 
-                {/* Responsibilities */}
-                {extractedData?.responsibilities?.length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Key Responsibilities</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ul className="space-y-2">
-                        {extractedData.responsibilities.map((responsibility: string, index: number) => (
-                          <li key={index} className="flex items-start gap-2">
-                            <CheckCircleIcon className="w-4 h-4 text-green-600 mt-1 flex-shrink-0" />
-                            <span className="text-gray-700">{responsibility}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </CardContent>
-                  </Card>
-                )}
+                {/* Key Responsibilities moved before Skills & Technologies */}
 
                 {/* Benefits & Perks */}
                 {(job.perks || extractedData?.benefits?.length > 0) && (
@@ -948,6 +971,33 @@ export default function JobDetailPage() {
 
               {/* Sidebar */}
               <div className="space-y-6">
+                {/* Job Rating */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Your Rating</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-center space-x-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <StarIcon
+                          key={star}
+                          className={`w-8 h-8 cursor-pointer transition-all ${
+                            star <= (job.rating || 0)
+                              ? 'fill-black text-black'
+                              : 'text-gray-300 hover:text-gray-400 hover:scale-110'
+                          }`}
+                          onClick={() => handleRating(star)}
+                        />
+                      ))}
+                    </div>
+                    {job.rating && (
+                      <p className="text-center text-sm text-gray-500 mt-2">
+                        {job.rating} out of 5 stars
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+
                 {/* Quick Actions */}
                 <Card>
                   <CardHeader>
@@ -1029,120 +1079,146 @@ export default function JobDetailPage() {
             </div>
           </TabsContent>
 
-          {/* Enhanced Adaptive Salary Intelligence Tab */}
-          <TabsContent value="salary" className="space-y-6">
-            <ModernSalaryIntelligence
-              jobId={job.id}
-              jobTitle={job.title}
-              company={job.company}
-              location={job.location || ''}
-              hasResume={hasResume}
-              token={token || ''}
-            />
-          </TabsContent>
+          {/* Enhanced Adaptive Salary Intelligence Tab - LAZY LOADED */}
+          {activeTab === 'salary' && (
+            <div className="space-y-6">
+              <ModernSalaryIntelligence
+                jobId={job.id}
+                jobTitle={job.title}
+                company={job.company}
+                location={job.location || ''}
+                hasResume={hasResume}
+                token={token || ''}
+              />
+            </div>
+          )}
 
-          {/* Application Strategy Tab */}
-          <TabsContent value="application" className="space-y-6">
-            {/* Resume Optimizer */}
-            <ResumeOptimizer
-              jobId={job.id}
-              jobTitle={job.title}
-              company={job.company}
-              description={job.description || ''}
-              requirements={job.requirements || ''}
-              userId={user?.id || ''}
-              token={token || ''}
-              hasResume={hasResume}
-            />
+          {/* Location Intelligence Tab - LAZY LOADED */}
+          {activeTab === 'location' && (
+            <div className="space-y-6">
+              <LocationIntelligence
+                jobId={job.id}
+                jobLocation={job.location || ''}
+                jobTitle={job.title}
+                company={job.company}
+                salaryData={job.salaryMin && job.salaryMax ? {
+                  min: job.salaryMin,
+                  max: job.salaryMax,
+                  median: Math.round((job.salaryMin + job.salaryMax) / 2),
+                  currency: 'USD' // Default, component will handle detection
+                } : undefined}
+              />
+            </div>
+          )}
 
-            {/* Application Timeline Intelligence */}
-            <ApplicationTimelineIntelligenceSmart
-              jobId={job.id}
-              jobTitle={job.title}
-              company={job.company}
-              userId={user?.id || ''}
-              token={token || ''}
-              jobData={{
-                applicationDeadline: job.applicationDeadline ? new Date(job.applicationDeadline) : undefined,
-                postedDate: job.postedDate ? new Date(job.postedDate) : undefined,
-                location: job.location,
-                requirements: job.requirements || '',
-              }}
-            />
+          {/* Application Strategy Tab - LAZY LOADED */}
+          {activeTab === 'application' && (
+            <div className="space-y-6">
+              {/* Resume Optimizer */}
+              <ResumeOptimizer
+                jobId={job.id}
+                jobTitle={job.title}
+                company={job.company}
+                description={job.description || ''}
+                requirements={job.requirements || ''}
+                userId={user?.id || ''}
+                token={token || ''}
+                hasResume={hasResume}
+              />
 
-            {/* Communication Assistant */}
-            <CommunicationAssistantSmart
-              jobId={job.id}
-              jobTitle={job.title}
-              company={job.company}
-              userId={user?.id || ''}
-              token={token || ''}
-              jobData={{
-                description: job.description || '',
-                requirements: job.requirements || '',
-                location: job.location,
-              }}
-            />
-          </TabsContent>
+              {/* Application Timeline Intelligence */}
+              <ApplicationTimelineIntelligenceSmart
+                jobId={job.id}
+                jobTitle={job.title}
+                company={job.company}
+                userId={user?.id || ''}
+                token={token || ''}
+                jobData={{
+                  applicationDeadline: job.applicationDeadline ? new Date(job.applicationDeadline) : undefined,
+                  postedDate: job.postedDate ? new Date(job.postedDate) : undefined,
+                  location: job.location,
+                  requirements: job.requirements || '',
+                }}
+              />
 
-          {/* Unified Interview Center Tab */}
-          <TabsContent value="interview" className="space-y-6">
-            <UnifiedInterviewCenter
-              jobId={job.id}
-              jobTitle={job.title}
-              company={job.company}
-              userId={user?.id || ''}
-              token={token || ''}
-              jobData={{
-                title: job.title,
-                company: job.company,
-                description: job.description || '',
-                requirements: job.requirements || '',
-              }}
-            />
+              {/* Communication Assistant */}
+              <CommunicationAssistantSmart
+                jobId={job.id}
+                jobTitle={job.title}
+                company={job.company}
+                userId={user?.id || ''}
+                token={token || ''}
+                jobData={{
+                  description: job.description || '',
+                  requirements: job.requirements || '',
+                  location: job.location,
+                }}
+              />
+            </div>
+          )}
 
-            <SmartQuestionsSmart
-              jobId={job.id}
-              jobTitle={job.title}
-              company={job.company}
-              userId={user?.id || ''}
-              token={token || ''}
-            />
-          </TabsContent>
+          {/* Unified Interview Center Tab - LAZY LOADED */}
+          {activeTab === 'interview' && (
+            <div className="space-y-6">
+              <UnifiedInterviewCenter
+                jobId={job.id}
+                jobTitle={job.title}
+                company={job.company}
+                userId={user?.id || ''}
+                token={token || ''}
+                jobData={{
+                  title: job.title,
+                  company: job.company,
+                  description: job.description || '',
+                  requirements: job.requirements || '',
+                }}
+              />
 
-          {/* Network Intelligence Hub Tab */}
-          <TabsContent value="network" className="space-y-6">
-            {/* Using Enhanced LinkedIn Network Integration with unified caching */}
-            <LinkedInNetworkIntegrationEnhanced
-              jobId={job.id}
-              userId={user?.id || ''}
-              token={token || ''}
-              jobData={{
-                title: job.title,
-                company: job.company,
-                location: job.location,
-                description: job.description,
-              }}
-            />
+              <SmartQuestionsSmart
+                jobId={job.id}
+                jobTitle={job.title}
+                company={job.company}
+                userId={user?.id || ''}
+                token={token || ''}
+              />
+            </div>
+          )}
 
-            {/* Using Enhanced Insider Intelligence with unified caching */}
-            <InsiderIntelligenceEnhanced
-              companyName={job.company}
-              jobTitle={job.title}
-              userId={user?.id || ''}
-              token={token || ''}
-              jobId={job.id}
-            />
+          {/* Network Intelligence Hub Tab - LAZY LOADED */}
+          {activeTab === 'network' && (
+            <div className="space-y-6">
+              {/* Using Enhanced LinkedIn Network Integration with unified caching */}
+              <LinkedInNetworkIntegrationEnhanced
+                jobId={job.id}
+                userId={user?.id || ''}
+                token={token || ''}
+                jobData={{
+                  title: job.title,
+                  company: job.company,
+                  location: job.location,
+                  description: job.description,
+                }}
+              />
 
-            {/* Using Enhanced Outreach Assistant with unified caching */}
-            <OutreachAssistantEnhanced
-              companyName={job.company}
-              jobTitle={job.title}
-              userId={user?.id || ''}
-              token={token || ''}
-              jobId={job.id}
-            />
-          </TabsContent>
+              {/* Using Enhanced Insider Intelligence with unified caching */}
+              <InsiderIntelligenceEnhanced
+                companyName={job.company}
+                jobTitle={job.title}
+                userId={user?.id || ''}
+                token={token || ''}
+                jobId={job.id}
+              />
+
+              {/* Using Enhanced Outreach Assistant with unified caching */}
+              <OutreachAssistantEnhanced
+                companyName={job.company}
+                jobTitle={job.title}
+                userId={user?.id || ''}
+                token={token || ''}
+                jobId={job.id}
+              />
+            </div>
+          )}
 
           <TabsContent value="timeline">
             <Card>
@@ -1195,34 +1271,36 @@ export default function JobDetailPage() {
             </Card>
           </TabsContent>
 
-          {/* Company Intelligence Center Tab */}
-          <TabsContent value="company" className="space-y-6">
-            {/* Using Enhanced Company Intelligence with unified caching */}
-            <CompanyIntelligenceCenterEnhanced
-              jobId={job.id}
-              userId={user?.id || ''}
-              jobData={{
-                title: job.title,
-                company: job.company,
-                location: job.location,
-                description: job.description,
-                requirements: job.requirements,
-              }}
-              token={token || ''}
-            />
+          {/* Company Intelligence Center Tab - LAZY LOADED */}
+          {activeTab === 'company' && (
+            <div className="space-y-6">
+              {/* Using Enhanced Company Intelligence with unified caching */}
+              <CompanyIntelligenceCenterEnhanced
+                jobId={job.id}
+                userId={user?.id || ''}
+                jobData={{
+                  title: job.title,
+                  company: job.company,
+                  location: job.location,
+                  description: job.description,
+                  requirements: job.requirements,
+                }}
+                token={token || ''}
+              />
 
-            <CultureAnalysis
-              companyName={job.company}
-              jobTitle={job.title}
-              userId={user?.id || ''}
-            />
+              <CultureAnalysis
+                companyName={job.company}
+                jobTitle={job.title}
+                userId={user?.id || ''}
+              />
 
-            <CompetitiveAnalysis
-              companyName={job.company}
-              jobTitle={job.title}
-              userId={user?.id || ''}
-            />
-          </TabsContent>
+              <CompetitiveAnalysis
+                companyName={job.company}
+                jobTitle={job.title}
+                userId={user?.id || ''}
+              />
+            </div>
+          )}
 
           <TabsContent value="research">
             <Card>
@@ -1238,17 +1316,19 @@ export default function JobDetailPage() {
             </Card>
           </TabsContent>
 
-          {/* Smart Notes Tab */}
-          <TabsContent value="notes" className="space-y-6">
-            <SmartNotes
-              jobId={job.id}
-              userId={user?.id || ''}
-              jobData={{
-                title: job.title,
-                company: job.company,
-              }}
-            />
-          </TabsContent>
+          {/* Smart Notes Tab - LAZY LOADED */}
+          {activeTab === 'notes' && (
+            <div className="space-y-6">
+              <SmartNotes
+                jobId={job.id}
+                userId={user?.id || ''}
+                jobData={{
+                  title: job.title,
+                  company: job.company,
+                }}
+              />
+            </div>
+          )}
         </Tabs>
       </div>
     </div>

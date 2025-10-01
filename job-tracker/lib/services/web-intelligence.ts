@@ -2,10 +2,12 @@
  * Web Intelligence Service - Advanced web research and data collection
  * Provides comprehensive company and market intelligence
  * NO FALLBACKS - Only real web data and intelligent analysis
+ *
+ * ⚠️ SERVER-SIDE ONLY - Do not use in client-side components
+ * Use API routes to interact with this service from the frontend
  */
 
-import { aiWebSearch } from './ai-web-search';
-import { aiServiceManager } from './ai-service-manager';
+import { unifiedAI } from './unified-ai-service';
 
 export interface CompanyFinancialData {
   revenue?: number;
@@ -209,6 +211,8 @@ export class WebIntelligenceService {
         `"${companyName}" funding round series investment venture capital`
       ];
 
+      // Dynamic import to avoid client-side initialization
+      const { aiWebSearch } = await import('./ai-web-search');
       const searchResults = await Promise.all(
         queries.map(query => aiWebSearch.searchWeb(query, 5))
       );
@@ -225,14 +229,16 @@ export class WebIntelligenceService {
 
       // Analyze financial data using AI
       const analysisPrompt = this.buildFinancialAnalysisPrompt(companyName, relevantResults);
-      const response = await aiServiceManager.generateCompletion(
-        analysisPrompt,
-        'company_research',
-        userId,
-        { temperature: 0.1, max_tokens: 1500, responseFormat: 'json' }
-      );
+      const response = await unifiedAI.process({
+        operation: 'company_analysis',
+        content: analysisPrompt
+      });
 
-      return this.parseFinancialData(response.content);
+      if (!response.success) {
+        throw new Error(`Financial analysis failed: ${response.error?.message}`);
+      }
+      const responseContent = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
+      return this.parseFinancialData(responseContent);
 
     } catch (error) {
       console.error('Error gathering financial intelligence:', error);
@@ -248,6 +254,8 @@ export class WebIntelligenceService {
       const currentYear = new Date().getFullYear();
       const query = `"${companyName}" news ${currentYear} layoffs hiring acquisition funding CEO leadership`;
 
+      // Dynamic import to avoid client-side initialization
+      const { aiWebSearch } = await import('./ai-web-search');
       const searchResult = await aiWebSearch.searchWeb(query, 10);
       const newsResults = searchResult.results?.filter(result =>
         result.url && result.content && !result.content.includes('Based on AI knowledge')
@@ -259,14 +267,12 @@ export class WebIntelligenceService {
 
       // Analyze news sentiment and categorization
       const analysisPrompt = this.buildNewsAnalysisPrompt(companyName, newsResults);
-      const response = await aiServiceManager.generateCompletion(
-        analysisPrompt,
-        'company_research',
-        userId,
-        { temperature: 0.1, max_tokens: 2000, responseFormat: 'json' }
-      );
+      const response = await unifiedAI.process({
+        operation: 'company_analysis',
+        content: analysisPrompt
+      });
 
-      return this.parseNewsData(response.content);
+      if (!response.success) { throw new Error(`Analysis failed: ${response.error?.message}`); } const responseContent = typeof response.data === 'string' ? response.data : JSON.stringify(response.data); return this.parseNewsData(responseContent);
 
     } catch (error) {
       console.error('Error gathering news intelligence:', error);
@@ -281,6 +287,8 @@ export class WebIntelligenceService {
     try {
       const query = `"${companyName}" glassdoor reviews rating culture salary work life balance`;
 
+      // Dynamic import to avoid client-side initialization
+      const { aiWebSearch } = await import('./ai-web-search');
       const searchResult = await aiWebSearch.searchWeb(query, 5);
       const glassdoorResults = searchResult.results?.filter(result =>
         result.url && result.content &&
@@ -294,14 +302,12 @@ export class WebIntelligenceService {
 
       // Analyze Glassdoor data
       const analysisPrompt = this.buildGlassdoorAnalysisPrompt(companyName, glassdoorResults);
-      const response = await aiServiceManager.generateCompletion(
-        analysisPrompt,
-        'company_research',
-        userId,
-        { temperature: 0.1, max_tokens: 1500, responseFormat: 'json' }
-      );
+      const response = await unifiedAI.process({
+        operation: 'company_analysis',
+        content: analysisPrompt
+      });
 
-      return this.parseGlassdoorData(response.content);
+      if (!response.success) { throw new Error(`Analysis failed: ${response.error?.message}`); } const responseContent = typeof response.data === 'string' ? response.data : JSON.stringify(response.data); return this.parseGlassdoorData(responseContent);
 
     } catch (error) {
       console.error('Error gathering Glassdoor intelligence:', error);
@@ -316,6 +322,8 @@ export class WebIntelligenceService {
     try {
       const query = `"${companyName}" linkedin employees team size hiring engineering sales marketing`;
 
+      // Dynamic import to avoid client-side initialization
+      const { aiWebSearch } = await import('./ai-web-search');
       const searchResult = await aiWebSearch.searchWeb(query, 5);
       const teamResults = searchResult.results?.filter(result =>
         result.url && result.content && !result.content.includes('Based on AI knowledge')
@@ -323,14 +331,12 @@ export class WebIntelligenceService {
 
       // Analyze team data
       const analysisPrompt = this.buildTeamAnalysisPrompt(companyName, teamResults);
-      const response = await aiServiceManager.generateCompletion(
-        analysisPrompt,
-        'company_research',
-        userId,
-        { temperature: 0.1, max_tokens: 1200, responseFormat: 'json' }
-      );
+      const response = await unifiedAI.process({
+        operation: 'company_analysis',
+        content: analysisPrompt
+      });
 
-      return this.parseTeamData(response.content);
+      if (!response.success) { throw new Error(`Analysis failed: ${response.error?.message}`); } const responseContent = typeof response.data === 'string' ? response.data : JSON.stringify(response.data); return this.parseTeamData(responseContent);
 
     } catch (error) {
       console.error('Error gathering team intelligence:', error);
@@ -345,6 +351,8 @@ export class WebIntelligenceService {
     try {
       const query = `"${companyName}" competitors market share competitive analysis industry position`;
 
+      // Dynamic import to avoid client-side initialization
+      const { aiWebSearch } = await import('./ai-web-search');
       const searchResult = await aiWebSearch.searchWeb(query, 6);
       const competitorResults = searchResult.results?.filter(result =>
         result.url && result.content && !result.content.includes('Based on AI knowledge')
@@ -352,14 +360,12 @@ export class WebIntelligenceService {
 
       // Analyze competitor data
       const analysisPrompt = this.buildCompetitorAnalysisPrompt(companyName, competitorResults);
-      const response = await aiServiceManager.generateCompletion(
-        analysisPrompt,
-        'company_research',
-        userId,
-        { temperature: 0.1, max_tokens: 1500, responseFormat: 'json' }
-      );
+      const response = await unifiedAI.process({
+        operation: 'company_analysis',
+        content: analysisPrompt
+      });
 
-      return this.parseCompetitorData(response.content);
+      if (!response.success) { throw new Error(`Analysis failed: ${response.error?.message}`); } const responseContent = typeof response.data === 'string' ? response.data : JSON.stringify(response.data); return this.parseCompetitorData(responseContent);
 
     } catch (error) {
       console.error('Error gathering competitor intelligence:', error);
@@ -375,6 +381,8 @@ export class WebIntelligenceService {
       const currentYear = new Date().getFullYear();
       const query = `industry outlook ${currentYear} trends growth technology software market analysis`;
 
+      // Dynamic import to avoid client-side initialization
+      const { aiWebSearch } = await import('./ai-web-search');
       const searchResult = await aiWebSearch.searchWeb(query, 5);
       const industryResults = searchResult.results?.filter(result =>
         result.url && result.content && !result.content.includes('Based on AI knowledge')
@@ -382,14 +390,12 @@ export class WebIntelligenceService {
 
       // Analyze industry data
       const analysisPrompt = this.buildIndustryAnalysisPrompt(companyName, industryResults);
-      const response = await aiServiceManager.generateCompletion(
-        analysisPrompt,
-        'company_research',
-        userId,
-        { temperature: 0.1, max_tokens: 1200, responseFormat: 'json' }
-      );
+      const response = await unifiedAI.process({
+        operation: 'company_analysis',
+        content: analysisPrompt
+      });
 
-      return this.parseIndustryData(response.content);
+      if (!response.success) { throw new Error(`Analysis failed: ${response.error?.message}`); } const responseContent = typeof response.data === 'string' ? response.data : JSON.stringify(response.data); return this.parseIndustryData(responseContent);
 
     } catch (error) {
       console.error('Error gathering industry intelligence:', error);
@@ -422,14 +428,12 @@ Return as JSON with the following structure:
   "positiveIndicators": ["indicator1", "indicator2"]
 }`;
 
-      const response = await aiServiceManager.generateCompletion(
-        riskPrompt,
-        'company_research',
-        userId,
-        { temperature: 0.1, max_tokens: 800, responseFormat: 'json' }
-      );
+      const response = await unifiedAI.process({
+        operation: 'company_analysis',
+        content: riskPrompt
+      });
 
-      return this.parseRiskAssessment(response.content);
+      if (!response.success) { throw new Error(`Analysis failed: ${response.error?.message}`); } const responseContent = typeof response.data === 'string' ? response.data : JSON.stringify(response.data); return this.parseRiskAssessment(responseContent);
 
     } catch (error) {
       console.error('Error assessing company risk:', error);

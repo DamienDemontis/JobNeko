@@ -154,16 +154,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       });
     }
 
-    // Auto-start web-enhanced salary analysis in background
-    console.log('Starting background web-enhanced salary analysis for job:', job.id);
-    startBackgroundWebAnalysis(job.id, extractedData as unknown as Record<string, unknown>, job.location || undefined, job.company).catch(error => {
-      console.error('Background web-enhanced salary analysis failed for job', job.id, ':', error);
-    });
+    // Background analysis temporarily disabled to prevent interference with job extraction
+    console.log('Background web-enhanced salary analysis skipped for job:', job.id);
 
   return NextResponse.json({
     job,
-    message: 'Job extracted successfully with web intelligence',
-    webAnalysisStarted: true,
-    analysisType: 'web-enhanced'
+    message: 'Job extracted successfully',
+    webAnalysisStarted: false,
+    analysisType: 'basic'
   });
 });

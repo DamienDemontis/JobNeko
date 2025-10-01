@@ -194,7 +194,20 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      const extraction = JSON.parse(activeResume.content);
+      // Handle both JSON and plain text content
+      let extraction;
+      try {
+        extraction = JSON.parse(activeResume.content);
+      } catch (parseError) {
+        // If content is not JSON, create a basic structure
+        extraction = {
+          name: activeResume.content.split('\n')[0] || 'Unknown',
+          technicalSkills: activeResume.skills || [],
+          softSkills: [],
+          yearsOfExperience: 0,
+          careerLevel: 'Unknown'
+        };
+      }
 
       const summary = {
         fileName: activeResume.fileName,

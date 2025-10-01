@@ -3,7 +3,7 @@
  * Zero hardcoded values - Everything dynamic through AI and live APIs
  */
 
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 
 // Core types for perfect RAG system
 export interface LiveMarketData {
@@ -140,20 +140,19 @@ class ExternalAPIIntegrator {
     Do not include any explanations or text outside the JSON.
     `;
 
-    const response = await generateCompletion(aiPrompt, {
-      max_tokens: 1500,
-      temperature: 0.0 // Maximum precision for data retrieval
+    const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: aiPrompt
     });
-
     try {
       return {
         source: 'Bureau of Labor Statistics',
         confidence: 0.95,
         timestamp: new Date(),
-        data: JSON.parse(response?.content || '{}')
+        data: JSON.parse(response?.data || response?.rawResponse || '{}')
       };
     } catch (error) {
-      console.error('BLS JSON parse error:', response?.content);
+      console.error('BLS JSON parse error:', response?.data || response?.rawResponse);
       return {
         source: 'Bureau of Labor Statistics',
         confidence: 0.5,
@@ -203,17 +202,16 @@ class ExternalAPIIntegrator {
     Do not include any explanations or text outside the JSON.
     `;
 
-    const response = await generateCompletion(aiPrompt, {
-      max_tokens: 1500,
-      temperature: 0.0
+    const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: aiPrompt
     });
-
     try {
       return {
         source: 'Numbeo Live API',
         confidence: 0.90,
         timestamp: new Date(),
-        data: JSON.parse(response?.content || '{}')
+        data: JSON.parse(response?.data || response?.rawResponse || '{}')
       };
     } catch (error) {
       console.error('Failed to parse Numbeo data:', error);
@@ -263,17 +261,16 @@ class ExternalAPIIntegrator {
     Do not include any explanations or text outside the JSON.
     `;
 
-    const response = await generateCompletion(aiPrompt, {
-      max_tokens: 2000,
-      temperature: 0.1
+    const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: aiPrompt
     });
-
     try {
       return {
         source: 'Live Job Market Analysis',
         confidence: 0.85,
         timestamp: new Date(),
-        data: JSON.parse(response?.content || '{}')
+        data: JSON.parse(response?.data || response?.rawResponse || '{}')
       };
     } catch (error) {
       console.error('Failed to parse job market data:', error);
@@ -333,20 +330,19 @@ class ExternalAPIIntegrator {
     Do not include any explanations or text outside the JSON.
     `;
 
-    const response = await generateCompletion(aiPrompt, {
-      max_tokens: 2000,
-      temperature: 0.1
+    const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: aiPrompt
     });
-
     try {
       return {
         source: 'Company Intelligence APIs',
         confidence: 0.80,
         timestamp: new Date(),
-        data: JSON.parse(response?.content || '{}')
+        data: JSON.parse(response?.data || response?.rawResponse || '{}')
       };
     } catch (error) {
-      console.error('Company intelligence JSON parse error:', response?.content);
+      console.error('Company intelligence JSON parse error:', response?.data || response?.rawResponse);
       return {
         source: 'Company Intelligence APIs',
         confidence: 0.5,
@@ -401,17 +397,16 @@ class ExternalAPIIntegrator {
     Do not include any explanations or text outside the JSON.
     `;
 
-    const response = await generateCompletion(aiPrompt, {
-      max_tokens: 1500,
-      temperature: 0.0
+    const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: aiPrompt
     });
-
     try {
       return {
         source: 'Economic Data APIs',
         confidence: 0.90,
         timestamp: new Date(),
-        data: JSON.parse(response?.content || '{}')
+        data: JSON.parse(response?.data || response?.rawResponse || '{}')
       };
     } catch (error) {
       console.error('Failed to parse economic indicators:', error);
@@ -462,17 +457,16 @@ class ExternalAPIIntegrator {
     Do not include any explanations or text outside the JSON.
     `;
 
-    const response = await generateCompletion(aiPrompt, {
-      max_tokens: 2000,
-      temperature: 0.1
+    const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: aiPrompt
     });
-
     try {
       return {
         source: 'Industry Intelligence',
         confidence: 0.75,
         timestamp: new Date(),
-        data: JSON.parse(response?.content || '{}')
+        data: JSON.parse(response?.data || response?.rawResponse || '{}')
       };
     } catch (error) {
       console.error('Failed to parse industry trends:', error);
@@ -522,17 +516,16 @@ class ExternalAPIIntegrator {
     Do not include any explanations or text outside the JSON.
     `;
 
-    const response = await generateCompletion(aiPrompt, {
-      max_tokens: 1500,
-      temperature: 0.0
+    const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: aiPrompt
     });
-
     try {
       return {
         source: 'Tax Calculation APIs',
         confidence: 0.95,
         timestamp: new Date(),
-        data: JSON.parse(response?.content || '{}')
+        data: JSON.parse(response?.data || response?.rawResponse || '{}')
       };
     } catch (error) {
       console.error('Failed to parse tax data:', error);
@@ -666,17 +659,16 @@ export class PerfectAIRAG {
     CRITICAL: Return ONLY the JSON object. Do not include any explanations or text outside the JSON.
     `;
 
-    const response = await generateCompletion(aiPrompt, {
-      max_tokens: 1000,
-      temperature: 0.1
+    const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: aiPrompt
     });
-
     try {
       return {
         source: 'AI Job Description Analysis',
         confidence: 0.90,
         timestamp: new Date(),
-        data: JSON.parse(response?.content || '{}')
+        data: JSON.parse(response?.data || response?.rawResponse || '{}')
       };
     } catch (error) {
       console.error('Failed to parse job description:', error);
@@ -721,17 +713,16 @@ export class PerfectAIRAG {
     Do not include any explanations or text outside the JSON.
     `;
 
-    const response = await generateCompletion(aiPrompt, {
-      max_tokens: 1500,
-      temperature: 0.2
+    const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: aiPrompt
     });
-
     try {
       return {
         source: 'Market Sentiment Analysis',
         confidence: 0.70,
         timestamp: new Date(),
-        data: JSON.parse(response?.content || '{}')
+        data: JSON.parse(response?.data || response?.rawResponse || '{}')
       };
     } catch (error) {
       console.error('Failed to parse market sentiment:', error);
@@ -776,17 +767,16 @@ export class PerfectAIRAG {
     Do not include any explanations or text outside the JSON.
     `;
 
-    const response = await generateCompletion(aiPrompt, {
-      max_tokens: 1500,
-      temperature: 0.1
+    const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: aiPrompt
     });
-
     try {
       return {
         source: 'Competitive Intelligence',
         confidence: 0.75,
         timestamp: new Date(),
-        data: JSON.parse(response?.content || '{}')
+        data: JSON.parse(response?.data || response?.rawResponse || '{}')
       };
     } catch (error) {
       console.error('Failed to parse competitor analysis:', error);
@@ -817,23 +807,22 @@ export class PerfectAIRAG {
     // Synthesize analysis through AI
     const analysisPrompt = this.buildAnalysisPrompt(ragContext, jobDescription, userLocation);
 
-    const response = await generateCompletion(analysisPrompt, {
-      max_tokens: 3000,
-      temperature: 0.1
+    const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: analysisPrompt
     });
-
-    if (!response || !response.content) {
+    if (!response || !(typeof response.data === 'string' ? response.data : JSON.stringify(response.data))) {
       throw new Error('AI analysis failed - unable to synthesize RAG context data');
     }
 
     let analysis;
     try {
       console.log('Perfect AI RAG: Parsing final analysis response...');
-      analysis = JSON.parse(response.content);
+      analysis = JSON.parse((typeof response.data === 'string' ? response.data : JSON.stringify(response.data)));
       console.log('Perfect AI RAG: Successfully parsed analysis');
     } catch (error) {
       console.error('Failed to parse final AI analysis:', error);
-      console.error('AI response was:', response.content?.substring(0, 500));
+      console.error('AI response was:', (typeof response.data === 'string' ? response.data : JSON.stringify(response.data))?.substring(0, 500));
 
       // Return a structured error response
       return {

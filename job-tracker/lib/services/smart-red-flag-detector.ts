@@ -7,7 +7,7 @@ import { ExtractedJobData } from '../ai-service';
 // import { ResumeExtraction } from './resume-analysis-service';
 import { JobClassification } from './job-classification-engine';
 import { ContextualSalaryAnalysis } from './contextual-salary-analyzer';
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 
 export interface RedFlag {
   id: string;
@@ -602,13 +602,12 @@ Return ONLY a JSON array of red flags:
 Be specific and actionable. Only include genuine concerns, not nitpicking.`;
 
     try {
-      const response = await generateCompletion(prompt, {
-        max_tokens: 2000,
-        temperature: 0.2
-      });
-
-      if (response?.content) {
-        const aiFlags = JSON.parse(response.content);
+      const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt
+    });
+      if (response?.data || response?.rawResponse) {
+        const aiFlags = JSON.parse((typeof response.data === 'string' ? response.data : JSON.stringify(response.data)));
         return Array.isArray(aiFlags) ? aiFlags : [];
       }
     } catch (error) {

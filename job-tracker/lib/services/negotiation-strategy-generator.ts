@@ -8,7 +8,7 @@ import { ResumeJobMatch } from './resume-analysis-service';
 import { JobClassification } from './job-classification-engine';
 import { ContextualSalaryAnalysis } from './contextual-salary-analyzer';
 import { PersonalizedJobInsights } from './personalized-insights-engine';
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 
 export interface NegotiationStrategy {
   // Overall strategy assessment
@@ -476,17 +476,16 @@ Return detailed JSON following this structure:
 
 Focus on practical, actionable advice. Be specific with scripts and timing. Consider their personality and risk tolerance.`;
 
-    const response = await generateCompletion(prompt, {
-      max_tokens: 4000,
-      temperature: 0.2 // Lower temperature for more consistent advice
+    const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt
     });
-
-    if (!response?.content) {
+    if (!response.success) {
       return this.getFallbackStrategy(job, userResume, userContext);
     }
 
     try {
-      const strategy = JSON.parse(response.content);
+      const strategy = JSON.parse((typeof response.data === 'string' ? response.data : JSON.stringify(response.data)));
 
       // Add metadata
       strategy.strategy_metadata = {

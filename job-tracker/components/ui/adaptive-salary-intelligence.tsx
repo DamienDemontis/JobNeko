@@ -30,7 +30,7 @@ import {
 import { JobClassification, jobClassificationEngine } from '../../lib/services/job-classification-engine';
 import { ResumeJobMatch, resumeAnalysisService, UserContext } from '../../lib/services/resume-analysis-service';
 import { ResumeExtraction } from '../../lib/services/ai-resume-extractor';
-import { ExtractedJobData } from '../../lib/ai-service';
+import type { ExtractedJobData } from '../../lib/ai-service';
 // import { ContextualSalaryAnalysis, contextualSalaryAnalyzer } from '../../lib/services/contextual-salary-analyzer';
 import { PersonalizedJobInsights, personalizedInsightsEngine } from '../../lib/services/personalized-insights-engine';
 import { NegotiationStrategy, negotiationStrategyGenerator } from '../../lib/services/negotiation-strategy-generator';
@@ -48,169 +48,6 @@ interface AdaptiveSalaryIntelligenceProps {
   className?: string;
 }
 
-/**
- * Generate salary analysis using pure AI+web search - NO hardcoded values
- * Uses Tavily web search + OpenAI to analyze real market data
- */
-async function generatePureAISalaryAnalysis(jobData: ExtractedJobData, classification: JobClassification) {
-  try {
-    // Use AI web search service to get real salary data
-    const { aiWebSearch } = await import('../../lib/services/ai-web-search');
-
-    // Search for salary data using multiple relevant queries
-    const searchQueries = [
-      `${jobData.title} salary ${jobData.location} ${new Date().getFullYear()}`,
-      `${jobData.company} ${jobData.title} compensation`,
-      `${classification.seniorityLevel} developer salary ${jobData.location}`,
-      `remote software engineer salary ${classification.workArrangement}`
-    ];
-
-    console.log(`🔍 Searching with queries: ${searchQueries.join(', ')}`);
-
-    // Get salary data from web search
-    const salaryData = await aiWebSearch.searchWeb(
-      `${jobData.title} salary ${jobData.location || 'Remote'} ${jobData.company}`,
-      3
-    );
-
-    if (salaryData.results && salaryData.results.length > 0) {
-      // Get additional AI analysis of market conditions
-      const marketAnalysis = await aiWebSearch.searchWeb(
-        `${jobData.title} ${jobData.location} job market demand competition trends ${new Date().getFullYear()}`,
-        3
-      );
-
-      return {
-        compensation: {
-          salaryRange: {
-            min: 80000,
-            max: 120000,
-            median: 100000,
-            currency: 'USD',
-            confidence: 0.7,
-          },
-          marketPosition: 'estimated',
-          marketData: salaryData.results[0]?.content || 'Market data from web search'
-        },
-        market: {
-          demand: 'medium',
-          competition: 'medium',
-          growth: 'positive',
-          outlook: marketAnalysis.answer || 'Market outlook based on web search data'
-        },
-        company: {
-          size: classification.companyType,
-          industry: 'Technology',
-          compensationPhilosophy: 'Based on live web search analysis',
-          glassdoorRating: 4.2
-        }
-      };
-    }
-  } catch (error) {
-    console.warn('🚨 Pure AI salary analysis failed:', error);
-  }
-
-  // Return null if no data found - let UI handle gracefully
-  return null;
-}
-
-/**
- * Detect currency from location using AI web search - NO hardcoded mappings
- */
-async function detectCurrencyFromWebSearch(location: string, aiWebSearch: any): Promise<string> {
-  try {
-    const searchResult = await aiWebSearch.searchWeb(`currency ${location} salary payments`, 1);
-    const { generateCompletion } = await import('../../lib/ai-service');
-
-    const result = await generateCompletion(
-      `Based on this web search about ${location}: ${searchResult.answer}
-
-      What currency is typically used for salaries in ${location}? Return only the 3-letter currency code (USD, EUR, GBP, JPY, KRW, etc.).`,
-      { max_tokens: 10 }
-    );
-
-    return result?.content?.trim()?.toUpperCase() || 'USD';
-  } catch (error) {
-    console.warn('Currency detection failed, using USD');
-    return 'USD';
-  }
-}
-
-/**
- * Extract market metrics from AI analysis - NO hardcoded numbers
- */
-async function extractMarketMetricFromAI(aiResponse: string | undefined, metric: string): Promise<number> {
-  if (!aiResponse) return 0;
-
-  try {
-    const { generateCompletion } = await import('../../lib/ai-service');
-
-    const result = await generateCompletion(
-      `From this market analysis: "${aiResponse}"
-
-      Extract the ${metric} level for this job market. Return a number from 0-100 where:
-      - 0-20: Very low ${metric}
-      - 21-40: Low ${metric}
-      - 41-60: Moderate ${metric}
-      - 61-80: High ${metric}
-      - 81-100: Very high ${metric}
-
-      Return only the number.`,
-      { max_tokens: 10 }
-    );
-
-    const score = parseInt(result?.content?.trim() || '0');
-    return Math.min(100, Math.max(0, score));
-  } catch (error) {
-    console.warn(`Failed to extract ${metric} metric`);
-    return 0;
-  }
-}
-
-/**
- * Detect industry from company web search - NO hardcoded industry lists
- */
-async function detectIndustryFromWebSearch(company: string, aiWebSearch: any): Promise<string> {
-  try {
-    const searchResult = await aiWebSearch.searchWeb(`${company} company industry business`, 1);
-    const { generateCompletion } = await import('../../lib/ai-service');
-
-    const result = await generateCompletion(
-      `Based on this information about ${company}: ${searchResult.answer}
-
-      What industry does this company operate in? Return a concise industry name (e.g., "Technology", "Healthcare", "Finance", "Manufacturing", etc.).`,
-      { max_tokens: 20 }
-    );
-
-    return result?.content?.trim() || 'Technology';
-  } catch (error) {
-    console.warn('Industry detection failed');
-    return 'Technology';
-  }
-}
-
-/**
- * Get company rating from web search - NO hardcoded ratings
- */
-async function getCompanyRatingFromWebSearch(company: string, aiWebSearch: any): Promise<number> {
-  try {
-    const searchResult = await aiWebSearch.searchWeb(`${company} glassdoor rating employee reviews`, 1);
-    const { generateCompletion } = await import('../../lib/ai-service');
-
-    const result = await generateCompletion(
-      `From this information about ${company}: ${searchResult.answer}
-
-      What is the company's Glassdoor or employee rating? Return a number from 1.0 to 5.0. If no rating is found, return 0.`,
-      { max_tokens: 10 }
-    );
-
-    const rating = parseFloat(result?.content?.trim() || '0');
-    return Math.min(5.0, Math.max(0, rating));
-  } catch (error) {
-    console.warn('Company rating detection failed');
-    return 0;
-  }
-}
 
 export function AdaptiveSalaryIntelligence({
   jobId,
@@ -229,12 +66,20 @@ export function AdaptiveSalaryIntelligence({
   const [financialImpact, setFinancialImpact] = useState<FinancialImpactAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false); // Prevent multiple simultaneous calls
 
   useEffect(() => {
+    console.log('🔄 AdaptiveSalaryIntelligence useEffect triggered for jobId:', jobId);
     analyzeJob();
-  }, [jobData, userResume, userLocation]);
+  }, [jobId]); // Only depend on jobId to prevent multiple calls
 
   const analyzeJob = async () => {
+    if (isAnalyzing) {
+      console.log('⏸️ Analysis already in progress, skipping...');
+      return;
+    }
+
+    setIsAnalyzing(true);
     setLoading(true);
     setError(null);
 
@@ -254,120 +99,82 @@ export function AdaptiveSalaryIntelligence({
         setResumeMatch(matchAnalysis);
       }
 
-      // Step 3: Get salary analysis - try web-enhanced first, fallback to Perfect AI RAG
+      // Step 3: Get salary analysis with fail-fast approach - NO FALLBACKS
       let salaryData = null;
 
-      // Try web-enhanced analysis first
       try {
-        const response = await fetch(`/api/jobs/${jobId}/web-enhanced-salary`, {
+        console.log('🚀 Starting single-pass salary analysis...');
+        const response = await fetch(`/api/jobs/${jobId}/enhanced-salary-analysis`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
           },
         });
 
-        if (response.ok) {
-          const webAnalysis = await response.json();
-          salaryData = webAnalysis.data;
-          console.log('✅ Web-enhanced salary analysis succeeded');
-        } else {
-          console.warn('🌐 Web-enhanced salary analysis failed, trying Perfect AI RAG fallback');
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Salary analysis failed (${response.status}): ${errorText}`);
         }
+
+        const analysisResult = await response.json();
+
+        if (analysisResult.error) {
+          throw new Error(analysisResult.error);
+        }
+
+        salaryData = analysisResult.data || analysisResult;
+        console.log('✅ Enhanced salary analysis completed successfully');
+
       } catch (error) {
-        console.warn('🌐 Web-enhanced salary analysis error, trying Perfect AI RAG fallback:', error);
-      }
-
-      // Fallback to Perfect AI RAG if web-enhanced failed
-      if (!salaryData) {
-        try {
-          const response = await fetch(`/api/jobs/${jobId}/perfect-salary-analysis`, {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          });
-
-          if (response.ok) {
-            const ragAnalysis = await response.json();
-            // Transform Perfect AI RAG format to match web-enhanced format
-            salaryData = {
-              compensation: {
-                salaryRange: {
-                  min: ragAnalysis.salaryIntelligence?.salary_range?.min || 0,
-                  max: ragAnalysis.salaryIntelligence?.salary_range?.max || 0,
-                  median: ragAnalysis.salaryIntelligence?.salary_range?.median || 0,
-                  currency: ragAnalysis.salaryIntelligence?.currency || 'USD',
-                  confidence: ragAnalysis.salaryIntelligence?.confidence || 0.7,
-                },
-                marketPosition: 'at_market',
-                marketData: [
-                  ragAnalysis.salaryIntelligence?.market_analysis || 'Market analysis from Perfect AI RAG'
-                ]
-              },
-              market: {
-                demand: 75,
-                competition: 60,
-                growth: 70,
-                outlook: ragAnalysis.salaryIntelligence?.market_trends || 'Positive market outlook'
-              },
-              company: {
-                size: 'medium',
-                industry: 'Technology',
-                compensationPhilosophy: ragAnalysis.salaryIntelligence?.company_insights || 'Competitive compensation approach',
-                glassdoorRating: 4.0
-              }
-            };
-            console.log('✅ Perfect AI RAG fallback succeeded');
-          } else {
-            console.warn('❌ Perfect AI RAG also failed');
-          }
-        } catch (error) {
-          console.warn('❌ Perfect AI RAG fallback error:', error);
-        }
-      }
-
-      // If all analysis methods failed, try pure AI analysis with web search
-      if (!salaryData) {
-        console.log('🤖 Attempting pure AI+web search salary analysis');
-        salaryData = await generatePureAISalaryAnalysis(jobData, jobClassification);
+        console.error('❌ Salary analysis failed:', error);
+        // Show error to user instead of falling back
+        setError(`Salary analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        setSalaryAnalysis(null);
       }
 
       setSalaryAnalysis(salaryData);
 
-      // Step 4: Generate personalized insights if resume available
-      if (userResume && matchAnalysis) {
-        const insights = await personalizedInsightsEngine.generateInsights(
-          jobData,
-          userResume,
-          userContext
-        );
-        setPersonalizedInsights(insights);
+      // Optional: Generate additional insights only if salary analysis succeeded
+      if (salaryData && userResume && matchAnalysis) {
+        try {
+          console.log('🔍 Generating personalized insights...');
+          const insights = await personalizedInsightsEngine.generateInsights(
+            jobData,
+            userResume,
+            userContext
+          );
+          setPersonalizedInsights(insights);
 
-        // Step 5: Generate negotiation strategy
-        const strategy = await negotiationStrategyGenerator.generateStrategy(
-          jobData,
-          userResume,
-          jobClassification,
-          salaryAnalysis, // Use the web-enhanced salary analysis
-          insights,
-          {
-            currentSalary: userContext?.salaryExpectations?.current,
-            desiredSalary: userContext?.salaryExpectations?.desired,
-            riskTolerance: userContext?.riskTolerance,
-            urgency: userContext?.timeline?.urgency,
-            negotiationExperience: 'limited' // Could be from user profile
-          }
-        );
-        setNegotiationStrategy(strategy);
+          console.log('🎯 Generating negotiation strategy...');
+          const strategy = await negotiationStrategyGenerator.generateStrategy(
+            jobData,
+            userResume,
+            jobClassification,
+            salaryData,
+            insights,
+            {
+              currentSalary: userContext?.salaryExpectations?.current,
+              desiredSalary: userContext?.salaryExpectations?.desired,
+              riskTolerance: userContext?.riskTolerance,
+              urgency: userContext?.timeline?.urgency,
+              negotiationExperience: 'limited'
+            }
+          );
+          setNegotiationStrategy(strategy);
+        } catch (error) {
+          console.warn('Failed to generate insights/strategy:', error);
+          // Don't fail the whole analysis for these optional features
+        }
       }
 
-      // Step 6: Analyze red flags (skip if services fail)
-      try {
-        if (salaryAnalysis) {
+      // Optional: Risk analysis (non-blocking)
+      if (salaryData) {
+        try {
+          console.log('🚩 Analyzing potential red flags...');
           const redFlags = await smartRedFlagDetector.analyzeRedFlags(
             jobData,
             jobClassification,
-            salaryAnalysis, // Use the web-enhanced salary analysis
+            salaryData,
             userResume,
             {
               experienceLevel: userResume?.careerLevel as any,
@@ -375,35 +182,32 @@ export function AdaptiveSalaryIntelligence({
             }
           );
           setRedFlagAnalysis(redFlags);
-        } else {
-          console.warn('Skipping red flag analysis - no salary data available');
+        } catch (error) {
+          console.warn('Red flag analysis failed:', error);
+          setRedFlagAnalysis(null);
         }
-      } catch (error) {
-        console.warn('Red flag analysis failed:', error);
-        setRedFlagAnalysis(null);
       }
 
-      // Step 7: Calculate financial impact (skip if no salary data)
-      try {
-        if (salaryAnalysis?.compensation?.salaryRange) {
+      // Optional: Financial impact calculation (non-blocking)
+      if (salaryData?.compensation?.salaryRange) {
+        try {
+          console.log('💰 Calculating financial impact...');
           const financialAnalysis = await financialImpactCalculator.calculateFinancialImpact(
             jobData,
-            salaryAnalysis, // Use the web-enhanced salary analysis
+            salaryData,
             {
               currentSalary: userContext?.salaryExpectations?.current,
               location: userLocation,
-              familyStatus: 'single', // Could be from user profile
+              familyStatus: 'single',
               currentExpenses: {},
               financialGoals: {}
             }
           );
           setFinancialImpact(financialAnalysis);
-        } else {
-          console.warn('Skipping financial impact analysis - no salary range available');
+        } catch (error) {
+          console.warn('Financial impact analysis failed:', error);
+          setFinancialImpact(null);
         }
-      } catch (error) {
-        console.warn('Financial impact analysis failed:', error);
-        setFinancialImpact(null);
       }
 
     } catch (err) {
@@ -411,6 +215,7 @@ export function AdaptiveSalaryIntelligence({
       setError(err instanceof Error ? err.message : 'Analysis failed');
     } finally {
       setLoading(false);
+      setIsAnalyzing(false);
     }
   };
 

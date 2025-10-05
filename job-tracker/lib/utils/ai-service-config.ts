@@ -12,6 +12,7 @@ export interface AIServiceConfig {
   temperature?: number; // Only for non-GPT-5 models
   useWebSearch?: boolean;
   maxRetries?: number; // Default to 0 to eliminate auto-retries
+  customApiKey?: string; // Optional custom API key (for self-hosted users)
 }
 
 export interface OperationConfig extends AIServiceConfig {
@@ -26,22 +27,22 @@ export interface OperationConfig extends AIServiceConfig {
  * GPT-5 can use up to 128k tokens, so we let it use what it needs
  */
 export const AI_MODEL_CONFIGS: Record<string, AIServiceConfig> = {
-  // Primary GPT-5 models - no token limits
+  // Primary GPT-5 models - no token limits, minimal reasoning for speed
   'gpt-5': {
     model: 'gpt-5',
-    reasoning: 'high',
-    verbosity: 'medium',
+    reasoning: 'minimal',
+    verbosity: 'low',
     maxRetries: 0 // No auto-retries - show errors directly
   },
   'gpt-5-mini': {
     model: 'gpt-5-mini',
-    reasoning: 'medium',
-    verbosity: 'medium',
+    reasoning: 'minimal',
+    verbosity: 'low',
     maxRetries: 0
   },
   'gpt-5-nano': {
     model: 'gpt-5-nano',
-    reasoning: 'low',
+    reasoning: 'minimal',
     verbosity: 'low',
     maxRetries: 0
   }
@@ -54,9 +55,9 @@ export const OPERATION_CONFIGS: Record<string, OperationConfig> = {
   job_extraction: {
     operation: 'job_extraction',
     description: 'Extract comprehensive job data from job postings',
-    model: 'gpt-5-mini',
-    reasoning: 'medium',
-    verbosity: 'medium',
+    model: 'gpt-5-nano',
+    reasoning: 'minimal',
+    verbosity: 'low',
     requiresValidation: true,
     requiredFields: ['title', 'company'],
     maxRetries: 0
@@ -64,17 +65,17 @@ export const OPERATION_CONFIGS: Record<string, OperationConfig> = {
   salary_analysis: {
     operation: 'salary_analysis',
     description: 'Analyze salary data and market information',
-    model: 'gpt-5',
-    reasoning: 'high',
-    verbosity: 'medium',
+    model: 'gpt-5-mini',
+    reasoning: 'minimal',
+    verbosity: 'low',
     useWebSearch: true,
     maxRetries: 0
   },
   resume_parsing: {
     operation: 'resume_parsing',
     description: 'Extract structured data from resume text',
-    model: 'gpt-5-mini',
-    reasoning: 'low',
+    model: 'gpt-5-nano',
+    reasoning: 'minimal',
     verbosity: 'low',
     requiresValidation: true,
     requiredFields: ['skills', 'experience'],
@@ -83,43 +84,43 @@ export const OPERATION_CONFIGS: Record<string, OperationConfig> = {
   company_analysis: {
     operation: 'company_analysis',
     description: 'Analyze company information and culture',
-    model: 'gpt-5',
-    reasoning: 'medium',
-    verbosity: 'medium',
+    model: 'gpt-5-mini',
+    reasoning: 'minimal',
+    verbosity: 'low',
     useWebSearch: true,
     maxRetries: 0
   },
   skill_matching: {
     operation: 'skill_matching',
     description: 'Match job requirements with user skills',
-    model: 'gpt-5-mini',
-    reasoning: 'medium',
+    model: 'gpt-5-nano',
+    reasoning: 'minimal',
     verbosity: 'low',
     maxRetries: 0
   },
   negotiation_coaching: {
     operation: 'negotiation_coaching',
     description: 'Generate negotiation strategies and tips',
-    model: 'gpt-5',
-    reasoning: 'high',
-    verbosity: 'high',
+    model: 'gpt-5-mini',
+    reasoning: 'minimal',
+    verbosity: 'low',
     maxRetries: 0
   },
   web_search: {
     operation: 'web_search',
     description: 'Search web for current market data',
-    model: 'gpt-5',
-    reasoning: 'medium',
-    verbosity: 'medium',
+    model: 'gpt-5-mini',
+    reasoning: 'minimal',
+    verbosity: 'low',
     useWebSearch: true,
     maxRetries: 0
   },
   general_completion: {
     operation: 'general_completion',
     description: 'General AI text completion',
-    model: 'gpt-5-mini',
-    reasoning: 'medium',
-    verbosity: 'medium',
+    model: 'gpt-5-nano',
+    reasoning: 'minimal',
+    verbosity: 'low',
     maxRetries: 0
   }
 };

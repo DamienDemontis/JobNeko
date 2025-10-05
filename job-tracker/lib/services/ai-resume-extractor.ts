@@ -228,7 +228,7 @@ Return the raw JSON object starting with { and ending with }.`;
 
   private async parseResumeWithAI(textContent: string): Promise<ResumeExtraction | null> {
     try {
-      console.log('Starting AI resume parsing...');
+      console.log('Starting AI resume parsing with GPT-5 nano...');
 
       // Check if OpenAI is available
       if (!process.env.OPENAI_API_KEY) {
@@ -241,7 +241,12 @@ Return the raw JSON object starting with { and ending with }.`;
 
       const result = await unifiedAI.process({
         operation: 'resume_parsing',
-        content: prompt
+        content: prompt,
+        overrides: {
+          model: 'gpt-5-nano', // Fast, cost-effective model for resume parsing
+          reasoning: 'minimal',
+          verbosity: 'low'
+        }
       });
 
       if (!result.success) {

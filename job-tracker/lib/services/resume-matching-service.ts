@@ -103,18 +103,21 @@ export class ResumeMatchingService {
     jobTitle: string,
     company: string,
     jobDescription: string,
-    jobRequirements: string
+    jobRequirements: string,
+    preExtractedSkills?: any[] // NEW: Pre-extracted skills from database
   ): Promise<ResumeMatchResult> {
 
     console.log('📄 Starting comprehensive resume matching analysis...');
 
     try {
-      // Step 1: Get skills gap analysis first
+      // Step 1: Get skills gap analysis first (with optional pre-extracted skills)
       const skillsAnalysis = await skillsGapAnalysis.analyzeSkillsGap(
         resumeContent,
         jobTitle,
         jobDescription,
-        jobRequirements
+        jobRequirements,
+        undefined, // currentSalary
+        preExtractedSkills // Pass cached skills
       );
 
       // Step 2: Extract detailed resume and job components
@@ -714,19 +717,53 @@ Extract and return JSON with:
       }
     }
 
-    // Add competitive edge factors
+    // Add competitive edge factors (as proper objects, not strings)
     if (resumeComponents.personalInfo?.yearsOfExperience > jobComponents.experience?.preferredYears) {
-      competitiveEdge.push('Exceeds preferred experience requirements');
+      topStrengths.push({
+        element: `${resumeComponents.personalInfo.yearsOfExperience} years experience`,
+        category: 'experience',
+        advantage: 'Exceeds preferred experience requirements',
+        howToLeverage: 'Emphasize your extensive experience in cover letter'
+      });
     }
 
     if (resumeComponents.certifications?.length > 0) {
-      competitiveEdge.push('Has relevant certifications');
+      topStrengths.push({
+        element: resumeComponents.certifications[0],
+        category: 'education',
+        advantage: 'Professional certifications demonstrate expertise',
+        howToLeverage: 'List prominently in certifications section'
+      });
+    }
+
+    // Add education strengths
+    if (resumeComponents.education?.length > 0) {
+      const edu = resumeComponents.education[0];
+      if (edu.degree) {
+        topStrengths.push({
+          element: `${edu.degree}${edu.field ? ` in ${edu.field}` : ''}`,
+          category: 'education',
+          advantage: 'Relevant educational background',
+          howToLeverage: 'Mention in summary section'
+        });
+      }
+    }
+
+    // Add soft skills/achievements if available
+    if (resumeComponents.achievements?.length > 0) {
+      const achievement = resumeComponents.achievements[0];
+      topStrengths.push({
+        element: achievement,
+        category: 'achievements',
+        advantage: 'Demonstrated track record of success',
+        howToLeverage: 'Use in behavioral interview examples'
+      });
     }
 
     return {
       topStrengths,
       uniqueAdvantages: uniqueAdvantages.slice(0, 3),
-      competitiveEdge
+      competitiveEdge: [] // Remove string array, all items are now in topStrengths as objects
     };
   }
 

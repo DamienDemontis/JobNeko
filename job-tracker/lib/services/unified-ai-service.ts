@@ -64,11 +64,13 @@ export class UnifiedAIService {
       ...request.overrides
     };
 
-    if (!process.env.OPENAI_API_KEY) {
+    // Check for API key - either custom or environment
+    const apiKey = config.customApiKey || process.env.OPENAI_API_KEY;
+    if (!apiKey) {
       throw new Error(`AI service not configured. GPT-5 API key required for ${request.operation}.`);
     }
 
-    console.log(`🤖 Processing ${request.operation} with ${config.model} (no token limits)`);
+    console.log(`🤖 Processing ${request.operation} with ${config.model} (no token limits)${config.customApiKey ? ' [custom API key]' : ''}`);
 
     try {
       // Build standardized prompt
@@ -78,7 +80,8 @@ export class UnifiedAIService {
       const response = await gpt5Service.complete(prompt, {
         model: config.model,
         reasoning: config.reasoning,
-        verbosity: config.verbosity
+        verbosity: config.verbosity,
+        apiKey: apiKey // Pass API key directly
         // Deliberately omitting maxTokens to use GPT-5's full capacity
       });
 
@@ -223,11 +226,17 @@ ${jobDescription}
 
   /**
    * Specialized method for resume parsing
+   * Uses GPT-5 nano for fast, cost-effective resume extraction
    */
   async parseResume(resumeText: string) {
     return await this.process({
       operation: 'resume_parsing',
       content: resumeText.substring(0, 4000),
+      overrides: {
+        model: 'gpt-5-nano', // Fast parsing with nano
+        reasoning: 'minimal', // Minimal reasoning for speed
+        verbosity: 'low'
+      },
       additionalInstructions: `
 Extract structured information including:
 - Skills (technical and soft skills)
@@ -290,7 +299,7 @@ Calculate a detailed skill match analysis including:
   async complete(
     prompt: string,
     model: GPT5Model = 'gpt-5-mini',
-    reasoning: 'minimal' | 'low' | 'medium' | 'high' = 'medium'
+    reasoning: 'minimal' | 'low' | 'medium' | 'high' = 'minimal'
   ) {
     return await this.process({
       operation: 'general_completion',

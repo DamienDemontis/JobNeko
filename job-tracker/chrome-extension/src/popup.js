@@ -374,6 +374,12 @@ function switchToTab(tabName) {
   // Refresh queue when switching to queue tab
   if (tabName === 'queue') {
     refreshQueue();
+    // Force immediate reconnect to long-poll if already watching
+    if (isPollingActive && longPollAbortController) {
+      console.log('🔄 Force reconnecting to long-poll');
+      longPollAbortController.abort();
+      setTimeout(watchQueue, 0);
+    }
   }
 }
 
@@ -439,6 +445,9 @@ async function watchQueue() {
     // Process update
     const data = await response.json();
     const queue = data.queue || [];
+
+    // Always update display immediately when data arrives
+    console.log('📊 Updating queue display with', queue.length, 'items');
     updateQueueDisplay(queue);
 
     // Determine next poll timing based on queue state
@@ -447,9 +456,9 @@ async function watchQueue() {
     );
 
     if (hasActiveItems) {
-      // Active extraction - immediate reconnect (server will hold connection)
-      console.log('🔄 Active items, immediate reconnect');
-      setTimeout(watchQueue, 0); // Immediate but non-blocking
+      // Active extraction - aggressive polling every 500ms
+      console.log('🔄 Active items detected, fast reconnect (500ms)');
+      setTimeout(watchQueue, 500); // Faster updates for active items
     } else {
       // Idle queue - brief delay before reconnect
       console.log('💤 Queue idle, reconnect in 2s');

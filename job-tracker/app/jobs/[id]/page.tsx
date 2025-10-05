@@ -14,6 +14,7 @@ import ModernSalaryIntelligence from '@/components/ui/modern-salary-intelligence
 import LocationIntelligence from '@/components/ui/location-intelligence';
 import JobEditForm from '@/components/ui/job-edit-form';
 import { MatchScoreDonut } from '@/components/ui/match-score-donut';
+import { MatchScoreCard } from '@/components/ui/match-score-card';
 // Removed: JobAnalysisCard and SmartRequirements from overview tab
 import { ResumeOptimizer } from '@/components/ui/resume-optimizer';
 import ApplicationTimelineIntelligenceSmart from '@/components/ui/application-timeline-intelligence-smart';
@@ -200,6 +201,14 @@ export default function JobDetailPage() {
   const [hasResume, setHasResume] = useState(false);
   const [cacheStatus, setCacheStatus] = useState<Map<string, boolean>>(new Map());
 
+  // AI Analysis state management
+  const [analysisStates, setAnalysisStates] = useState<Record<string, {
+    loading: boolean;
+    lastRun?: number;
+    startTime?: number;
+  }>>({});
+  const [abortControllers, setAbortControllers] = useState<Record<string, AbortController>>({});
+
   // Parse extracted data from job
   const extractedData = job?.extractedData ? (() => {
     try {
@@ -338,13 +347,62 @@ export default function JobDetailPage() {
     }
   };
 
+  // AI Analysis Management Functions
+  const startAnalysis = (analysisKey: string) => {
+    const now = Date.now();
+    const controller = new AbortController();
+
+    setAnalysisStates(prev => ({
+      ...prev,
+      [analysisKey]: { loading: true, startTime: now, lastRun: now }
+    }));
+    setAbortControllers(prev => ({ ...prev, [analysisKey]: controller }));
+
+    return controller;
+  };
+
+  const endAnalysis = (analysisKey: string) => {
+    setAnalysisStates(prev => ({
+      ...prev,
+      [analysisKey]: { ...prev[analysisKey], loading: false }
+    }));
+    setAbortControllers(prev => {
+      const { [analysisKey]: _, ...rest } = prev;
+      return rest;
+    });
+  };
+
+  const cancelAnalysis = (analysisKey: string) => {
+    const controller = abortControllers[analysisKey];
+    if (controller) {
+      controller.abort();
+      endAnalysis(analysisKey);
+      toast.info('Analysis cancelled');
+    }
+  };
+
+  const canRunAnalysis = (analysisKey: string, cooldownMs = 30000): boolean => {
+    const state = analysisStates[analysisKey];
+    if (!state) return true;
+    if (state.loading) {
+      toast.error('Analysis already in progress');
+      return false;
+    }
+    if (state.lastRun && Date.now() - state.lastRun < cooldownMs) {
+      const secondsLeft = Math.ceil((cooldownMs - (Date.now() - state.lastRun)) / 1000);
+      toast.error(`Please wait ${secondsLeft}s before running again`);
+      return false;
+    }
+    return true;
+  };
+
   const deleteJob = async () => {
     if (!token || !job) return;
 
     const confirmed = window.confirm(
       `Are you sure you want to delete "${job.title}" at ${job.company}? This action cannot be undone.`
     );
-    
+
     if (!confirmed) return;
 
     setUpdating(true);
@@ -381,8 +439,8 @@ export default function JobDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="min-h-screen bg-gray-50" suppressHydrationWarning>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" suppressHydrationWarning>
           {/* Header Skeleton */}
           <div className="mb-8">
             <div className="h-10 w-32 bg-gray-200 rounded-lg animate-pulse mb-4" />
@@ -473,7 +531,7 @@ export default function JobDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" suppressHydrationWarning>
       {/* Site Header */}
       <SiteHeader />
 
@@ -578,11 +636,16 @@ export default function JobDetailPage() {
                       <span>Deadline: {new Date(job.applicationDeadline).toLocaleDateString()}</span>
                     </div>
                   )}
-                  {job.matchScore && (
+                  {job.matchScore ? (
                     <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-gray-600">Resume Match:</span>
                       <MatchScoreDonut score={job.matchScore} size={60} strokeWidth={6} />
                     </div>
-                  )}
+                  ) : hasResume ? (
+                    <div className="text-sm text-gray-400 italic">
+                      No match score calculated
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -971,6 +1034,78 @@ export default function JobDetailPage() {
 
               {/* Sidebar */}
               <div className="space-y-6">
+                {/* Resume Match Score */}
+                <MatchScoreCard
+                  matchScore={job.matchScore}
+                  detailedAnalysis={(job as any).detailedAnalysis}
+                  isCalculating={analysisStates['match-score']?.loading || false}
+                  onRecalculate={async () => {
+                    const analysisKey = 'match-score';
+
+                    // Check if we can run the analysis (prevents duplicates and respects cooldown)
+                    if (!canRunAnalysis(analysisKey, 10000)) return; // 10s cooldown
+
+                    const controller = startAnalysis(analysisKey);
+
+                    try {
+                      const response = await fetch(`/api/jobs/${job.id}/calculate-match`, {
+                        method: 'POST',
+                        headers: {
+                          'Authorization': `Bearer ${token}`,
+                        },
+                        signal: controller.signal,
+                      });
+
+                      if (response.ok) {
+                        const data = await response.json();
+
+                        // Debug: Log received data
+                        console.log('📊 Match calculation response:', {
+                          matchScore: data.matchScore,
+                          hasDetailedAnalysis: !!data.detailedAnalysis,
+                          hasImprovementPlan: !!data.detailedAnalysis?.improvementPlan,
+                          improvementPlanKeys: data.detailedAnalysis?.improvementPlan ? Object.keys(data.detailedAnalysis.improvementPlan) : []
+                        });
+
+                        // Update job state with new match score and detailed analysis
+                        const updatedJob = {
+                          ...job,
+                          matchScore: data.matchScore,
+                          detailedAnalysis: data.detailedAnalysis,
+                          confidence: data.confidence,
+                          components: data.components
+                        } as any;
+
+                        console.log('🔄 Updated job state:', {
+                          hasDetailedAnalysis: !!updatedJob.detailedAnalysis,
+                          strengthsCount: updatedJob.detailedAnalysis?.strengthsHighlights?.length || 0,
+                          missingCount: updatedJob.detailedAnalysis?.missingElements?.length || 0
+                        });
+
+                        setJob(updatedJob);
+
+                        // Refresh from server to get the saved analysis from database
+                        await fetchJob();
+
+                        toast.success(`Match score updated: ${data.matchScore}%`);
+                      } else {
+                        const errorData = await response.json().catch(() => ({}));
+                        toast.error(errorData.error || 'Failed to calculate match score');
+                      }
+                    } catch (error: any) {
+                      if (error.name === 'AbortError') {
+                        // Analysis was cancelled, already handled
+                        return;
+                      }
+                      console.error('Match calculation error:', error);
+                      toast.error('Failed to calculate match score');
+                    } finally {
+                      endAnalysis(analysisKey);
+                    }
+                  }}
+                  onCancel={() => cancelAnalysis('match-score')}
+                />
+
                 {/* Job Rating */}
                 <Card>
                   <CardHeader>

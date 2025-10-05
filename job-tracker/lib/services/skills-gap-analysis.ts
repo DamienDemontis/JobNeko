@@ -96,14 +96,26 @@ export class SkillsGapAnalysisService {
     jobTitle: string,
     jobDescription: string,
     jobRequirements: string,
-    currentSalary?: number
+    currentSalary?: number,
+    preExtractedResumeSkills?: any[] // NEW: Pre-extracted skills from database
   ): Promise<SkillsAnalysisResult> {
 
     console.log('🔍 Starting skills gap analysis...');
 
     try {
-      // Step 1: Extract skills from resume
-      const userSkills = await this.extractSkillsFromResume(resumeContent);
+      // Step 1: Extract skills from resume (or use cached if available)
+      let userSkills: SkillProfile[];
+
+      if (preExtractedResumeSkills && preExtractedResumeSkills.length > 0) {
+        console.log('⚡ Using pre-extracted resume skills from database cache');
+        userSkills = preExtractedResumeSkills.map(skill => ({
+          ...skill,
+          extractedFrom: 'resume' as const
+        }));
+      } else {
+        console.log('🔄 Extracting skills from resume text (no cache available)');
+        userSkills = await this.extractSkillsFromResume(resumeContent);
+      }
 
       // Step 2: Extract required skills from job
       const requiredSkills = await this.extractSkillsFromJob(
@@ -185,9 +197,14 @@ Focus on concrete, specific skills. Avoid generic terms.`;
 
     try {
       const response = await unifiedAI.process({
-      operation: 'general_completion',
-      content: prompt
-    });
+        operation: 'general_completion',
+        content: prompt,
+        overrides: {
+          model: 'gpt-5-nano',  // Fast model for simple extraction
+          reasoning: 'minimal',  // No reasoning needed for extraction
+          verbosity: 'low'
+        }
+      });
       if (!response || !(typeof response.data === 'string' ? response.data : JSON.stringify(response.data))) {
         throw new Error('Failed to get valid response from AI service');
       }
@@ -421,7 +438,9 @@ ${requirements}
 Job Posting:
 ${jobContent}
 
-Return a JSON array of skills with this structure:
+IMPORTANT: Return ONLY a raw JSON array (not wrapped in an object). Start with [ and end with ].
+
+Format:
 [{
   "name": "skill name",
   "category": "technical|soft|domain|certification|language|tool",
@@ -430,13 +449,19 @@ Return a JSON array of skills with this structure:
   "extractedFrom": "job_description"
 }]
 
-Include both explicitly mentioned skills and commonly required skills for this role.`;
+Include both explicitly mentioned skills and commonly required skills for this role.
+Do not wrap the array in a "skills" property or any other object.`;
 
     try {
       const response = await unifiedAI.process({
-      operation: 'general_completion',
-      content: prompt
-    });
+        operation: 'general_completion',
+        content: prompt,
+        overrides: {
+          model: 'gpt-5-nano',  // Fast model for simple extraction
+          reasoning: 'minimal',  // No reasoning needed for extraction
+          verbosity: 'low'
+        }
+      });
       if (!response || !(typeof response.data === 'string' ? response.data : JSON.stringify(response.data))) {
         throw new Error('Failed to get valid response from AI service');
       }
@@ -470,6 +495,19 @@ Include both explicitly mentioned skills and commonly required skills for this r
           throw new Error('Failed to parse AI response as JSON');
         }
       }
+
+      // Validate that skills is an array
+      if (!Array.isArray(skills)) {
+        console.error('Skills is not an array:', skills);
+        // If it's an object with a skills property, use that
+        if (skills && typeof skills === 'object' && Array.isArray(skills.skills)) {
+          skills = skills.skills;
+        } else {
+          console.error('Cannot extract skills array from response');
+          return [];
+        }
+      }
+
       return skills.map((skill: any) => ({
         ...skill,
         extractedFrom: 'job_description' as const
@@ -642,8 +680,14 @@ Include both explicitly mentioned skills and commonly required skills for this r
 
   /**
    * Get market demand data for a skill
+   * NOTE: Web search disabled for performance - returns estimated data based on skill category
    */
   private async getSkillMarketData(skillName: string, jobTitle: string): Promise<SkillGap['marketDemand']> {
+    // OPTIMIZATION: Skip web search for match calculations - it's too slow
+    // Instead, provide reasonable default values based on skill category
+    return this.getDefaultMarketData(skillName);
+
+    /* WEB SEARCH DISABLED FOR PERFORMANCE
     try {
       // Search for skill demand and salary data
       const query = `${skillName} skill demand salary impact ${jobTitle} 2025`;
@@ -675,6 +719,46 @@ Include both explicitly mentioned skills and commonly required skills for this r
         competitiveAdvantage: 50
       };
     }
+    */
+  }
+
+  /**
+   * Get default market data based on skill patterns
+   * Fast fallback when web search is disabled
+   */
+  private getDefaultMarketData(skillName: string): SkillGap['marketDemand'] {
+    const skill = skillName.toLowerCase();
+
+    // High-demand tech skills (2024-2025)
+    const highDemandSkills = [
+      'react', 'typescript', 'python', 'aws', 'kubernetes', 'docker',
+      'node.js', 'golang', 'rust', 'machine learning', 'ai', 'devops',
+      'terraform', 'postgresql', 'mongodb', 'graphql', 'next.js'
+    ];
+
+    // Growing/emerging skills
+    const emergingSkills = [
+      'rust', 'web3', 'blockchain', 'edge computing', 'webassembly',
+      'deno', 'bun', 'htmx', 'svelte', 'solid.js'
+    ];
+
+    const isHighDemand = highDemandSkills.some(s => skill.includes(s));
+    const isEmerging = emergingSkills.some(s => skill.includes(s));
+
+    if (isHighDemand) {
+      return {
+        demandLevel: 85,
+        growthTrend: isEmerging ? 25 : 15,
+        competitiveAdvantage: 80
+      };
+    }
+
+    // Default for other skills
+    return {
+      demandLevel: 65,
+      growthTrend: 10,
+      competitiveAdvantage: 55
+    };
   }
 
   /**

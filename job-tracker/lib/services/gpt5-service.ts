@@ -83,8 +83,21 @@ export class GPT5Service {
     console.log('🤖 GPT5Service constructor called');
   }
 
-  private getClient(): OpenAI {
-    // Lazy initialization - only create client when actually needed and on server-side
+  /**
+   * Get or create OpenAI client with optional custom API key
+   * @param customApiKey Optional API key to use instead of environment variable
+   */
+  private getClient(customApiKey?: string): OpenAI {
+    // If custom API key provided, create a new client instance for this request
+    if (customApiKey) {
+      if (typeof window !== 'undefined') {
+        throw new Error('GPT5Service cannot be used in browser environment. Use API routes instead.');
+      }
+      console.log('🔑 Using custom API key for this request');
+      return new OpenAI({ apiKey: customApiKey });
+    }
+
+    // Otherwise use cached client with environment API key
     if (!this.client) {
       if (typeof window !== 'undefined') {
         throw new Error('GPT5Service cannot be used in browser environment. Use API routes instead.');
@@ -116,13 +129,16 @@ export class GPT5Service {
    */
   async createResponse(
     input: string,
-    options: GPT5Options = {}
+    options: GPT5Options & { apiKey?: string } = {}
   ): Promise<string> {
     const {
       model = 'gpt-5',
       max_tokens,
       tools = [],
-      tool_choice
+      tool_choice,
+      apiKey,
+      reasoning,
+      text
     } = options;
 
     try {
@@ -150,6 +166,18 @@ export class GPT5Service {
         requestOptions.max_completion_tokens = max_tokens;
       }
 
+      // Add reasoning effort if specified (top-level parameter)
+      if (reasoning?.effort) {
+        requestOptions.reasoning_effort = reasoning.effort;
+        console.log(`🧠 Reasoning effort: ${reasoning.effort}`);
+      }
+
+      // Add text verbosity if specified (top-level parameter)
+      if (text?.verbosity) {
+        requestOptions.verbosity = text.verbosity;
+        console.log(`📝 Text verbosity: ${text.verbosity}`);
+      }
+
       // Add tools if specified (for web search)
       if (tools.length > 0) {
         requestOptions.tools = tools.map(tool => ({
@@ -172,7 +200,7 @@ export class GPT5Service {
         }
       }
 
-      const response = await this.getClient().chat.completions.create(requestOptions);
+      const response = await this.getClient(apiKey).chat.completions.create(requestOptions);
 
       console.log('🔍 Full response structure:', {
         choices: response.choices?.length || 0,
@@ -220,18 +248,20 @@ export class GPT5Service {
         region?: string;
         timezone?: string;
       };
+      apiKey?: string;
     } = {}
   ): Promise<{ results: any[]; summary: string; sources?: string[] }> {
     const {
       domains = [],
-      reasoning = 'medium',
-      userLocation
+      reasoning = 'minimal',
+      userLocation,
+      apiKey
     } = options;
 
     console.log(`🔍 GPT-5 Native Web Search: "${query.substring(0, 100)}..."`);
 
     try {
-      const client = this.getClient();
+      const client = this.getClient(apiKey);
 
       // Build web search tool configuration
       const webSearchTool: any = {
@@ -260,47 +290,53 @@ export class GPT5Service {
       - Real-time information from web sources
       - Include citations and sources`;
 
-      // Use the Responses API with web_search tool
-      const response = await client.post('/responses', {
+      // Use the Chat Completions API with tools (standard approach)
+      // Note: Responses API format may not support web_search yet
+      const response = await client.chat.completions.create({
         model: 'gpt-5',
-        reasoning: { effort: reasoning },
+        messages: [{
+          role: 'user',
+          content: searchPrompt
+        }],
         tools: [webSearchTool],
         tool_choice: 'auto',
-        include: ['web_search_call.action.sources'],
-        input: searchPrompt
+        reasoning: reasoning ? { effort: reasoning } : undefined
       });
 
-      // Parse the response output
-      const output = response.data.output || [];
-      let textContent = '';
-      let citations = [];
-      let sources = [];
+      // Parse the Chat Completions response
+      const message = response.choices[0]?.message;
+      const textContent = message?.content || '';
 
-      for (const item of output) {
-        if (item.type === 'message' && item.content) {
-          for (const content of item.content) {
-            if (content.type === 'output_text') {
-              textContent = content.text;
-              citations = content.annotations || [];
+      // Extract tool calls if any
+      const toolCalls = message?.tool_calls || [];
+      let sources: any[] = [];
+
+      // If there were web search tool calls, extract sources
+      for (const toolCall of toolCalls) {
+        if (toolCall.function?.name === 'web_search') {
+          try {
+            const functionArgs = JSON.parse(toolCall.function.arguments);
+            if (functionArgs.sources) {
+              sources = functionArgs.sources;
             }
+          } catch (e) {
+            console.warn('Failed to parse tool call arguments:', e);
           }
-        }
-        if (item.type === 'web_search_call' && item.action?.sources) {
-          sources = item.action.sources;
         }
       }
 
-      // Transform citations to results format
-      const results = citations.map((citation: any, index: number) => ({
-        title: citation.title || `Result ${index + 1}`,
-        url: citation.url,
-        content: textContent.substring(citation.start_index, citation.end_index),
-        relevance: 0.9 - (index * 0.05),
+      // Create basic results from the text content
+      // Since we don't have structured citations, create a single result
+      const results = [{
+        title: 'Web Search Results',
+        url: '',
+        content: textContent,
+        relevance: 0.95,
         searchType,
         timestamp: new Date().toISOString()
-      }));
+      }];
 
-      console.log(`✅ GPT-5 Web Search found ${results.length} real results from ${sources.length} sources`);
+      console.log(`✅ GPT-5 Web Search completed with ${sources.length} sources`);
 
       return {
         results,
@@ -417,11 +453,13 @@ export class GPT5Service {
       reasoning?: ReasoningEffort;
       verbosity?: TextVerbosity;
       maxTokens?: number;
+      apiKey?: string;
     } = {}
   ): Promise<string> {
     const {
       model = 'gpt-5-mini', // Default to mini for cost efficiency
-      maxTokens // No default - let GPT-5 use up to its max (128k)
+      maxTokens, // No default - let GPT-5 use up to its max (128k)
+      apiKey
     } = options;
 
     console.log(`🤖 GPT-5 Complete: Using model ${model} for general completion`);
@@ -430,7 +468,8 @@ export class GPT5Service {
       model,
       max_tokens: maxTokens,
       reasoning: options.reasoning ? { effort: options.reasoning } : undefined,
-      text: options.verbosity ? { verbosity: options.verbosity } : undefined
+      text: options.verbosity ? { verbosity: options.verbosity } : undefined,
+      apiKey
     });
   }
 

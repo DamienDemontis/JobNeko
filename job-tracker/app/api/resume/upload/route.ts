@@ -1,20 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { aiResumeExtractor } from '../../../../lib/services/ai-resume-extractor';
 import { prisma } from '../../../../lib/prisma';
+import { validateToken } from '@/lib/auth';
 import { salaryAnalysisPersistence } from '@/lib/services/salary-analysis-persistence';
 
 export async function POST(request: NextRequest) {
   try {
+    // Try to get user ID from formData first (old profile page method)
     const formData = await request.formData();
     const resume = formData.get('resume') as File;
-    const userId = formData.get('userId') as string;
+    let userId = formData.get('userId') as string;
+
+    // If no userId in formData, try to get from auth token (onboarding method)
+    if (!userId) {
+      const token = request.headers.get('authorization')?.replace('Bearer ', '');
+      if (token) {
+        const user = await validateToken(token);
+        if (user) {
+          userId = user.id;
+        }
+      }
+    }
 
     if (!resume) {
       return NextResponse.json({ error: 'No resume file provided' }, { status: 400 });
     }
 
     if (!userId) {
-      return NextResponse.json({ error: 'User ID required' }, { status: 400 });
+      return NextResponse.json({ error: 'User ID or authentication required' }, { status: 400 });
     }
 
     if (resume.type !== 'application/pdf') {

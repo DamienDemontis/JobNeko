@@ -115,7 +115,7 @@ export class ResumeAnalysisService {
     const aiResponse = await unifiedAI.process({
       operation: 'skill_matching',
       content: prompt,
-      overrides: { model: 'gpt-5-mini', reasoning: 'medium' }
+      overrides: { model: 'gpt-5-nano', reasoning: 'minimal' }
     });
 
     if (!aiResponse.success) {
@@ -239,7 +239,7 @@ Return ONLY valid JSON.`;
     const aiResponse = await unifiedAI.process({
       operation: 'general_completion',
       content: prompt,
-      overrides: { model: 'gpt-5-mini', reasoning: 'medium' }
+      overrides: { model: 'gpt-5-nano', reasoning: 'minimal' }
     });
 
     if (!aiResponse?.data && !aiResponse?.rawResponse) {

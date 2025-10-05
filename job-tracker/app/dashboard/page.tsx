@@ -537,6 +537,52 @@ export default function ProfessionalDashboard() {
           </Card>
         )}
 
+        {/* Rematch All Jobs */}
+        {hasResume && allJobs.length > 0 && (
+          <Card className="mb-8 border border-gray-200">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-black mb-1">Resume Match Scores</h3>
+                  <p className="text-sm text-gray-600">Recalculate match scores for all your jobs with your latest resume</p>
+                </div>
+                <Button
+                  onClick={async () => {
+                    try {
+                      setLoading(true);
+                      toast.info('Recalculating match scores...');
+
+                      const response = await fetch('/api/jobs/rematch', {
+                        method: 'POST',
+                        headers: {
+                          'Authorization': `Bearer ${token}`,
+                        },
+                      });
+
+                      if (response.ok) {
+                        const data = await response.json();
+                        toast.success(`Updated ${data.updatedJobs} of ${data.totalJobs} jobs!`);
+                        // Refresh jobs
+                        fetchJobs();
+                      } else {
+                        toast.error('Failed to recalculate match scores');
+                      }
+                    } catch (error) {
+                      toast.error('Failed to recalculate match scores');
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  disabled={loading}
+                >
+                  <Target className="w-4 h-4 mr-2" />
+                  {loading ? 'Calculating...' : 'Recalculate All Matches'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Search and Filters */}
         <Card className="mb-8 border border-gray-200">
           <CardContent className="p-6">
@@ -924,10 +970,17 @@ export default function ProfessionalDashboard() {
                           </div>
 
                           <div className="flex items-center gap-4">
-                            {/* Match Score */}
-                            {job.matchScore && (
-                              <MatchScoreDonut score={job.matchScore} size={50} strokeWidth={6} />
-                            )}
+                            {/* Match Score - Always show */}
+                            {job.matchScore ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500">Resume Match:</span>
+                                <MatchScoreDonut score={job.matchScore} size={50} strokeWidth={6} />
+                              </div>
+                            ) : hasResume ? (
+                              <div className="text-xs text-gray-400 italic">
+                                No match score
+                              </div>
+                            ) : null}
 
                             {/* External Link */}
                             {job.url && (

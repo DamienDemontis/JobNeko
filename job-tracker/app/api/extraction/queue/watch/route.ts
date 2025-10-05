@@ -5,7 +5,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { verifyToken } from '@/lib/auth';
+import { validateToken } from '@/lib/auth';
 import { extractionQueue } from '@/lib/services/extraction-queue';
 
 export const dynamic = 'force-dynamic';
@@ -16,20 +16,24 @@ const lastQueueState = new Map<string, string>();
 const queueWatchers = new Map<string, Set<(data: any) => void>>();
 
 export async function GET(request: NextRequest) {
-  // Verify authentication
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader) {
+  // Verify authentication - match the working queue route pattern
+  const authHeader = request.headers.get('authorization')?.replace('Bearer ', '');
+  const cookieToken = request.cookies.get('token')?.value;
+  const token = authHeader || cookieToken;
+
+  if (!token) {
+    console.log('⚠️ Watch endpoint: No token found');
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const token = authHeader.replace('Bearer ', '');
-  const payload = await verifyToken(token);
+  const user = await validateToken(token);
 
-  if (!payload?.userId) {
+  if (!user) {
+    console.log('⚠️ Watch endpoint: Invalid token');
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const userId = payload.userId;
+  const userId = user.id;
 
   try {
     // Get current queue state

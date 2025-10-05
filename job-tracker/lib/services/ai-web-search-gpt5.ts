@@ -46,8 +46,8 @@ export class GPT5WebSearchService {
           'linkedin.com'
         ],
         searchType: 'general',
-        reasoning: 'medium',
-        verbosity: 'medium'
+        reasoning: 'minimal',
+        verbosity: 'low'
       });
 
       const searchResults: SearchResult[] = results.map((result: any, index: number) => ({
@@ -134,8 +134,8 @@ export class GPT5WebSearchService {
         'teamblind.com'
       ],
       searchType: 'company',
-      reasoning: 'medium',
-      verbosity: 'medium'
+      reasoning: 'minimal',
+      verbosity: 'low'
     });
 
     const searchResults: SearchResult[] = results.map((result: any, index: number) => ({

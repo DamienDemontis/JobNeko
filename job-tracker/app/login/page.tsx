@@ -49,7 +49,21 @@ export default function LoginPage() {
         console.log('Login successful, calling AuthContext login...');
         login(data.user, data.token);
         toast.success('Welcome back!');
-        
+
+        // Check if user needs onboarding
+        const onboardingResponse = await fetch('/api/user/onboarding-status', {
+          headers: { 'Authorization': `Bearer ${data.token}` }
+        });
+
+        if (onboardingResponse.ok) {
+          const onboardingData = await onboardingResponse.json();
+          if (!onboardingData.onboardingCompleted) {
+            console.log('User needs onboarding, redirecting...');
+            router.push('/onboarding');
+            return;
+          }
+        }
+
         // Navigation will be handled by the useEffect after state updates
         console.log('Login successful, waiting for useEffect to handle navigation...');
       } else {

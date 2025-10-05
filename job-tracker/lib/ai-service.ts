@@ -700,8 +700,8 @@ export async function generateCompletion(
     const { gpt5Service } = await import('./services/gpt5-service');
     const response = await gpt5Service.complete(prompt, {
       model: options.model || AI_MODELS.openai,
-      reasoning: options.reasoning || 'medium',
-      verbosity: options.verbosity || 'medium',
+      reasoning: options.reasoning || 'minimal',
+      verbosity: options.verbosity || 'low',
       maxTokens: options.max_tokens  // No default token limit - use what user specifies or GPT-5's full capacity
     });
 

@@ -44,10 +44,10 @@ export default function RegisterPage() {
       if (response.ok) {
         login(data.user, data.token);
         toast.success('Account created successfully!');
-        
-        // Force navigation after a small delay to ensure state is updated
+
+        // Redirect to onboarding for new users
         setTimeout(() => {
-          router.push('/dashboard');
+          router.push('/onboarding');
         }, 100);
       } else {
         toast.error(data.error || 'Registration failed');

@@ -224,6 +224,10 @@ class ExtractionQueueService {
    */
   private async processItem(item: ExtractionQueue) {
     try {
+      // Get user's API key (handles encryption and platform fallback securely)
+      const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+      const apiKey = await getUserApiKey(item.userId);
+
       // Update status to processing
       await prisma.extractionQueue.update({
         where: { id: item.id },
@@ -321,7 +325,7 @@ class ExtractionQueueService {
         text: text,
         title: title,
         structured: structured
-      });
+      }, apiKey); // Pass user's API key
 
       // Use manual extraction as fallback ONLY if AI failed
       if (!extractedData.companyLogoUrl && logoUrl) {
@@ -372,6 +376,24 @@ class ExtractionQueueService {
           extractedData: JSON.stringify(extractedData),
           extractedAt: new Date()
         }
+      });
+
+      // Trigger auto-analysis based on user preferences
+      const { autoAnalysisService } = await import('./auto-analysis-service');
+      autoAnalysisService.triggerAutoAnalysis({
+        userId: item.userId,
+        jobId: job.id,
+        jobData: {
+          title: job.title,
+          company: job.company,
+          description: job.description || undefined,
+          requirements: job.requirements || undefined,
+          location: job.location || undefined,
+          salary: job.salary || undefined,
+        }
+      }).catch(error => {
+        console.error('Auto-analysis trigger failed:', error);
+        // Don't fail the extraction if auto-analysis fails
       });
 
       // Mark as completed

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { validateToken } from '@/lib/auth';
 import { unifiedAI } from '@/lib/services/unified-ai-service';
+import { gpt5Service } from '@/lib/services/gpt5-service';
 
 export const runtime = 'nodejs';
 
@@ -131,10 +132,95 @@ export async function GET(
       }
     }
 
-    // Generate single-pass salary analysis using unified AI
-    console.log(`🔍 Starting enhanced salary analysis for: ${job.title} at ${job.company}`);
+    // STEP 1: Perform REAL web searches for salary data
+    console.log(`🔍 Starting REAL web search for salary data: ${job.title} at ${job.company}`);
+
+    const currentYear = new Date().getFullYear();
+
+    // Search 1: Salary data
+    const salaryQuery = `"${job.title}" salary ${job.location} ${currentYear} ${job.company} glassdoor levels.fyi payscale compensation`;
+    console.log(`💰 Searching: ${salaryQuery}`);
+
+    const salarySearchResults = await gpt5Service.searchWeb(salaryQuery, {
+      userId: user.id,
+      maxResults: 10,
+      domains: [
+        'glassdoor.com',
+        'levels.fyi',
+        'salary.com',
+        'payscale.com',
+        'indeed.com',
+        'linkedin.com'
+      ],
+      searchType: 'salary',
+      reasoning: 'high' // Need high reasoning for accurate salary extraction
+    });
+
+    console.log(`✅ Found ${salarySearchResults.results.length} salary sources`);
+    console.log(`📊 Sources:`, salarySearchResults.results.map(r => r.url).filter(u => u));
+
+    // Search 2: Company information
+    const companyQuery = `"${job.company}" employee reviews benefits compensation culture ${currentYear}`;
+    console.log(`🏢 Searching: ${companyQuery}`);
+
+    const companySearchResults = await gpt5Service.searchWeb(companyQuery, {
+      userId: user.id,
+      maxResults: 5,
+      domains: [
+        'glassdoor.com',
+        'indeed.com',
+        'linkedin.com',
+        'comparably.com'
+      ],
+      searchType: 'company',
+      reasoning: 'medium'
+    });
+
+    console.log(`✅ Found ${companySearchResults.results.length} company sources`);
+
+    // STEP 2: Generate analysis using REAL web search data
+    console.log(`🤖 Analyzing with AI using real web search data...`);
 
     const analysisPrompt = `
+You are a senior compensation analyst. Provide CONCISE, STRUCTURED salary intelligence based on REAL web search data provided below.
+
+**CRITICAL: Use ONLY the web search data provided. DO NOT make up sources or data.**
+
+**WEB SEARCH RESULTS - SALARY DATA:**
+${salarySearchResults.results.map((r, i) => `
+Source ${i + 1}: ${r.title}
+URL: ${r.url}
+Data: ${r.content}
+`).join('\n')}
+
+Summary: ${salarySearchResults.summary}
+
+**WEB SEARCH RESULTS - COMPANY DATA:**
+${companySearchResults.results.map((r, i) => `
+Source ${i + 1}: ${r.title}
+URL: ${r.url}
+Data: ${r.content}
+`).join('\n')}
+
+Summary: ${companySearchResults.summary}
+
+**CRITICAL: First analyze the job type:**
+- VIE/V.I.E: Look for "VIE", "V.I.E", "Volontariat International", "International Volunteer" OR job titles with "M/F" suffix at French companies - FIXED monthly gratification by country
+- Check if title is "${job.title}" - if it contains "M/F" and company is French (like Amundi), likely VIE
+- Internship: Look for "stage", "internship", "stagiaire" - legal minimums
+- Contract: Look for "contractor", "consultant", "freelance" - hourly/daily rates
+- Apprenticeship: Look for "apprentice", "alternance" - specific wage scales
+- Government: Look for government/public sector indicators - grade scales
+
+FOR VIE POSITIONS: Return FIXED amount! Look up CURRENT VIE monthly gratifications from official sources:
+- Use civiweb.com, diplomatie.gouv.fr for accurate current rates
+- VIE rates vary by country and are updated regularly by French government
+- Include both base gratification + country-specific supplements
+- Example format: Base €723 + Country supplement €XXX = Total €YYYY/month
+For VIE: set min=max=median=ACCURATE_CURRENT_AMOUNT, isFixed=true, currency="EUR"
+
+**Job Details:**
+- Title: ${job.title}
 You are a senior compensation analyst. Provide CONCISE, STRUCTURED salary intelligence.
 
 **CRITICAL: First analyze the job type:**
@@ -172,6 +258,7 @@ For VIE: set min=max=median=ACCURATE_CURRENT_AMOUNT, isFixed=true, currency="EUR
 4. Focus ONLY on salary intelligence relevant to THIS job type
 5. ALL fields required - adapt them to job type (e.g., VIE has no negotiation)
 6. Generate sources relevant to job type (e.g., VIE sources: civiweb.com, diplomatie.gouv.fr)
+7. NEVER use "N/A" in salaryProgression fields - if data missing, provide helpful message or omit field entirely
 
 **Response Format (EXACT JSON structure required):**
 {
@@ -227,8 +314,8 @@ For VIE: set min=max=median=ACCURATE_CURRENT_AMOUNT, isFixed=true, currency="EUR
       "reasoning": "Target median due to X. Stretch if Y."
     },
     "salaryProgression": {
-      "currentVsOffer": "X% increase from current $Y",
-      "expectedVsOffer": "Meets/exceeds/below expected by X%",
+      "currentVsOffer": "If user current salary provided: 'X% increase from current $Y'. If NOT provided: 'Current salary not provided in profile'",
+      "expectedVsOffer": "If user expected salary provided: 'Meets/exceeds/below expected by X%'. If NOT provided: 'Expected salary not set in profile'",
       "growthPotential": "5-year: $X to $Y (Z% growth)"
     },
     "pros": [
@@ -333,7 +420,8 @@ IMPORTANT:
     const response = await unifiedAI.complete(
       analysisPrompt,
       'gpt-5-mini',
-      'medium'
+      'medium',
+      user.id // Pass userId - AI service fetches API key automatically
     );
 
     const processingTime = Date.now() - startTime;
@@ -438,8 +526,35 @@ IMPORTANT:
         dataUsed: analysisData.profileContext.dataUsed
       },
       sources: {
-        webSources: analysisData.sources.webSources,
-        dataSources: analysisData.sources.dataSources
+        // Use REAL web search sources, not AI-generated fake ones
+        webSources: [
+          ...salarySearchResults.results.map(r => ({
+            title: r.title,
+            url: r.url,
+            type: 'salary data' as const,
+            relevance: Math.round((r.relevance || 0.8) * 100)
+          })),
+          ...companySearchResults.results.map(r => ({
+            title: r.title,
+            url: r.url,
+            type: 'company reviews' as const,
+            relevance: Math.round((r.relevance || 0.7) * 100)
+          }))
+        ].filter(s => s.url), // Remove any sources without URLs
+        dataSources: [
+          ...salarySearchResults.results.map(r => ({
+            name: r.title,
+            url: r.url,
+            relevance: `${Math.round((r.relevance || 0.8) * 100)}%`,
+            category: 'salary data' as const
+          })),
+          ...companySearchResults.results.map(r => ({
+            name: r.title,
+            url: r.url,
+            relevance: `${Math.round((r.relevance || 0.7) * 100)}%`,
+            category: 'company reviews' as const
+          }))
+        ].filter(s => s.url) // Remove any sources without URLs
       }
     };
 

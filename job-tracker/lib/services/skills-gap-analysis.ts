@@ -97,7 +97,8 @@ export class SkillsGapAnalysisService {
     jobDescription: string,
     jobRequirements: string,
     currentSalary?: number,
-    preExtractedResumeSkills?: any[] // NEW: Pre-extracted skills from database
+    preExtractedResumeSkills?: any[], // NEW: Pre-extracted skills from database
+    apiKey?: string // User's API key for AI operations
   ): Promise<SkillsAnalysisResult> {
 
     console.log('🔍 Starting skills gap analysis...');
@@ -114,14 +115,15 @@ export class SkillsGapAnalysisService {
         }));
       } else {
         console.log('🔄 Extracting skills from resume text (no cache available)');
-        userSkills = await this.extractSkillsFromResume(resumeContent);
+        userSkills = await this.extractSkillsFromResume(resumeContent, apiKey);
       }
 
       // Step 2: Extract required skills from job
       const requiredSkills = await this.extractSkillsFromJob(
         jobTitle,
         jobDescription,
-        jobRequirements
+        jobRequirements,
+        apiKey
       );
 
       // Step 3: Identify matching skills
@@ -172,7 +174,7 @@ export class SkillsGapAnalysisService {
   /**
    * Extract skills from resume using AI
    */
-  private async extractSkillsFromResume(resumeContent: string): Promise<SkillProfile[]> {
+  private async extractSkillsFromResume(resumeContent: string, apiKey?: string): Promise<SkillProfile[]> {
     const prompt = `Extract all skills from this resume. For each skill, determine:
 1. Category (technical/soft/domain/certification/language/tool)
 2. Proficiency level based on context
@@ -202,7 +204,8 @@ Focus on concrete, specific skills. Avoid generic terms.`;
         overrides: {
           model: 'gpt-5-nano',  // Fast model for simple extraction
           reasoning: 'minimal',  // No reasoning needed for extraction
-          verbosity: 'low'
+          verbosity: 'low',
+          customApiKey: apiKey  // Pass user's API key
         }
       });
       if (!response || !(typeof response.data === 'string' ? response.data : JSON.stringify(response.data))) {
@@ -420,7 +423,8 @@ Focus on concrete, specific skills. Avoid generic terms.`;
   private async extractSkillsFromJob(
     jobTitle: string,
     description: string,
-    requirements: string
+    requirements: string,
+    apiKey?: string
   ): Promise<SkillProfile[]> {
 
     const jobContent = `
@@ -459,7 +463,8 @@ Do not wrap the array in a "skills" property or any other object.`;
         overrides: {
           model: 'gpt-5-nano',  // Fast model for simple extraction
           reasoning: 'minimal',  // No reasoning needed for extraction
-          verbosity: 'low'
+          verbosity: 'low',
+          customApiKey: apiKey  // Pass user's API key
         }
       });
       if (!response || !(typeof response.data === 'string' ? response.data : JSON.stringify(response.data))) {

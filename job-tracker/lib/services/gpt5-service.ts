@@ -249,19 +249,30 @@ export class GPT5Service {
         timezone?: string;
       };
       apiKey?: string;
+      userId?: string;
     } = {}
   ): Promise<{ results: any[]; summary: string; sources?: string[] }> {
     const {
       domains = [],
-      reasoning = 'minimal',
+      searchType = 'general',
+      reasoning = 'medium', // Changed from minimal - web search needs at least medium reasoning
       userLocation,
-      apiKey
+      apiKey,
+      userId
     } = options;
 
     console.log(`🔍 GPT-5 Native Web Search: "${query.substring(0, 100)}..."`);
 
     try {
-      const client = this.getClient(apiKey);
+      // Get API key intelligently
+      let finalApiKey = apiKey;
+
+      if (!finalApiKey && userId) {
+        const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+        finalApiKey = await getUserApiKey(userId);
+      }
+
+      const client = this.getClient(finalApiKey);
 
       // Build web search tool configuration
       const webSearchTool: any = {
@@ -290,58 +301,153 @@ export class GPT5Service {
       - Real-time information from web sources
       - Include citations and sources`;
 
-      // Use the Chat Completions API with tools (standard approach)
-      // Note: Responses API format may not support web_search yet
-      const response = await client.chat.completions.create({
+      // Use the RESPONSES API with web_search tool (official GPT-5 approach)
+      // This is the correct API for web search with GPT-5
+      const response = await (client as any).responses.create({
         model: 'gpt-5',
-        messages: [{
-          role: 'user',
-          content: searchPrompt
-        }],
+        input: searchPrompt,
         tools: [webSearchTool],
-        tool_choice: 'auto',
         reasoning: reasoning ? { effort: reasoning } : undefined
       });
 
-      // Parse the Chat Completions response
-      const message = response.choices[0]?.message;
-      const textContent = message?.content || '';
+      console.log('📊 Raw web search response:', JSON.stringify(response, null, 2).substring(0, 1000));
 
-      // Extract tool calls if any
-      const toolCalls = message?.tool_calls || [];
-      let sources: any[] = [];
+      // Parse GPT-5 Responses API structure
+      // The response has an 'output' array with content items
+      const output = response.output || [];
+      let textContent = '';
+      const citations: any[] = [];
+      const results: any[] = [];
+      const webSearchCalls: any[] = [];
 
-      // If there were web search tool calls, extract sources
-      for (const toolCall of toolCalls) {
-        if (toolCall.function?.name === 'web_search') {
-          try {
-            const functionArgs = JSON.parse(toolCall.function.arguments);
-            if (functionArgs.sources) {
-              sources = functionArgs.sources;
+      // Extract text content and citations from output array
+      if (Array.isArray(output)) {
+        for (const item of output) {
+          // Web search call items contain the search queries
+          if (item.type === 'web_search_call') {
+            webSearchCalls.push(item);
+            console.log('🔍 Web search query:', item.action?.query);
+            continue;
+          }
+
+          // Web search result items might contain actual URLs
+          if (item.type === 'web_search_result') {
+            console.log('📄 Found web_search_result:', JSON.stringify(item, null, 2).substring(0, 500));
+            if (item.results && Array.isArray(item.results)) {
+              item.results.forEach((result: any) => {
+                if (result.url) {
+                  citations.push({
+                    title: result.title || result.name || 'Web Source',
+                    url: result.url,
+                    text: result.snippet || result.description || '',
+                    source: 'web_search_result'
+                  });
+                }
+              });
             }
-          } catch (e) {
-            console.warn('Failed to parse tool call arguments:', e);
+            continue;
+          }
+
+          // Message items contain the actual content with annotations (citations)
+          if (item.type === 'message' && item.content) {
+            console.log('💬 Found message item with', item.content?.length, 'content items');
+            for (const contentItem of item.content) {
+              // Check for both 'text' and 'output_text' types
+              console.log('📄 Content item type:', contentItem.type);
+              if (contentItem.type === 'text' || contentItem.type === 'output_text') {
+                textContent += contentItem.text || '';
+
+                // Log if annotations exist
+                if (contentItem.annotations) {
+                  console.log('📌 Found annotations:', contentItem.annotations.length, 'items');
+                }
+
+                // Extract URL citations from annotations
+                if (contentItem.annotations && Array.isArray(contentItem.annotations)) {
+                  for (const annotation of contentItem.annotations) {
+                    console.log('🔖 Annotation type:', annotation.type, 'URL:', annotation.url ? 'YES' : 'NO');
+                    if (annotation.type === 'url_citation' && annotation.url) {
+                      citations.push({
+                        title: annotation.title || 'Web Source',
+                        url: annotation.url,
+                        text: annotation.text || '',
+                        startIndex: annotation.start_index,
+                        endIndex: annotation.end_index,
+                        source: 'url_citation'
+                      });
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
 
-      // Create basic results from the text content
-      // Since we don't have structured citations, create a single result
-      const results = [{
-        title: 'Web Search Results',
-        url: '',
-        content: textContent,
-        relevance: 0.95,
-        searchType,
-        timestamp: new Date().toISOString()
-      }];
+      // If no output array, try legacy fields
+      if (!textContent) {
+        textContent = response.output_text || response.text || '';
+      }
 
-      console.log(`✅ GPT-5 Web Search completed with ${sources.length} sources`);
+      console.log(`📝 Extracted ${textContent.length} chars of text and ${citations.length} citations from ${webSearchCalls.length} searches`);
+
+      // Convert citations to search results
+      if (citations.length > 0) {
+        citations.forEach((citation, index) => {
+          // Extract content snippet from the text around this citation
+          let content = citation.text || '';
+          if (!content && textContent && citation.startIndex !== undefined) {
+            const start = Math.max(0, citation.startIndex - 100);
+            const end = Math.min(textContent.length, citation.endIndex + 100);
+            content = textContent.substring(start, end);
+          }
+
+          results.push({
+            title: citation.title,
+            url: citation.url,
+            content: content || textContent.substring(0, 300),
+            relevance: 0.9 - (index * 0.05), // Higher relevance for earlier citations
+            searchType,
+            timestamp: new Date().toISOString()
+          });
+        });
+      }
+
+      // If no citations found but we have web search calls, note them
+      if (results.length === 0 && textContent) {
+        if (webSearchCalls.length > 0) {
+          console.log(`⚠️ No URL citations found despite ${webSearchCalls.length} web searches being performed`);
+          console.log('📋 Search queries executed:', webSearchCalls.map(c => c.action?.query).filter(Boolean).join(', ').substring(0, 200));
+
+          // Create a note about the searches performed
+          results.push({
+            title: `Analysis based on ${webSearchCalls.length} web searches`,
+            url: '',
+            content: textContent,
+            relevance: 0.8,
+            searchType,
+            timestamp: new Date().toISOString(),
+            note: `GPT-5 performed ${webSearchCalls.length} searches but did not return specific URL citations. The analysis is based on web data but specific source URLs are not available.`
+          });
+        } else {
+          console.log('⚠️ No citations or web searches found, creating fallback result');
+          results.push({
+            title: `Web Search: ${query.substring(0, 50)}`,
+            url: '',
+            content: textContent,
+            relevance: 0.8,
+            searchType,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
+      console.log(`✅ GPT-5 Web Search: ${results.length} results, ${citations.length} URL citations, ${webSearchCalls.length} searches performed`);
 
       return {
         results,
         summary: textContent,
-        sources
+        sources: citations.map(c => c.url).filter(Boolean)
       };
     } catch (error) {
       console.error('GPT-5 Web Search failed:', error);

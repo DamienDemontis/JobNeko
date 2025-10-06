@@ -696,12 +696,14 @@ export default function ModernSalaryIntelligence({
             {analysis.personalizedInsights.salaryProgression && (
               <div className="space-y-2">
                 <h4 className="font-semibold">Salary Progression</h4>
-                {analysis.personalizedInsights.salaryProgression.currentVsOffer && (
+                {analysis.personalizedInsights.salaryProgression.currentVsOffer &&
+                 analysis.personalizedInsights.salaryProgression.currentVsOffer !== 'N/A' && (
                   <p className="text-sm text-gray-700">
                     <strong>vs Current:</strong> {analysis.personalizedInsights.salaryProgression.currentVsOffer}
                   </p>
                 )}
-                {analysis.personalizedInsights.salaryProgression.expectedVsOffer && (
+                {analysis.personalizedInsights.salaryProgression.expectedVsOffer &&
+                 analysis.personalizedInsights.salaryProgression.expectedVsOffer !== 'N/A' && (
                   <p className="text-sm text-gray-700">
                     <strong>vs Expected:</strong> {analysis.personalizedInsights.salaryProgression.expectedVsOffer}
                   </p>
@@ -814,7 +816,7 @@ export default function ModernSalaryIntelligence({
                           {source.type.replace('_', ' ')}
                         </Badge>
                         <Badge variant="outline" className="text-xs">
-                          {Math.round(source.relevance * 100)}% relevance
+                          {source.relevance}% relevance
                         </Badge>
                       </div>
                     </div>

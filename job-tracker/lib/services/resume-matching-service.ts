@@ -104,7 +104,8 @@ export class ResumeMatchingService {
     company: string,
     jobDescription: string,
     jobRequirements: string,
-    preExtractedSkills?: any[] // NEW: Pre-extracted skills from database
+    preExtractedSkills?: any[], // NEW: Pre-extracted skills from database
+    apiKey?: string // User's API key for AI operations
   ): Promise<ResumeMatchResult> {
 
     console.log('📄 Starting comprehensive resume matching analysis...');
@@ -117,16 +118,18 @@ export class ResumeMatchingService {
         jobDescription,
         jobRequirements,
         undefined, // currentSalary
-        preExtractedSkills // Pass cached skills
+        preExtractedSkills, // Pass cached skills
+        apiKey // Pass user's API key
       );
 
       // Step 2: Extract detailed resume and job components
-      const resumeComponents = await this.extractResumeComponents(resumeContent);
+      const resumeComponents = await this.extractResumeComponents(resumeContent, apiKey);
       const jobComponents = await this.extractJobComponents(
         jobTitle,
         company,
         jobDescription,
-        jobRequirements
+        jobRequirements,
+        apiKey
       );
 
       // Step 3: Calculate match breakdown
@@ -192,7 +195,7 @@ export class ResumeMatchingService {
   /**
    * Extract structured components from resume
    */
-  private async extractResumeComponents(resumeContent: string): Promise<any> {
+  private async extractResumeComponents(resumeContent: string, apiKey?: string): Promise<any> {
     const prompt = `Analyze this resume and extract structured information:
 
 Resume:
@@ -242,7 +245,10 @@ Extract and return JSON with:
     try {
       const response = await unifiedAI.process({
       operation: 'general_completion',
-      content: prompt
+      content: prompt,
+      overrides: {
+        customApiKey: apiKey  // Pass user's API key
+      }
     });
       if (!response || !(typeof response.data === 'string' ? response.data : JSON.stringify(response.data))) {
         throw new Error('Failed to get valid response from AI service');
@@ -263,7 +269,8 @@ Extract and return JSON with:
     jobTitle: string,
     company: string,
     description: string,
-    requirements: string
+    requirements: string,
+    apiKey?: string
   ): Promise<any> {
 
     const jobContent = `
@@ -320,7 +327,10 @@ Extract and return JSON with:
     try {
       const response = await unifiedAI.process({
       operation: 'general_completion',
-      content: prompt
+      content: prompt,
+      overrides: {
+        customApiKey: apiKey  // Pass user's API key
+      }
     });
       if (!response || !(typeof response.data === 'string' ? response.data : JSON.stringify(response.data))) {
         throw new Error('Failed to get valid response from AI service');

@@ -42,8 +42,12 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await resume.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    // Get user's API key (handles encryption and platform fallback securely)
+    const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+    const apiKey = await getUserApiKey(userId);
+
     // Extract resume content using AI
-    const extraction = await aiResumeExtractor.extractFromPDF(buffer, resume.name);
+    const extraction = await aiResumeExtractor.extractFromPDF(buffer, resume.name, apiKey);
 
     // Store resume data in database
     const newResume = await prisma.resume.create({

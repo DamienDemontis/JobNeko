@@ -65,7 +65,7 @@ export interface ResumeExtraction {
 }
 
 export class AIResumeExtractor {
-  async extractFromPDF(pdfBuffer: Buffer, fileName: string): Promise<ResumeExtraction> {
+  async extractFromPDF(pdfBuffer: Buffer, fileName: string, apiKey: string): Promise<ResumeExtraction> {
     const startTime = Date.now();
 
     try {
@@ -79,7 +79,7 @@ export class AIResumeExtractor {
       console.log(`Extracted ${textContent.length} characters from PDF`);
 
       // Use AI to parse the resume data from the extracted text
-      const aiResult = await this.parseResumeWithAI(textContent);
+      const aiResult = await this.parseResumeWithAI(textContent, apiKey);
 
       if (!aiResult) {
         throw new Error('Failed to extract resume content. AI service unavailable.');
@@ -226,14 +226,14 @@ Do NOT wrap the response in code blocks or any markdown formatting.
 Return the raw JSON object starting with { and ending with }.`;
   }
 
-  private async parseResumeWithAI(textContent: string): Promise<ResumeExtraction | null> {
+  private async parseResumeWithAI(textContent: string, apiKey: string): Promise<ResumeExtraction | null> {
     try {
       console.log('Starting AI resume parsing with GPT-5 nano...');
 
-      // Check if OpenAI is available
-      if (!process.env.OPENAI_API_KEY) {
+      // Validate API key is provided
+      if (!apiKey) {
         console.error('❌ OpenAI API key not configured for resume extraction');
-        throw new Error('AI service not configured. Please set OPENAI_API_KEY in environment variables.');
+        throw new Error('AI service not configured. Please configure your OpenAI API key in settings.');
       }
 
       const prompt = this.buildExtractionPrompt(textContent, 'unknown.pdf');
@@ -245,7 +245,8 @@ Return the raw JSON object starting with { and ending with }.`;
         overrides: {
           model: 'gpt-5-nano', // Fast, cost-effective model for resume parsing
           reasoning: 'minimal',
-          verbosity: 'low'
+          verbosity: 'low',
+          customApiKey: apiKey // Pass the user's API key through overrides
         }
       });
 

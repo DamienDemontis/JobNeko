@@ -210,38 +210,9 @@ export default function OnboardingPage() {
           break;
 
         case 3:
-          // Resume upload
-          if (!state.resumeData.file && !state.resumeData.uploaded) {
-            // Allow skipping
-            break;
-          }
-
-          if (state.resumeData.file && !state.resumeData.uploaded) {
-            const formData = new FormData();
-            formData.append('resume', state.resumeData.file);
-
-            const resumeResponse = await fetch('/api/resume/upload', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${token}`
-              },
-              body: formData
-            });
-
-            if (!resumeResponse.ok) {
-              throw new Error('Failed to upload resume');
-            }
-
-            setState(prev => ({
-              ...prev,
-              resumeData: { ...prev.resumeData, uploaded: true }
-            }));
-          }
-          break;
-
-        case 4:
-          // API Key (self-hosted mode only)
+          // API Key (self-hosted mode) OR Resume upload (platform mode)
           if (platformConfig.isSelfHosted) {
+            // For self-hosted: Configure API key BEFORE resume upload
             if (!state.apiKeyData.apiKey.trim()) {
               toast.error('Please enter your OpenAI API key');
               setLoading(false);
@@ -266,6 +237,71 @@ export default function OnboardingPage() {
             if (!apiKeyResponse.ok) {
               const error = await apiKeyResponse.json();
               throw new Error(error.error || 'Failed to configure API key');
+            }
+
+            setState(prev => ({
+              ...prev,
+              apiKeyData: { ...prev.apiKeyData, configured: true }
+            }));
+          } else {
+            // For platform mode: Resume upload
+            if (!state.resumeData.file && !state.resumeData.uploaded) {
+              // Allow skipping
+              break;
+            }
+
+            if (state.resumeData.file && !state.resumeData.uploaded) {
+              const formData = new FormData();
+              formData.append('resume', state.resumeData.file);
+
+              const resumeResponse = await fetch('/api/resume/upload', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`
+                },
+                body: formData
+              });
+
+              if (!resumeResponse.ok) {
+                throw new Error('Failed to upload resume');
+              }
+
+              setState(prev => ({
+                ...prev,
+                resumeData: { ...prev.resumeData, uploaded: true }
+              }));
+            }
+          }
+          break;
+
+        case 4:
+          // Resume upload (self-hosted mode only - AFTER API key is configured)
+          if (platformConfig.isSelfHosted) {
+            if (!state.resumeData.file && !state.resumeData.uploaded) {
+              // Allow skipping
+              break;
+            }
+
+            if (state.resumeData.file && !state.resumeData.uploaded) {
+              const formData = new FormData();
+              formData.append('resume', state.resumeData.file);
+
+              const resumeResponse = await fetch('/api/resume/upload', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`
+                },
+                body: formData
+              });
+
+              if (!resumeResponse.ok) {
+                throw new Error('Failed to upload resume');
+              }
+
+              setState(prev => ({
+                ...prev,
+                resumeData: { ...prev.resumeData, uploaded: true }
+              }));
             }
 
             setState(prev => ({
@@ -573,6 +609,82 @@ export default function OnboardingPage() {
         );
 
       case 3:
+        // Show API Key step for self-hosted, Resume upload for platform mode
+        if (platformConfig.isSelfHosted) {
+          // API Key Configuration (for self-hosted)
+          return (
+            <Card className="border-gray-900 bg-white shadow-xl">
+              <CardHeader className="pb-6">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-black p-3 rounded-lg">
+                    <Key className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-black">Configure OpenAI API Key</CardTitle>
+                    <CardDescription>Required for AI-powered features in self-hosted mode</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <Alert className="border-yellow-200 bg-yellow-50">
+                  <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                  <AlertTitle className="text-yellow-800">Important: Set Up Your API Key First</AlertTitle>
+                  <AlertDescription className="text-yellow-700">
+                    You need to configure your OpenAI API key before uploading your resume.
+                    This ensures we can extract and analyze your resume properly.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="space-y-2">
+                  <Label htmlFor="api-key">OpenAI API Key</Label>
+                  <div className="relative">
+                    <Input
+                      id="api-key"
+                      type={showApiKey ? 'text' : 'password'}
+                      placeholder="sk-..."
+                      value={state.apiKeyData.apiKey}
+                      onChange={(e) => setState(prev => ({
+                        ...prev,
+                        apiKeyData: { ...prev.apiKeyData, apiKey: e.target.value }
+                      }))}
+                      className="pr-10 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-600">
+                    Get your API key from{' '}
+                    <a
+                      href="https://platform.openai.com/api-keys"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      OpenAI Dashboard →
+                    </a>
+                  </p>
+                </div>
+
+                <Alert className="border-gray-200 bg-gray-50">
+                  <DollarSign className="h-4 w-4 text-gray-600" />
+                  <AlertTitle className="text-gray-800">Cost Control Tips</AlertTitle>
+                  <AlertDescription className="text-gray-700 space-y-1">
+                    <p>• Set monthly spending limits in your OpenAI dashboard</p>
+                    <p>• Typical usage: $5-20/month for active job searching</p>
+                    <p>• Each job extraction costs approximately $0.02-0.05</p>
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+          );
+        }
+
+        // Resume Upload (for platform mode)
         return (
           <Card className="border-gray-900 bg-white shadow-xl">
             <CardHeader className="pb-6">
@@ -653,90 +765,89 @@ export default function OnboardingPage() {
 
       case 4:
         if (platformConfig.isSelfHosted) {
+          // Resume Upload (for self-hosted mode - AFTER API key is configured)
           return (
             <Card className="border-gray-900 bg-white shadow-xl">
               <CardHeader className="pb-6">
                 <div className="flex items-center space-x-3">
                   <div className="bg-black p-3 rounded-lg">
-                    <Key className="w-6 h-6 text-white" />
+                    <FileText className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <CardTitle className="text-black">Configure Your API Key</CardTitle>
-                    <CardDescription>{deploymentText.apiKeyDescription}</CardDescription>
+                    <CardTitle className="text-black">Upload Your Resume</CardTitle>
+                    <CardDescription>Now that your API key is configured, let's analyze your resume</CardDescription>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
-                <Alert variant="destructive" className="border-red-300 bg-red-50">
-                  <AlertTriangle className="h-4 w-4 text-red-600" />
-                  <AlertTitle className="text-red-900">⚠️ IMPORTANT: Set Spending Limits First!</AlertTitle>
-                  <AlertDescription className="space-y-3 text-red-800">
-                    <p className="font-semibold">
-                      Before entering your API key, set spending limits on your OpenAI account to prevent unexpected charges.
-                    </p>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      asChild
-                      className="bg-red-600 hover:bg-red-700 text-white"
-                    >
-                      <a
-                        href="https://platform.openai.com/account/limits"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <DollarSign className="w-4 h-4 mr-2" />
-                        Set Spending Limits (Do This First!)
-                      </a>
-                    </Button>
-                    <p className="text-xs">
-                      <strong>Recommended limit:</strong> $10-20/month for typical usage
-                    </p>
+                <Alert className="border-green-200 bg-green-50">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <AlertTitle className="text-green-800">API Key Configured!</AlertTitle>
+                  <AlertDescription className="text-green-700">
+                    Your OpenAI API key has been set up successfully. Now you can upload your resume for AI-powered analysis.
                   </AlertDescription>
                 </Alert>
 
-                <div className="space-y-3">
-                  <Label htmlFor="apiKey" className="text-black font-medium">OpenAI API Key *</Label>
-                  <div className="flex space-x-2">
-                    <div className="flex-1 relative">
-                      <Input
-                        id="apiKey"
-                        type={showApiKey ? 'text' : 'password'}
-                        value={state.apiKeyData.apiKey}
-                        onChange={(e) => setState(prev => ({
+                <Alert className="border-gray-200 bg-gray-50">
+                  <FileText className="h-4 w-4 text-black" />
+                  <AlertTitle className="text-black">Why do we need your resume?</AlertTitle>
+                  <AlertDescription className="text-gray-700">
+                    Your resume is used to calculate match percentages with job offers, identify skills gaps,
+                    and provide personalized recommendations. With your API key configured, all processing happens securely.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-black transition-colors">
+                  <input
+                    type="file"
+                    id="resume-upload-step4"
+                    accept=".pdf,.doc,.docx,.txt"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setState(prev => ({
                           ...prev,
-                          apiKeyData: { ...prev.apiKeyData, apiKey: e.target.value }
-                        }))}
-                        placeholder="sk-proj-..."
-                        disabled={loading}
-                        className="pr-10 border-gray-300"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowApiKey(!showApiKey)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
-                        {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    Get your API key from{' '}
-                    <a href="https://platform.openai.com/api-keys" target="_blank" className="text-black underline hover:text-gray-700">
-                      OpenAI Dashboard
-                    </a>
-                  </p>
+                          resumeData: { file, uploaded: false }
+                        }));
+                      }
+                    }}
+                    className="hidden"
+                    disabled={loading}
+                  />
+                  <label htmlFor="resume-upload-step4" className="cursor-pointer">
+                    <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                    <p className="text-lg font-semibold text-black mb-2">
+                      {state.resumeData.file ? state.resumeData.file.name : 'Click to upload your resume'}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      PDF, DOC, DOCX, or TXT (Max 10MB)
+                    </p>
+                  </label>
                 </div>
 
-                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <h5 className="font-medium text-sm mb-3 text-black">Quick Setup:</h5>
-                  <ol className="text-xs text-gray-700 space-y-2 list-decimal list-inside">
-                    <li><strong>FIRST:</strong> Set spending limits at OpenAI</li>
-                    <li>Get your API key from OpenAI</li>
-                    <li>Paste it above</li>
-                    <li>We'll test it before saving</li>
-                  </ol>
-                </div>
+                {state.resumeData.file && (
+                  <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200">
+                    <div className="flex items-center space-x-3">
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <span className="text-sm font-medium text-green-900">{state.resumeData.file.name}</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setState(prev => ({
+                        ...prev,
+                        resumeData: { file: null, uploaded: false }
+                      }))}
+                      className="text-green-900 hover:text-green-700"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-500 text-center">
+                  You can upload or update your resume later in the Profile section
+                </p>
               </CardContent>
             </Card>
           );

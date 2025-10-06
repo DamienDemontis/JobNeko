@@ -59,9 +59,13 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(bytes);
     await writeFile(filePath, buffer);
 
+    // Get user's API key (handles encryption and platform fallback securely)
+    const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+    const apiKey = await getUserApiKey(user.id);
+
     // Extract raw text from PDF (simple and reliable)
     console.log('Starting PDF extraction for:', fileName);
-    const extractedData = await aiResumeExtractor.extractFromPDF(buffer, fileName);
+    const extractedData = await aiResumeExtractor.extractFromPDF(buffer, fileName, apiKey);
     console.log('PDF extraction completed successfully');
 
     // Deactivate previous resumes

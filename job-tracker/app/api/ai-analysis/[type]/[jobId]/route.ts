@@ -446,14 +446,6 @@ export const POST = withErrorHandling(async (
     return NextResponse.json({ error: 'Invalid analysis type' }, { status: 400 });
   }
 
-  // Check OpenAI config
-  if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json(
-      { error: 'AI service not configured' },
-      { status: 503 }
-    );
-  }
-
   // Validate auth
   const token = request.headers.get('authorization')?.replace('Bearer ', '');
   if (!token) {
@@ -464,6 +456,10 @@ export const POST = withErrorHandling(async (
   if (!user) {
     throw new AuthenticationError('Invalid authentication token');
   }
+
+  // Get user's API key (handles encryption and platform fallback securely)
+  const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+  const apiKey = await getUserApiKey(user.id);
 
   // Get request body
   const body = await request.json().catch(() => ({}));
@@ -493,7 +489,8 @@ export const POST = withErrorHandling(async (
     // Call AI service
     const response = await generateCompletion(prompt, {
       max_tokens: config.maxTokens,
-      temperature: config.temperature
+      temperature: config.temperature,
+      apiKey // Pass user's API key
     });
 
     if (!response || !response.content) {

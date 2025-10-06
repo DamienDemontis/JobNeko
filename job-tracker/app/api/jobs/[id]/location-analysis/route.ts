@@ -28,6 +28,10 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
+    // Get user's API key (handles encryption and platform fallback securely)
+    const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+    const apiKey = await getUserApiKey(user.id);
+
     const resolvedParams = await params;
     const jobId = resolvedParams.id;
 
@@ -305,7 +309,8 @@ IMPORTANT:
     const response = await unifiedAI.complete(
       analysisPrompt,
       'gpt-5-mini',
-      'medium'
+      'medium',
+      apiKey // Pass user's API key
     );
 
     const processingTime = Date.now() - startTime;

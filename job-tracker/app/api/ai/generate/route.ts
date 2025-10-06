@@ -98,17 +98,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   console.log(`🤖 AI Generation requested: ${taskType} for user ${user.id}`);
 
   try {
-    // Check if OpenAI is configured
-    if (!process.env.OPENAI_API_KEY) {
-      console.error('❌ OpenAI API key not configured');
-      throw new Error('AI service not configured. Please set OPENAI_API_KEY in environment variables.');
-    }
+    // Get user's API key (handles encryption and platform fallback securely)
+    const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+    const apiKey = await getUserApiKey(user.id);
 
     // Generate completion
     const startTime = Date.now();
     const response = await generateCompletion(prompt, {
       max_tokens: options.max_tokens || 2000,
-      temperature: options.temperature || 0.7
+      temperature: options.temperature || 0.7,
+      apiKey // Pass user's API key
     });
 
     const processingTime = Date.now() - startTime;

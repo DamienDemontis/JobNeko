@@ -81,6 +81,10 @@ export const POST = withErrorHandling(async (
   console.log(`🎯 Calculating match score for job: ${job.title} at ${job.company}`);
   console.log(`🔄 Force recalculation - bypassing cache`);
 
+  // Get user's API key (handles encryption and platform fallback securely)
+  const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+  const apiKey = await getUserApiKey(user.id);
+
   // Calculate match using centralized service with force flag to bypass cache
   const matchResult = await centralizedMatchService.calculateMatch({
     userId: user.id,
@@ -95,7 +99,8 @@ export const POST = withErrorHandling(async (
     jobRequirements: job.requirements || '',
     jobSkills,
     jobLocation: job.location || undefined,
-    forceRecalculate: true // NEW: Force fresh calculation
+    forceRecalculate: true, // NEW: Force fresh calculation
+    apiKey // Pass user's API key for AI operations
   });
 
   // Update job with match score AND detailed analysis

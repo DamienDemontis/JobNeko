@@ -129,14 +129,6 @@ export const POST = withErrorHandling(async (
 ) => {
   const { id } = await params;
 
-  // Check if OpenAI is configured
-  if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json(
-      { error: 'AI service not configured. Please set OPENAI_API_KEY in environment variables.' },
-      { status: 503 }
-    );
-  }
-
   // Validate authentication
   const token = request.headers.get('authorization')?.replace('Bearer ', '');
   if (!token) {
@@ -147,6 +139,10 @@ export const POST = withErrorHandling(async (
   if (!user) {
     throw new AuthenticationError('Invalid authentication token');
   }
+
+  // Get user's API key (handles encryption and platform fallback securely)
+  const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+  const apiKey = await getUserApiKey(user.id);
 
   // Get job and user data
   const [job, userProfile] = await Promise.all([
@@ -230,7 +226,8 @@ Return ONLY the JSON object, no markdown formatting or explanations.`;
 
     const response = await generateCompletion(analysisPrompt, {
       max_tokens: 4000,
-      temperature: 0.3
+      temperature: 0.3,
+      apiKey // Pass user's API key
     });
 
     if (!response || !response.content) {

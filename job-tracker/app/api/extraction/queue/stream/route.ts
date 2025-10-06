@@ -22,11 +22,11 @@ export async function GET(request: NextRequest) {
   const token = authHeader.replace('Bearer ', '');
   const payload = await verifyToken(token);
 
-  if (!payload?.userId) {
+  if (!payload?.id) {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const userId = payload.userId;
+  const userId = payload.id;
 
   // Create SSE stream
   const stream = new ReadableStream({

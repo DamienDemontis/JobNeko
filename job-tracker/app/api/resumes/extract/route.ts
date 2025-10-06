@@ -8,7 +8,7 @@ import {
 } from '@/lib/error-handling';
 
 // Helper function to extract text from different file types
-async function extractTextFromFile(file: File): Promise<{ text: string; extractedData?: any }> {
+async function extractTextFromFile(file: File, apiKey: string): Promise<{ text: string; extractedData?: any }> {
   const fileType = file.type;
 
   if (fileType === 'text/plain') {
@@ -21,7 +21,7 @@ async function extractTextFromFile(file: File): Promise<{ text: string; extracte
     const buffer = Buffer.from(bytes);
 
     // Extract using the existing AI resume extractor
-    const extractedData = await aiResumeExtractor.extractFromPDF(buffer, file.name);
+    const extractedData = await aiResumeExtractor.extractFromPDF(buffer, file.name, apiKey);
 
     return {
       text: extractedData.rawText || '',
@@ -75,8 +75,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     console.log(`📄 Extracting resume data from ${file.name} (${file.type})`);
 
+    // Get user's API key (handles encryption and platform fallback securely)
+    const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+    const apiKey = await getUserApiKey(user.id);
+
     // Extract text from the file
-    const { text: resumeText, extractedData: aiExtractedData } = await extractTextFromFile(file);
+    const { text: resumeText, extractedData: aiExtractedData } = await extractTextFromFile(file, apiKey);
 
     if (!resumeText || resumeText.trim().length < 100) {
       throw new ValidationError('Resume file appears to be empty or too short');

@@ -30,6 +30,7 @@ export interface AIRequest {
   content: string;
   additionalInstructions?: string;
   overrides?: Partial<OperationConfig>;
+  userId?: string; // User ID to fetch their API key automatically
 }
 
 export interface AIResponse<T = any> extends FormattedAIResponse<T> {
@@ -64,13 +65,26 @@ export class UnifiedAIService {
       ...request.overrides
     };
 
-    // Check for API key - either custom or environment
-    const apiKey = config.customApiKey || process.env.OPENAI_API_KEY;
+    // Get API key intelligently:
+    // 1. Use customApiKey if provided in overrides
+    // 2. If userId provided, fetch user's encrypted API key
+    // 3. Fall back to platform API key
+    let apiKey = config.customApiKey;
+
+    if (!apiKey && request.userId) {
+      // Fetch user's API key automatically
+      const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+      apiKey = await getUserApiKey(request.userId);
+    } else if (!apiKey) {
+      // Fall back to platform key
+      apiKey = process.env.OPENAI_API_KEY;
+    }
+
     if (!apiKey) {
       throw new Error(`AI service not configured. GPT-5 API key required for ${request.operation}.`);
     }
 
-    console.log(`🤖 Processing ${request.operation} with ${config.model} (no token limits)${config.customApiKey ? ' [custom API key]' : ''}`);
+    console.log(`🤖 Processing ${request.operation} with ${config.model} (no token limits)${request.userId ? ` [user ${request.userId.substring(0, 8)}...]` : config.customApiKey ? ' [custom API key]' : ' [platform key]'}`);
 
     try {
       // Build standardized prompt
@@ -299,12 +313,22 @@ Calculate a detailed skill match analysis including:
   async complete(
     prompt: string,
     model: GPT5Model = 'gpt-5-mini',
-    reasoning: 'minimal' | 'low' | 'medium' | 'high' = 'minimal'
+    reasoning: 'minimal' | 'low' | 'medium' | 'high' = 'minimal',
+    userIdOrApiKey?: string // Can be userId or direct API key for backwards compatibility
   ) {
+    // Smart detection: if it looks like an API key (starts with sk-), use it directly
+    // Otherwise treat it as a userId
+    const isDirectApiKey = userIdOrApiKey?.startsWith('sk-');
+
     return await this.process({
       operation: 'general_completion',
       content: prompt,
-      overrides: { model, reasoning }
+      userId: !isDirectApiKey ? userIdOrApiKey : undefined,
+      overrides: {
+        model,
+        reasoning,
+        customApiKey: isDirectApiKey ? userIdOrApiKey : undefined
+      }
     });
   }
 

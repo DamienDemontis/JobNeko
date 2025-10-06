@@ -56,6 +56,7 @@ export interface MatchCalculationInput {
   jobSkills?: string[];
   jobLocation?: string;
   forceRecalculate?: boolean; // NEW: Bypass cache and force fresh calculation
+  apiKey?: string; // User's API key for AI operations
 }
 
 class CentralizedMatchService {
@@ -209,7 +210,10 @@ Return ONLY a JSON object with this exact structure:
       input.resumeContent,
       input.jobTitle,
       input.jobDescription,
-      input.jobRequirements
+      input.jobRequirements,
+      undefined, // currentSalary
+      undefined, // preExtractedResumeSkills
+      input.apiKey // Pass user's API key
     );
 
     // Perform partial detailed analysis (exclude some heavy computations)
@@ -224,7 +228,8 @@ Return ONLY a JSON object with this exact structure:
       input.jobCompany,
       input.jobDescription,
       input.jobRequirements,
-      preExtractedSkills // NEW: Pass cached skills from database
+      preExtractedSkills, // NEW: Pass cached skills from database
+      input.apiKey // Pass user's API key
     );
 
     return {
@@ -266,7 +271,8 @@ Return ONLY a JSON object with this exact structure:
       input.jobCompany,
       input.jobDescription,
       input.jobRequirements,
-      preExtractedSkills // NEW: Pass cached skills from database
+      preExtractedSkills, // NEW: Pass cached skills from database
+      input.apiKey // Pass user's API key
     );
 
     return {

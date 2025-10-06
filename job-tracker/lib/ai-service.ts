@@ -144,17 +144,18 @@ export async function extractJobDataWithAI(
     text?: string;
     title?: string;
     structured?: Record<string, unknown>;
-  }
+  },
+  apiKey?: string
 ): Promise<ExtractedJobData> {
-  // Use only OpenAI GPT-5 - NO FALLBACKS OR AUTO-RETRIES
-  if (!process.env.OPENAI_API_KEY) {
+  // Validate API key is available
+  if (!apiKey && !process.env.OPENAI_API_KEY) {
     throw new Error('OpenAI API key not configured. GPT-5 is required for job extraction.');
   }
 
-  console.log('Using GPT-5 for job extraction - no fallbacks');
+  console.log(`Using GPT-5 for job extraction${apiKey ? ' with user API key' : ' with platform key'} - no fallbacks`);
 
   try {
-    return await extractWithOpenAI(pageData);
+    return await extractWithOpenAI(pageData, apiKey);
   } catch (error) {
     // Show error directly instead of trying fallback services
     const aiError = handleAIServiceError(error, 'job_extraction', pageData.url);
@@ -163,13 +164,16 @@ export async function extractJobDataWithAI(
   }
 }
 
-async function extractWithOpenAI(pageData: {
-  url: string;
-  html?: string;
-  text?: string;
-  title?: string;
-  structured?: Record<string, unknown>;
-}): Promise<ExtractedJobData> {
+async function extractWithOpenAI(
+  pageData: {
+    url: string;
+    html?: string;
+    text?: string;
+    title?: string;
+    structured?: Record<string, unknown>;
+  },
+  apiKey?: string
+): Promise<ExtractedJobData> {
   // Create comprehensive but structured prompt for GPT-5
   const comprehensivePrompt = `Extract job information and return ONLY a valid JSON object. No explanations, no markdown, no code blocks.
 
@@ -335,7 +339,8 @@ Now return the complete JSON object (start with { and end with }). The companyLo
 
   console.log('🔍 Starting job extraction with GPT-5...');
   const response = await gpt5Service.complete(comprehensivePrompt, {
-    model: 'gpt-5-mini' // No token limit - let GPT-5 use what it needs (up to 128k max)
+    model: 'gpt-5-mini', // No token limit - let GPT-5 use what it needs (up to 128k max)
+    apiKey // Pass user's API key if provided
   });
 
   console.log('🔍 GPT-5 raw response length:', response?.length || 0);
@@ -676,23 +681,14 @@ export async function generateCompletion(
     model?: GPT5Model;
     reasoning?: 'minimal' | 'low' | 'medium' | 'high';
     verbosity?: 'low' | 'medium' | 'high';
+    apiKey?: string; // User's API key
   } = {}
 ): Promise<{ content: string } | null> {
-  // Use only GPT-5 - no fallbacks or auto-retries
-  const aiServices = [
-    { name: 'gpt5', available: !!process.env.OPENAI_API_KEY }
-  ];
+  // Check if API key is available (either provided or in environment)
+  const hasApiKey = !!(options.apiKey || process.env.OPENAI_API_KEY);
 
-  // Use only the first available service - NO AUTO-RETRIES
-  const availableService = aiServices.find(service => service.available);
-
-  if (!availableService) {
-    throw new Error('No AI services available. Please configure OpenAI API key or run Ollama locally.');
-  }
-
-  // Only GPT-5 supported - no fallback services
-  if (availableService.name !== 'gpt5') {
-    throw new Error('Only GPT-5 is supported. Please configure OPENAI_API_KEY.');
+  if (!hasApiKey) {
+    throw new Error('No AI services available. Please configure OpenAI API key.');
   }
 
   try {
@@ -702,7 +698,8 @@ export async function generateCompletion(
       model: options.model || AI_MODELS.openai,
       reasoning: options.reasoning || 'minimal',
       verbosity: options.verbosity || 'low',
-      maxTokens: options.max_tokens  // No default token limit - use what user specifies or GPT-5's full capacity
+      maxTokens: options.max_tokens,  // No default token limit - use what user specifies or GPT-5's full capacity
+      apiKey: options.apiKey  // Pass user's API key
     });
 
     return {

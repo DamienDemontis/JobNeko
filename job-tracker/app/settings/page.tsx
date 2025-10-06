@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import {
   Key,
@@ -27,7 +28,12 @@ import {
   Lock,
   Unlock,
   Settings as SettingsIcon,
-  Trash
+  Trash,
+  Brain,
+  Zap,
+  Bell,
+  Palette,
+  Database
 } from 'lucide-react';
 
 interface ApiKeyStatus {
@@ -35,6 +41,25 @@ interface ApiKeyStatus {
   mode: 'platform' | 'self_hosted';
   tier: string;
   keyPreview?: string;
+}
+
+interface UserPreferences {
+  autoAnalyzeAfterExtraction: boolean;
+  autoMatchScore: boolean;
+  autoSalaryAnalysis: boolean;
+  autoCompanyResearch: boolean;
+  autoSkillGapAnalysis: boolean;
+  autoInterviewPrep: boolean;
+  theme: string;
+  showAnimations: boolean;
+  compactView: boolean;
+  showDetailedFeedback: boolean;
+  emailNotifications: boolean;
+  browserNotifications: boolean;
+  notifyOnExtraction: boolean;
+  notifyOnAnalysis: boolean;
+  cacheAnalysisResults: boolean;
+  shareAnonymousData: boolean;
 }
 
 export default function SettingsPage() {
@@ -48,9 +73,29 @@ export default function SettingsPage() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [testingKey, setTestingKey] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [preferences, setPreferences] = useState<UserPreferences>({
+    autoAnalyzeAfterExtraction: false,
+    autoMatchScore: true,
+    autoSalaryAnalysis: false,
+    autoCompanyResearch: false,
+    autoSkillGapAnalysis: false,
+    autoInterviewPrep: false,
+    theme: 'minimal',
+    showAnimations: true,
+    compactView: false,
+    showDetailedFeedback: true,
+    emailNotifications: false,
+    browserNotifications: true,
+    notifyOnExtraction: true,
+    notifyOnAnalysis: true,
+    cacheAnalysisResults: true,
+    shareAnonymousData: false,
+  });
+  const [savingPrefs, setSavingPrefs] = useState(false);
 
   useEffect(() => {
     fetchStatus();
+    fetchPreferences();
   }, []);
 
   const fetchStatus = async () => {
@@ -65,6 +110,23 @@ export default function SettingsPage() {
       }
     } catch (error) {
       console.error('Failed to fetch API key status:', error);
+    }
+  };
+
+  const fetchPreferences = async () => {
+    try {
+      const response = await fetch('/api/settings/preferences', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.preferences) {
+          setPreferences(data.preferences);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch preferences:', error);
     }
   };
 
@@ -98,13 +160,9 @@ export default function SettingsPage() {
         toast.success('API key saved successfully!');
         toast.info('⚠️ Set spending limits on OpenAI to control costs', {
           duration: 10000,
-          action: {
-            label: 'Open OpenAI',
-            onClick: () => window.open('https://platform.openai.com/account/limits', '_blank')
-          }
         });
         setApiKey('');
-        fetchStatus();
+        await fetchStatus();
       } else {
         toast.error(data.error || 'Failed to save API key');
       }
@@ -116,453 +174,480 @@ export default function SettingsPage() {
     }
   };
 
-  const handleRemoveApiKey = async () => {
-    if (!confirm('Are you sure you want to remove your API key?\n\nYou will switch back to platform mode with FREE tier limits.')) {
+  const handleDeleteApiKey = async () => {
+    if (!confirm('Are you sure? This will switch back to platform API keys.')) {
       return;
     }
 
-    setLoading(true);
+    setIsDeleting(true);
 
     try {
       const response = await fetch('/api/settings/api-key', {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (response.ok) {
-        toast.success('API key removed. Switched to platform mode.');
-        fetchStatus();
+        toast.success('API key removed');
+        await fetchStatus();
       } else {
         toast.error('Failed to remove API key');
       }
     } catch (error) {
       toast.error('Failed to remove API key');
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteAllJobs = async () => {
-    const confirmed = window.confirm(
-      'Are you absolutely sure?\n\nThis action cannot be undone. This will permanently delete all your saved job offers, including ratings, notes, and analysis data.'
-    );
-
-    if (!confirmed) return;
-
-    setIsDeleting(true);
-    try {
-      const response = await fetch('/api/jobs/delete-all', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete jobs');
-      }
-
-      const data = await response.json();
-      toast.success(`Successfully deleted ${data.deletedCount} jobs`);
-      router.push('/dashboard');
-    } catch (error) {
-      console.error('Error deleting jobs:', error);
-      toast.error('Failed to delete jobs. Please try again.');
-    } finally {
       setIsDeleting(false);
     }
   };
 
+  const updatePreference = async (key: keyof UserPreferences, value: any) => {
+    const newPrefs = { ...preferences, [key]: value };
+    setPreferences(newPrefs);
+
+    // Debounced save
+    if (!savingPrefs) {
+      setSavingPrefs(true);
+      setTimeout(async () => {
+        try {
+          const response = await fetch('/api/settings/preferences', {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(newPrefs)
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to save preferences');
+          }
+
+          toast.success('Preferences saved');
+        } catch (error) {
+          toast.error('Failed to save preferences');
+          console.error('Error saving preferences:', error);
+        } finally {
+          setSavingPrefs(false);
+        }
+      }, 1000);
+    }
+  };
+
   const getTierBadge = (tier: string) => {
-    const badges = {
-      free: { label: 'Free', variant: 'secondary' as const, icon: Lock },
-      pro: { label: 'Pro', variant: 'default' as const, icon: CheckCircle },
-      pro_max: { label: 'Pro Max', variant: 'default' as const, icon: Sparkles },
-      self_hosted: { label: 'Self-Hosted', variant: 'default' as const, icon: Unlock }
+    const tierColors = {
+      free: 'bg-gray-100 text-gray-800',
+      pro: 'bg-blue-100 text-blue-800',
+      pro_max: 'bg-purple-100 text-purple-800',
+      self_hosted: 'bg-green-100 text-green-800'
     };
 
-    const badge = badges[tier as keyof typeof badges] || badges.free;
-    const Icon = badge.icon;
-
     return (
-      <Badge variant={badge.variant} className="gap-1">
-        <Icon className="w-3 h-3" />
-        {badge.label}
+      <Badge className={tierColors[tier as keyof typeof tierColors] || tierColors.free}>
+        {tier.replace('_', ' ').toUpperCase()}
       </Badge>
     );
   };
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <SiteHeader />
-        <div className="max-w-4xl mx-auto px-6 py-12">
-          <p className="text-center text-gray-600">Please log in to access settings.</p>
-        </div>
-      </div>
-    );
+  if (!user || !token) {
+    router.push('/login');
+    return null;
   }
-
-  const isSelfHosted = status?.mode === 'self_hosted';
 
   return (
     <div className="min-h-screen bg-gray-50">
       <SiteHeader />
 
-      <div className="max-w-4xl mx-auto px-6 py-12 space-y-8">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <SettingsIcon className="h-8 w-8 text-gray-600" />
-          <div>
-            <h1 className="text-3xl font-bold text-black">Settings</h1>
-            <p className="text-gray-600">Manage your account and API configuration</p>
-          </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+          <p className="text-gray-600 mt-2">Manage your account preferences and API configuration</p>
         </div>
 
-        <Tabs defaultValue="api" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="api">API Configuration</TabsTrigger>
-            <TabsTrigger value="data">Data Management</TabsTrigger>
-            <TabsTrigger value="about">About</TabsTrigger>
+        <Tabs defaultValue="ai" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-4 bg-white border">
+            <TabsTrigger value="ai" className="flex items-center gap-2">
+              <Brain className="h-4 w-4" />
+              AI Settings
+            </TabsTrigger>
+            <TabsTrigger value="api" className="flex items-center gap-2">
+              <Key className="h-4 w-4" />
+              API Keys
+            </TabsTrigger>
+            <TabsTrigger value="ui" className="flex items-center gap-2">
+              <Palette className="h-4 w-4" />
+              Interface
+            </TabsTrigger>
+            <TabsTrigger value="notifications" className="flex items-center gap-2">
+              <Bell className="h-4 w-4" />
+              Notifications
+            </TabsTrigger>
           </TabsList>
 
-          {/* API Configuration Tab */}
-          <TabsContent value="api" className="space-y-6">
-            {/* Current Status */}
-            <Card className="border-gray-200">
+          {/* AI Settings Tab */}
+          <TabsContent value="ai" className="space-y-6">
+            <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Current Status</CardTitle>
-                    <CardDescription>Your account configuration</CardDescription>
-                  </div>
-                  {platformConfig.isSaaS && status && getTierBadge(status.tier)}
-                </div>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-yellow-500" />
+                  Auto-Analysis After Job Extraction
+                </CardTitle>
+                <CardDescription>
+                  Choose which analyses to run automatically when a new job is extracted
+                </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  {platformConfig.isSaaS && (
-                    <div>
-                      <p className="text-sm text-gray-600">Mode</p>
-                      <p className="font-semibold capitalize">{status?.mode || 'Loading...'}</p>
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-sm text-gray-600">API Key</p>
-                    <p className="font-semibold">{status?.hasApiKey ? 'Configured ✓' : 'Not set'}</p>
+              <CardContent className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Master Auto-Analysis Toggle</Label>
+                    <p className="text-sm text-gray-500">Enable automatic AI analysis after extraction</p>
                   </div>
+                  <Switch
+                    checked={preferences.autoAnalyzeAfterExtraction}
+                    onCheckedChange={(checked) => updatePreference('autoAnalyzeAfterExtraction', checked)}
+                  />
                 </div>
 
-                {platformConfig.isSelfHosted && status?.hasApiKey && (
-                  <Alert className="border-green-200 bg-green-50">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                    <AlertTitle className="text-green-900">API Key Configured</AlertTitle>
-                    <AlertDescription className="text-green-800">
-                      You're using your own OpenAI API key. All AI features are active.
-                      Costs are charged directly to your OpenAI account.
-                    </AlertDescription>
-                  </Alert>
+                {preferences.autoAnalyzeAfterExtraction && (
+                  <div className="space-y-4 pl-4 border-l-2 border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-sm">Match Score</Label>
+                        <p className="text-xs text-gray-500">Calculate resume match automatically</p>
+                      </div>
+                      <Switch
+                        checked={preferences.autoMatchScore}
+                        onCheckedChange={(checked) => updatePreference('autoMatchScore', checked)}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-sm">Salary Analysis</Label>
+                        <p className="text-xs text-gray-500">Research expected salary ranges</p>
+                      </div>
+                      <Switch
+                        checked={preferences.autoSalaryAnalysis}
+                        onCheckedChange={(checked) => updatePreference('autoSalaryAnalysis', checked)}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-sm">Company Research</Label>
+                        <p className="text-xs text-gray-500">Gather company intelligence</p>
+                      </div>
+                      <Switch
+                        checked={preferences.autoCompanyResearch}
+                        onCheckedChange={(checked) => updatePreference('autoCompanyResearch', checked)}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-sm">Skills Gap Analysis</Label>
+                        <p className="text-xs text-gray-500">Identify missing skills</p>
+                      </div>
+                      <Switch
+                        checked={preferences.autoSkillGapAnalysis}
+                        onCheckedChange={(checked) => updatePreference('autoSkillGapAnalysis', checked)}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-sm">Interview Preparation</Label>
+                        <p className="text-xs text-gray-500">Generate interview questions</p>
+                      </div>
+                      <Switch
+                        checked={preferences.autoInterviewPrep}
+                        onCheckedChange={(checked) => updatePreference('autoInterviewPrep', checked)}
+                      />
+                    </div>
+                  </div>
                 )}
 
-                {platformConfig.isSelfHosted && !status?.hasApiKey && (
-                  <Alert variant="destructive">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>API Key Required</AlertTitle>
-                    <AlertDescription>
-                      Please configure your OpenAI API key below to enable AI features.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {platformConfig.isSaaS && isSelfHosted && (
-                  <Alert className="border-green-200 bg-green-50">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                    <AlertTitle className="text-green-900">Self-Hosted Mode Active</AlertTitle>
-                    <AlertDescription className="text-green-800">
-                      You're using your own OpenAI API key. All features are unlocked with no limits.
-                      AI costs are charged directly to your OpenAI account.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {platformConfig.isSaaS && !isSelfHosted && (
+                {user?.subscriptionTier === 'free' && (
                   <Alert>
-                    <Shield className="h-4 w-4" />
-                    <AlertTitle>Platform Mode</AlertTitle>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Limited AI Features</AlertTitle>
                     <AlertDescription>
-                      You're using our managed AI services. Features and usage depend on your subscription tier.
+                      Free tier has limited AI analyses per month. Upgrade to Pro for unlimited access.
                     </AlertDescription>
                   </Alert>
                 )}
               </CardContent>
             </Card>
 
-            {/* API Key Configuration */}
-            <Card className="border-gray-200">
+            <Card>
               <CardHeader>
-                <div className="flex items-center space-x-2">
-                  <Key className="w-5 h-5" />
-                  <CardTitle>{deploymentText.apiKeyLabel}</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="h-5 w-5 text-blue-500" />
+                  Performance & Caching
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Cache AI Results</Label>
+                    <p className="text-sm text-gray-500">Store results for faster loading (24hr cache)</p>
+                  </div>
+                  <Switch
+                    checked={preferences.cacheAnalysisResults}
+                    onCheckedChange={(checked) => updatePreference('cacheAnalysisResults', checked)}
+                  />
                 </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Anonymous Analytics</Label>
+                    <p className="text-sm text-gray-500">Help improve the platform with usage data</p>
+                  </div>
+                  <Switch
+                    checked={preferences.shareAnonymousData}
+                    onCheckedChange={(checked) => updatePreference('shareAnonymousData', checked)}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* API Keys Tab */}
+          <TabsContent value="api" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Key className="h-5 w-5" />
+                    API Configuration
+                  </span>
+                  {status && getTierBadge(status.tier)}
+                </CardTitle>
                 <CardDescription>
-                  {deploymentText.apiKeyDescription}
+                  {platformConfig.isSelfHosted
+                    ? 'Configure your OpenAI API key for AI features'
+                    : 'Use platform API or bring your own OpenAI key'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Benefits - Only show in SaaS mode or if not configured in self-hosted */}
-                {(platformConfig.isSaaS || !status?.hasApiKey) && (
-                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <h4 className="font-semibold text-blue-900 mb-2 flex items-center">
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      {platformConfig.isSelfHosted ? 'Why you need an API key' : 'Benefits of Using Your Own API Key'}
-                    </h4>
-                    <ul className="space-y-1 text-sm text-blue-800">
-                      <li className="flex items-center">
-                        <CheckCircle className="w-4 h-4 mr-2 flex-shrink-0" />
-                        {platformConfig.isSelfHosted ? 'Required for AI features to work' : 'Unlimited AI requests (no monthly limits)'}
-                      </li>
-                      <li className="flex items-center">
-                        <CheckCircle className="w-4 h-4 mr-2 flex-shrink-0" />
-                        {platformConfig.isSelfHosted ? 'Full control over your AI usage' : 'All PRO MAX features unlocked'}
-                      </li>
-                      <li className="flex items-center">
-                        <CheckCircle className="w-4 h-4 mr-2 flex-shrink-0" />
-                        {platformConfig.isSelfHosted ? 'Pay only for what you use' : 'No subscription fees'}
-                      </li>
-                      <li className="flex items-center">
-                        <CheckCircle className="w-4 h-4 mr-2 flex-shrink-0" />
-                        Full data privacy (stays on your server)
-                      </li>
-                      <li className="flex items-center">
-                        <CheckCircle className="w-4 h-4 mr-2 flex-shrink-0" />
-                        Typical usage: ~$1.50-$6/month
-                      </li>
-                    </ul>
-                  </div>
-                )}
-
-                {/* Spending Limit Warning - MOST IMPORTANT */}
-                <Alert variant="destructive">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>⚠️ IMPORTANT: Set Spending Limits First!</AlertTitle>
-                  <AlertDescription className="space-y-3">
-                    <p className="font-semibold">
-                      Before adding your API key, you MUST set spending limits on your OpenAI account
-                      to prevent unexpected charges.
-                    </p>
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        variant="default"
-                        size="sm"
-                        asChild
-                        className="w-fit bg-red-600 hover:bg-red-700"
-                      >
-                        <a
-                          href="https://platform.openai.com/account/limits"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <DollarSign className="w-4 h-4 mr-2" />
-                          Set Spending Limits on OpenAI (Do This First!)
-                        </a>
-                      </Button>
-                      <p className="text-xs">
-                        <strong>Recommended limit:</strong> $10-20/month for typical usage
-                      </p>
-                    </div>
-                  </AlertDescription>
-                </Alert>
-
-                {/* API Key Input */}
-                {!isSelfHosted && (
+                {status?.hasApiKey && status.mode === 'self_hosted' ? (
                   <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="apiKey" className="flex items-center space-x-2 mb-2">
-                        <Key className="w-4 h-4" />
-                        <span>OpenAI API Key</span>
-                      </Label>
-                      <div className="flex space-x-2">
-                        <div className="flex-1 relative">
+                    <Alert>
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <AlertTitle>Using Your Own API Key</AlertTitle>
+                      <AlertDescription>
+                        Key ending in: {status.keyPreview}
+                      </AlertDescription>
+                    </Alert>
+
+                    <Button
+                      variant="destructive"
+                      onClick={handleDeleteApiKey}
+                      disabled={isDeleting}
+                      className="w-full"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      {isDeleting ? 'Removing...' : 'Remove API Key'}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {!platformConfig.isSelfHosted && (
+                      <Alert>
+                        <Sparkles className="h-4 w-4 text-blue-600" />
+                        <AlertTitle>Platform API Active</AlertTitle>
+                        <AlertDescription>
+                          Using JobNeko platform API with {status?.tier || 'free'} tier limits
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="apiKey">OpenAI API Key</Label>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
                           <Input
                             id="apiKey"
                             type={showApiKey ? 'text' : 'password'}
-                            placeholder="sk-proj-..."
+                            placeholder="sk-..."
                             value={apiKey}
                             onChange={(e) => setApiKey(e.target.value)}
                             className="pr-10"
-                            disabled={loading}
                           />
                           <button
                             type="button"
                             onClick={() => setShowApiKey(!showApiKey)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
                           >
-                            {showApiKey ? (
-                              <EyeOff className="w-4 h-4" />
-                            ) : (
-                              <Eye className="w-4 h-4" />
-                            )}
+                            {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
                         </div>
                         <Button
                           onClick={handleSaveApiKey}
                           disabled={loading || !apiKey.trim()}
                         >
-                          {testingKey ? 'Testing...' : loading ? 'Saving...' : 'Save & Test'}
+                          {testingKey ? 'Testing...' : 'Save Key'}
                         </Button>
                       </div>
-                      <div className="flex items-center justify-between mt-2">
-                        <p className="text-xs text-gray-500">
-                          Get your API key from{' '}
-                          <a
-                            href="https://platform.openai.com/api-keys"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 hover:underline"
-                          >
-                            OpenAI Dashboard
-                          </a>
-                        </p>
-                        <Button
-                          variant="link"
-                          size="sm"
-                          asChild
-                          className="h-auto p-0 text-xs"
+                      <p className="text-xs text-gray-500">
+                        Get your API key from{' '}
+                        <a
+                          href="https://platform.openai.com/api-keys"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline"
                         >
-                          <a
-                            href="https://platform.openai.com/usage"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <ExternalLink className="w-3 h-3 mr-1" />
-                            Monitor Usage
-                          </a>
-                        </Button>
-                      </div>
+                          OpenAI Dashboard
+                          <ExternalLink className="inline h-3 w-3 ml-1" />
+                        </a>
+                      </p>
                     </div>
 
-                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <h5 className="font-medium text-sm mb-2">How to get your API key:</h5>
-                      <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside">
-                        <li><strong>FIRST</strong>: Set spending limits at <a href="https://platform.openai.com/account/limits" target="_blank" className="text-blue-600 hover:underline">OpenAI Limits</a></li>
-                        <li>Go to <a href="https://platform.openai.com/api-keys" target="_blank" className="text-blue-600 hover:underline">OpenAI API Keys</a></li>
-                        <li>Click "Create new secret key"</li>
-                        <li>Copy the key (starts with "sk-" or "sk-proj-")</li>
-                        <li>Paste it above and click "Save & Test"</li>
-                      </ol>
-                    </div>
+                    <Alert>
+                      <DollarSign className="h-4 w-4" />
+                      <AlertTitle>Cost Control Tips</AlertTitle>
+                      <AlertDescription className="space-y-1">
+                        <p>• Set monthly spending limits in OpenAI dashboard</p>
+                        <p>• Monitor usage regularly</p>
+                        <p>• AI analyses are cached for 24 hours to reduce costs</p>
+                      </AlertDescription>
+                    </Alert>
                   </div>
                 )}
-
-                {/* Remove API Key */}
-                {isSelfHosted && (
-                  <div className="space-y-4">
-                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="font-medium text-sm mb-1">API Key Configured ✓</p>
-                          <p className="text-xs text-gray-600">
-                            Your API key is securely stored and being used for all AI requests.
-                          </p>
-                        </div>
-                        <Badge variant="secondary">Active</Badge>
-                      </div>
-                    </div>
-
-                    <Button
-                      variant="destructive"
-                      onClick={handleRemoveApiKey}
-                      disabled={loading}
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      {loading ? 'Removing...' : 'Remove API Key'}
-                    </Button>
-
-                    <p className="text-xs text-gray-500">
-                      Removing your API key will switch you back to platform mode (FREE tier with limits).
-                    </p>
-                  </div>
-                )}
-
-                {/* Security Info */}
-                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                  <h5 className="font-medium text-sm mb-2 flex items-center">
-                    <Shield className="w-4 h-4 mr-2" />
-                    Security & Privacy
-                  </h5>
-                  <ul className="space-y-1 text-xs text-gray-700">
-                    <li>• API keys encrypted with AES-256-GCM before storage</li>
-                    <li>• Keys never logged or exposed in responses</li>
-                    <li>• Remove your key anytime</li>
-                    <li>• Your data stays on your server</li>
-                    <li>• HTTPS encryption for all communication</li>
-                  </ul>
-                </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Data Management Tab */}
-          <TabsContent value="data" className="space-y-6">
+          {/* UI Preferences Tab */}
+          <TabsContent value="ui" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Data Management</CardTitle>
-                <CardDescription>
-                  Manage your stored job data and application history
-                </CardDescription>
+                <CardTitle className="flex items-center gap-2">
+                  <Palette className="h-5 w-5" />
+                  Interface Preferences
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="font-medium text-gray-900">Delete All Jobs</h3>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Permanently delete all saved job offers and their associated data. This action cannot be undone.
-                    </p>
+                    <Label>Show Animations</Label>
+                    <p className="text-sm text-gray-500">Display loading animations (cat mascot)</p>
                   </div>
-                  <Button
-                    variant="destructive"
-                    className="flex items-center gap-2"
-                    disabled={isDeleting}
-                    onClick={handleDeleteAllJobs}
-                  >
-                    <Trash className="h-4 w-4" />
-                    {isDeleting ? 'Deleting...' : 'Delete All Jobs'}
-                  </Button>
+                  <Switch
+                    checked={preferences.showAnimations}
+                    onCheckedChange={(checked) => updatePreference('showAnimations', checked)}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Compact View</Label>
+                    <p className="text-sm text-gray-500">Use condensed layouts for more information</p>
+                  </div>
+                  <Switch
+                    checked={preferences.compactView}
+                    onCheckedChange={(checked) => updatePreference('compactView', checked)}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Detailed Feedback</Label>
+                    <p className="text-sm text-gray-500">Show comprehensive match analysis</p>
+                  </div>
+                  <Switch
+                    checked={preferences.showDetailedFeedback}
+                    onCheckedChange={(checked) => updatePreference('showDetailedFeedback', checked)}
+                  />
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* About Tab */}
-          <TabsContent value="about" className="space-y-6">
+          {/* Notifications Tab */}
+          <TabsContent value="notifications" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>About JobNeko</CardTitle>
-                <CardDescription>
-                  Application information and features
-                </CardDescription>
+                <CardTitle className="flex items-center gap-2">
+                  <Bell className="h-5 w-5" />
+                  Notification Preferences
+                </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm text-gray-600">
-                  <p><strong>Version:</strong> 1.0.0</p>
-                  <p><strong>Built with:</strong> Next.js, TypeScript, Tailwind CSS, GPT-5</p>
-                  <p><strong>Features:</strong></p>
-                  <ul className="list-disc list-inside ml-4 space-y-1">
-                    <li>AI-powered job analysis</li>
-                    <li>Resume matching with gap analysis</li>
-                    <li>Salary intelligence with web search</li>
-                    <li>Company intelligence & culture analysis</li>
-                    <li>Interview preparation</li>
-                    <li>Self-hosting support</li>
-                  </ul>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Browser Notifications</Label>
+                    <p className="text-sm text-gray-500">Get notified in your browser</p>
+                  </div>
+                  <Switch
+                    checked={preferences.browserNotifications}
+                    onCheckedChange={(checked) => updatePreference('browserNotifications', checked)}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Email Notifications</Label>
+                    <p className="text-sm text-gray-500">Receive email updates</p>
+                  </div>
+                  <Switch
+                    checked={preferences.emailNotifications}
+                    onCheckedChange={(checked) => updatePreference('emailNotifications', checked)}
+                  />
+                </div>
+
+                <div className="pl-4 border-l-2 border-gray-200 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm">Job Extraction Complete</Label>
+                      <p className="text-xs text-gray-500">When a job is successfully extracted</p>
+                    </div>
+                    <Switch
+                      checked={preferences.notifyOnExtraction}
+                      onCheckedChange={(checked) => updatePreference('notifyOnExtraction', checked)}
+                      disabled={!preferences.browserNotifications && !preferences.emailNotifications}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm">AI Analysis Complete</Label>
+                      <p className="text-xs text-gray-500">When AI finishes analyzing a job</p>
+                    </div>
+                    <Switch
+                      checked={preferences.notifyOnAnalysis}
+                      onCheckedChange={(checked) => updatePreference('notifyOnAnalysis', checked)}
+                      disabled={!preferences.browserNotifications && !preferences.emailNotifications}
+                    />
+                  </div>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Account Deletion */}
+        <Card className="mt-8 border-red-200">
+          <CardHeader>
+            <CardTitle className="text-red-600 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              Danger Zone
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (confirm('Are you sure? This action cannot be undone.')) {
+                  // Implement account deletion
+                  toast.error('Account deletion not yet implemented');
+                }
+              }}
+            >
+              <Trash className="h-4 w-4 mr-2" />
+              Delete Account
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

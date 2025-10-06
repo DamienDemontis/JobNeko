@@ -109,8 +109,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       });
     }
 
+    // Get user's API key (handles encryption and platform fallback securely)
+    const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+    const apiKey = await getUserApiKey(user.id);
+
     // Extract job data using AI
-    const extractedData = await extractJobDataWithAI(pageData);
+    const extractedData = await extractJobDataWithAI(pageData, apiKey);
 
     // Create job record
     const job = await prisma.job.create({

@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { validateToken } from '@/lib/auth';
 import { unifiedAI } from '@/lib/services/unified-ai-service';
+import { gpt5Service } from '@/lib/services/gpt5-service';
 
 export const runtime = 'nodejs';
 
-// GET method for location analysis cache check
+// GET method for location analysis - cache check and fresh analysis
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -28,10 +29,6 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    // Get user's API key (handles encryption and platform fallback securely)
-    const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
-    const apiKey = await getUserApiKey(user.id);
-
     const resolvedParams = await params;
     const jobId = resolvedParams.id;
 
@@ -54,9 +51,13 @@ export async function GET(
       return NextResponse.json({ error: 'Job not found' }, { status: 404 });
     }
 
-    // Check if this is a cache check
-    const checkCache = request.nextUrl.searchParams.get('checkCache') === 'true';
+    console.log(`📍 Location: ${job.location || 'Unknown'}`);
 
+    // Handle cache check parameter
+    const checkCache = request.nextUrl.searchParams.get('checkCache') === 'true';
+    const forceRefresh = request.nextUrl.searchParams.get('forceRefresh') === 'true';
+
+    // If this is just a cache check, only check cache and return
     if (checkCache) {
       if (job.extractedData) {
         try {
@@ -65,18 +66,25 @@ export async function GET(
             const hoursSinceAnalysis = (Date.now() - new Date(cached.locationAnalysisDate).getTime()) / (1000 * 60 * 60);
 
             if (hoursSinceAnalysis < 48) { // 48 hours cache for location data
-              console.log(`🏠 [${requestId}] Returning cached location analysis (${hoursSinceAnalysis.toFixed(1)}h old)`);
-              return NextResponse.json({
-                cached: true,
-                analysis: cached.locationAnalysis,
-                cacheAge: `${hoursSinceAnalysis.toFixed(1)} hours`,
-                job: {
-                  id: job.id,
-                  title: job.title,
-                  company: job.company,
-                  location: job.location
-                }
-              });
+              // Validate cached structure
+              const cachedAnalysis = cached.locationAnalysis;
+              if (!cachedAnalysis?.location?.city) {
+                console.warn(`⚠️ [${requestId}] Cached analysis has invalid structure, forcing refresh`);
+                // Continue to indicate no cache
+              } else {
+                console.log(`🏠 [${requestId}] Returning cached location analysis (${hoursSinceAnalysis.toFixed(1)}h old)`);
+                return NextResponse.json({
+                  cached: true,
+                  analysis: cachedAnalysis,
+                  cacheAge: `${hoursSinceAnalysis.toFixed(1)} hours`,
+                  job: {
+                    id: job.id,
+                    title: job.title,
+                    company: job.company,
+                    location: job.location
+                  }
+                });
+              }
             }
           }
         } catch (error) {
@@ -92,67 +100,6 @@ export async function GET(
       });
     }
 
-    // This shouldn't happen for GET requests without cache check
-    return NextResponse.json({ error: 'Use POST for new analysis' }, { status: 405 });
-
-  } catch (error) {
-    console.error('Location analysis cache check failed:', error);
-    return NextResponse.json({
-      error: 'Cache check failed',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
-  }
-}
-
-// POST method for generating new location analysis
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const requestId = Math.random().toString(36).substr(2, 9);
-  console.log(`🌍 [${requestId}] Location analysis generation started`);
-
-  try {
-    // Authentication
-    const authHeader = request.headers.get('authorization')?.replace('Bearer ', '');
-    const cookieToken = request.cookies.get('token')?.value;
-    const token = authHeader || cookieToken;
-
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const user = await validateToken(token);
-    if (!user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-    }
-
-    const resolvedParams = await params;
-    const jobId = resolvedParams.id;
-
-    // Get job data
-    const job = await prisma.job.findFirst({
-      where: {
-        id: jobId,
-        userId: user.id
-      },
-      include: {
-        user: {
-          include: {
-            profile: true
-          }
-        }
-      }
-    });
-
-    if (!job) {
-      return NextResponse.json({ error: 'Job not found' }, { status: 404 });
-    }
-
-    // Get request body
-    const body = await request.json();
-    const { location, jobTitle, company, salaryData, forceRefresh } = body;
-
     // Check cache unless force refresh
     if (!forceRefresh && job.extractedData) {
       try {
@@ -161,13 +108,25 @@ export async function POST(
           const hoursSinceAnalysis = (Date.now() - new Date(cached.locationAnalysisDate).getTime()) / (1000 * 60 * 60);
 
           if (hoursSinceAnalysis < 48) {
-            console.log(`🏠 [${requestId}] Using cached location analysis (${hoursSinceAnalysis.toFixed(1)}h old)`);
-            return NextResponse.json({
-              success: true,
-              analysis: cached.locationAnalysis,
-              cached: true,
-              cacheAge: `${hoursSinceAnalysis.toFixed(1)} hours`
-            });
+            // Validate cached structure
+            const cachedAnalysis = cached.locationAnalysis;
+            if (!cachedAnalysis?.location?.city) {
+              console.warn(`⚠️ [${requestId}] Cached analysis has invalid structure, forcing refresh`);
+              // Continue to fresh analysis
+            } else {
+              console.log(`🏠 [${requestId}] Using cached location analysis (${hoursSinceAnalysis.toFixed(1)}h old)`);
+              return NextResponse.json({
+                cached: true,
+                analysis: cachedAnalysis,
+                cacheAge: `${hoursSinceAnalysis.toFixed(1)} hours`,
+                job: {
+                  id: job.id,
+                  title: job.title,
+                  company: job.company,
+                  location: job.location
+                }
+              });
+            }
           }
         }
       } catch (error) {
@@ -175,132 +134,158 @@ export async function POST(
       }
     }
 
-    // Generate comprehensive location analysis
-    console.log(`🔍 Starting location analysis for: ${location}`);
+    console.log(`🔍 Starting REAL web search for location data: ${job.location}`);
+
+    // Get salary data if available
+    let salaryInfo = 'Not provided';
+    if (job.extractedData) {
+      try {
+        const extracted = JSON.parse(job.extractedData);
+        if (extracted.enhancedSalaryAnalysis?.salaryIntelligence?.range) {
+          const range = extracted.enhancedSalaryAnalysis.salaryIntelligence.range;
+          salaryInfo = `${range.currency} ${range.min.toLocaleString()}-${range.max.toLocaleString()}`;
+        } else if (job.salaryMin || job.salaryMax) {
+          salaryInfo = `${job.salaryMin || '?'}-${job.salaryMax || '?'}`;
+        }
+      } catch (e) {
+        if (job.salaryMin || job.salaryMax) {
+          salaryInfo = `${job.salaryMin || '?'}-${job.salaryMax || '?'}`;
+        }
+      }
+    }
+
+    // STEP 1 & 2: Run web searches in PARALLEL for speed (same pattern as salary intel)
+    const costOfLivingQuery = `"${job.location}" cost of living 2025 rent prices transportation food utilities numbeo expatistan`;
+    const qualityOfLifeQuery = `"${job.location}" quality of life 2025 safety healthcare infrastructure environment teleport mercer`;
+
+    console.log(`💰 Searching cost of living: ${costOfLivingQuery.substring(0, 100)}...`);
+    console.log(`🏥 Searching quality of life: ${qualityOfLifeQuery.substring(0, 100)}...`);
+
+    const [costSearchResults, qualitySearchResults] = await Promise.all([
+      gpt5Service.searchWeb(costOfLivingQuery, {
+        userId: user.id,
+        maxResults: 5,
+        domains: [
+          'numbeo.com',
+          'expatistan.com',
+          'livingcost.org',
+          'costofliving.net'
+        ],
+        searchType: 'general',
+        reasoning: 'low' // Low reasoning for speed
+      }),
+      gpt5Service.searchWeb(qualityOfLifeQuery, {
+        userId: user.id,
+        maxResults: 5,
+        domains: [
+          'teleport.org',
+          'numbeo.com',
+          'mercer.com',
+          'economist.com',
+          'expatistan.com'
+        ],
+        searchType: 'general',
+        reasoning: 'low' // Low reasoning for speed
+      })
+    ]);
+
+    console.log(`✅ Found ${costSearchResults.results.length} cost of living sources`);
+    console.log(`✅ Found ${qualitySearchResults.results.length} quality of life sources`);
+
+    // Deduplicate sources by URL (keep highest relevance)
+    const allSourcesMap = new Map();
+
+    [...costSearchResults.results, ...qualitySearchResults.results].forEach(result => {
+      if (result.url) {
+        const existing = allSourcesMap.get(result.url);
+        if (!existing || (result.relevance || 0) > (existing.relevance || 0)) {
+          allSourcesMap.set(result.url, result);
+        }
+      }
+    });
+
+    console.log(`📊 Sources: ${Array.from(allSourcesMap.keys())}`);
+
+    // STEP 3: Analyze with AI using REAL web search data
+    console.log(`🤖 Analyzing with AI using real web search data...`);
 
     const analysisPrompt = `
-You are a location and quality of life analyst with expertise in global cities and cost of living analysis.
+You are a location and quality of life analyst. Analyze the following REAL web search data to provide comprehensive location intelligence.
 
-**Location Analysis Request:**
-- Location: ${location}
-- Job Title: ${jobTitle}
-- Company: ${company}
-- Salary Data: ${salaryData ? `${salaryData.currency} ${salaryData.min}-${salaryData.max} (median: ${salaryData.median})${salaryData.isFixed ? ' - Fixed amount' : ''}` : 'Not provided'}
-- User Profile: Current location: ${job.user.profile?.currentLocation || 'Not specified'}, Experience: ${job.user.profile?.yearsOfExperience || 'Not specified'} years
+**Job Information:**
+- Location: ${job.location}
+- Job Title: ${job.title}
+- Company: ${job.company}
+- Salary: ${salaryInfo}
+- User Current Location: ${job.user.profile?.currentLocation || 'Not specified'}
+- User Experience: ${job.user.profile?.yearsOfExperience || 'Not specified'} years
 
-**Analysis Requirements:**
-Provide comprehensive location intelligence including:
-- Cost of living analysis with salary affordability
-- Quality of life metrics across multiple dimensions
-- Cultural factors and integration considerations
-- Practical information for relocation/living
-- Specific recommendations based on the role and salary
+**REAL WEB SEARCH DATA - Cost of Living:**
+${costSearchResults.summary}
 
-**CRITICAL: Generate realistic, specific data - no generic responses**
+**REAL WEB SEARCH DATA - Quality of Life:**
+${qualitySearchResults.summary}
+
+**CRITICAL INSTRUCTIONS:**
+1. Use ONLY the real web search data provided above - NO MADE-UP NUMBERS
+2. For missing data, use reasonable estimates based on location knowledge (e.g., timezone, languages)
+3. Extract actual numbers and facts from the web search summaries
+4. Be specific and cite the data sources when making claims
+5. Factor in the salary amount ${salaryInfo} for affordability analysis
+6. **Quality scores MUST be 0-100 range** - if sum exceeds 100, normalize it
+7. **Fill ALL fields** - do not leave fields as 0 or "Data not available" unless absolutely no data exists
 
 **Response Format (EXACT JSON structure required):**
 {
   "location": {
-    "city": "Extract specific city name",
-    "country": "Country name",
-    "region": "Region/state/prefecture",
-    "timezone": "Timezone (e.g., JST, EST, CET)"
+    "city": "Extract city name from '${job.location}'",
+    "country": "Extract country from '${job.location}'",
+    "region": "Geographic region (e.g., East Asia, Western Europe)",
+    "timezone": "Standard timezone for this location (e.g., KST, EST, CET) - use common knowledge"
   },
   "costOfLiving": {
-    "overallIndex": <number 50-150 relative to global average>,
-    "housingCostPercentage": <realistic % of salary for decent housing>,
-    "transportationIndex": <number 40-120>,
-    "foodIndex": <number 40-120>,
-    "utilitiesIndex": <number 40-120>,
-    "comparison": "Detailed cost comparison: X% higher/lower than global average. With ${salaryData?.currency || 'USD'} ${salaryData?.median || 'X'}, expect comfortable/tight living standards.",
-    "affordabilityRating": "excellent|good|fair|challenging"
+    "overallIndex": <number from web data, 100 = world average>,
+    "housingCostPercentage": <% of salary for housing from web data OR reasonable estimate>,
+    "transportationIndex": <from web data OR estimate based on city type>,
+    "foodIndex": <from web data OR estimate based on city type>,
+    "utilitiesIndex": <from web data OR estimate based on city type>,
+    "comparison": "MUST cite specific data from web searches. Format: 'According to [source], cost of living is X% higher/lower than [reference]. Monthly expenses approximately [amount].'",
+    "affordabilityRating": "excellent|good|fair|challenging - MUST be based on salary vs cost data"
   },
   "qualityOfLife": {
-    "overallScore": <number 30-95>,
-    "healthcare": <number 40-95>,
-    "safety": <number 30-95>,
-    "education": <number 40-95>,
-    "environment": <number 30-90>,
-    "infrastructure": <number 40-95>,
-    "workLifeBalance": <number 30-90>
+    "overallScore": <AVERAGE of all subscores below, MUST be 0-100>,
+    "healthcare": <from web data OR reasonable estimate 0-100>,
+    "safety": <from web data OR reasonable estimate 0-100>,
+    "education": <from web data OR reasonable estimate 0-100>,
+    "environment": <from web data OR reasonable estimate 0-100>,
+    "infrastructure": <from web data OR reasonable estimate 0-100>,
+    "workLifeBalance": <from web data OR reasonable estimate 0-100>
   },
   "culturalFactors": {
-    "languages": ["Primary language", "Secondary languages"],
-    "workCulture": "Brief description of work culture and expectations",
-    "socialIntegration": "How easy it is to integrate socially",
-    "expatCommunity": "Description of expat/international community presence"
+    "languages": ["List primary language(s) - use common knowledge if not in data"],
+    "workCulture": "Describe typical work culture (e.g., hierarchical, work-life balance focus)",
+    "socialIntegration": "How easy for expats to integrate (easy/moderate/challenging + brief reason)",
+    "expatCommunity": "Size and presence of expat community (large/moderate/small + details)"
   },
   "practicalInfo": {
-    "visaRequirements": "Visa requirements for this location based on typical profile",
-    "taxImplications": "Tax considerations and implications",
-    "bankingAccess": "Banking and financial services access",
-    "healthcareAccess": "Healthcare system and access information"
+    "visaRequirements": "General visa guidance for work permit (e.g., 'Work visa typically sponsored by employer')",
+    "taxImplications": "General tax info (e.g., 'Progressive tax system 15-45%' or cite from data)",
+    "bankingAccess": "Banking accessibility (e.g., 'Easy to open accounts with work visa')",
+    "healthcareAccess": "Healthcare system info from web data or general knowledge"
   },
   "recommendations": {
-    "neighborhoods": ["Recommended area 1", "Recommended area 2", "Recommended area 3"],
-    "transportationTips": ["Transportation tip 1", "Transportation tip 2", "Transportation tip 3"],
-    "culturalTips": ["Cultural tip 1", "Cultural tip 2", "Cultural tip 3"],
-    "financialAdvice": ["Financial advice 1", "Financial advice 2", "Financial advice 3"]
-  },
-  "sources": {
-    "webSources": [
-      {
-        "title": "Numbeo - ${location} Cost of Living",
-        "url": "https://www.numbeo.com",
-        "relevance": 0.95,
-        "type": "cost_data"
-      },
-      {
-        "title": "Expatistan - ${location} Prices",
-        "url": "https://www.expatistan.com",
-        "relevance": 0.9,
-        "type": "cost_data"
-      },
-      {
-        "title": "Mercer Quality of Living Survey",
-        "url": "https://www.mercer.com",
-        "relevance": 0.85,
-        "type": "quality_data"
-      },
-      {
-        "title": "OECD Better Life Index",
-        "url": "https://www.oecdbetterlifeindex.org",
-        "relevance": 0.8,
-        "type": "quality_data"
-      },
-      {
-        "title": "Teleport Cities Database",
-        "url": "https://teleport.org",
-        "relevance": 0.85,
-        "type": "city_data"
-      },
-      {
-        "title": "Local government/tourism site",
-        "url": "https://official-site.gov",
-        "relevance": 0.75,
-        "type": "official_data"
-      },
-      {
-        "title": "Expat forums and communities",
-        "url": "https://expat-community.com",
-        "relevance": 0.7,
-        "type": "community_data"
-      },
-      {
-        "title": "International tax and visa guides",
-        "url": "https://visa-guide.com",
-        "relevance": 0.8,
-        "type": "legal_data"
-      }
-    ]
+    "neighborhoods": ["3 specific neighborhood recommendations with brief descriptions"],
+    "transportationTips": ["3 practical transportation tips with specifics"],
+    "culturalTips": ["3 cultural adaptation tips"],
+    "financialAdvice": ["3 financial tips based on salary ${salaryInfo} and cost data"]
   }
 }
 
-IMPORTANT:
-- Provide realistic, location-specific data based on actual knowledge
-- Factor in the salary amount for affordability analysis
-- Consider the job type and industry for cultural fit
-- Include practical advice relevant to the specific situation
+**VALIDATION RULES:**
+- overallScore = round(average of healthcare, safety, education, environment, infrastructure, workLifeBalance)
+- All quality scores: 0-100 only
+- NEVER say "Data not available in sources" - provide reasonable estimates
+- ALL array fields must have 3 items minimum
 - Return ONLY the JSON object, no additional text
 `;
 
@@ -310,16 +295,24 @@ IMPORTANT:
       analysisPrompt,
       'gpt-5-mini',
       'medium',
-      apiKey // Pass user's API key
+      user.id // Pass userId - AI service fetches API key automatically
     );
 
     const processingTime = Date.now() - startTime;
 
     if (!response.success) {
-      throw new Error(`AI analysis failed: ${response.error}`);
+      const errorMsg = response.error?.message || 'Unknown error';
+      const errorDetails = response.error?.details ? JSON.stringify(response.error.details) : '';
+      console.error('❌ AI Analysis Failed:', {
+        type: response.error?.type,
+        message: response.error?.message,
+        details: response.error?.details,
+        originalResponse: response.error?.originalResponse
+      });
+      throw new Error(`AI analysis failed: ${errorMsg}${errorDetails ? ' - ' + errorDetails : ''}`);
     }
 
-    // Parse JSON response
+    // Parse JSON response with proper error handling
     let analysisData;
     try {
       const rawContent = response.rawResponse || response.data;
@@ -333,13 +326,38 @@ IMPORTANT:
       analysisData = JSON.parse(cleanedResponse);
     } catch (parseError) {
       console.error('Failed to parse AI response as JSON:', parseError);
+      console.error('Response structure:', {
+        hasData: !!response.data,
+        hasRawResponse: !!response.rawResponse,
+        dataType: typeof response.data,
+        rawResponseType: typeof response.rawResponse
+      });
       throw new Error('AI returned invalid JSON format');
     }
 
-    // Validate response structure
-    if (!analysisData.location?.city || !analysisData.costOfLiving) {
-      throw new Error('Invalid analysis format: missing required fields');
+    // Validate response structure - NO FALLBACKS, throw errors
+    if (!analysisData.location?.city) {
+      throw new Error('Invalid analysis format: missing location city');
     }
+    if (!analysisData.costOfLiving) {
+      throw new Error('Invalid analysis format: missing cost of living data');
+    }
+
+    // Build web sources array with proper deduplication and relevance conversion
+    const webSources = Array.from(allSourcesMap.values()).map(result => ({
+      title: result.title || 'Web Source',
+      url: result.url,
+      type: costSearchResults.results.some(r => r.url === result.url) ? 'Cost of Living' : 'Quality of Life',
+      relevance: Math.round((result.relevance || 0.5) * 100) // Convert to percentage
+    }));
+
+    // Add sources to analysis
+    const finalAnalysis = {
+      ...analysisData,
+      sources: {
+        webSources
+      }
+    };
 
     // Cache the results
     try {
@@ -349,7 +367,7 @@ IMPORTANT:
         data: {
           extractedData: JSON.stringify({
             ...existingData,
-            locationAnalysis: analysisData,
+            locationAnalysis: finalAnalysis,
             locationAnalysisDate: new Date()
           }),
           updatedAt: new Date()
@@ -361,10 +379,11 @@ IMPORTANT:
     }
 
     console.log(`✅ [${requestId}] Location analysis completed in ${processingTime}ms`);
+    console.log(`📤 [${requestId}] Returning analysis with ${webSources.length} sources`);
 
     return NextResponse.json({
-      success: true,
-      analysis: analysisData,
+      cached: false,
+      analysis: finalAnalysis,
       job: {
         id: job.id,
         title: job.title,
@@ -381,4 +400,14 @@ IMPORTANT:
       message: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
+}
+
+// POST method - just calls GET for consistency with salary analysis
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  // POST and GET do the same thing - just trigger the analysis
+  // Component expects POST for new analysis, GET for cache checks
+  return GET(request, { params });
 }

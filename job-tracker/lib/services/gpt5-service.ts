@@ -80,7 +80,6 @@ export class GPT5Service {
 
   constructor() {
     // Don't initialize client in constructor - do it lazily when needed
-    console.log('🤖 GPT5Service constructor called');
   }
 
   /**
@@ -406,7 +405,7 @@ export class GPT5Service {
             title: citation.title,
             url: citation.url,
             content: content || textContent.substring(0, 300),
-            relevance: 0.9 - (index * 0.05), // Higher relevance for earlier citations
+            relevance: Math.max(0.1, 0.95 - (index * 0.02)), // Ensure minimum 10% relevance
             searchType,
             timestamp: new Date().toISOString()
           });

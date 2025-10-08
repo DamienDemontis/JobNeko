@@ -1236,12 +1236,7 @@ export default function JobDetailPage() {
                 jobLocation={job.location || ''}
                 jobTitle={job.title}
                 company={job.company}
-                salaryData={job.salaryMin && job.salaryMax ? {
-                  min: job.salaryMin,
-                  max: job.salaryMax,
-                  median: Math.round((job.salaryMin + job.salaryMax) / 2),
-                  currency: 'USD' // Default, component will handle detection
-                } : undefined}
+                token={token || ''}
               />
             </div>
           )}

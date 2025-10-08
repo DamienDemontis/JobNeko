@@ -45,7 +45,7 @@ export class UnifiedAIService {
   private static instance: UnifiedAIService;
 
   private constructor() {
-    console.log('🚀 Unified AI Service initialized with clean architecture');
+    // Singleton initialization - no logging needed
   }
 
   static getInstance(): UnifiedAIService {

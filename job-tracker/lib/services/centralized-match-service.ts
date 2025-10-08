@@ -175,16 +175,21 @@ Return ONLY a JSON object with this exact structure:
     // Parse AI response
     const data = this.parseAIResponse(response.data);
 
+    // Validate that we got valid scores from AI
+    if (typeof data.matchScore !== 'number' || data.matchScore < 0 || data.matchScore > 100) {
+      throw new Error('AI returned invalid match score. Please try again.');
+    }
+
     return {
-      matchScore: Math.round(data.matchScore || 0),
-      confidence: data.confidence || 0.7,
+      matchScore: Math.round(data.matchScore),
+      confidence: data.confidence && data.confidence > 0 ? data.confidence : 0.7,
       tier,
       components: {
-        skills: Math.round(data.skillsScore || 0),
-        experience: Math.round(data.experienceScore || 0),
-        education: Math.round(data.educationScore || 0),
-        keywords: Math.round(data.keywordsScore || 0),
-        achievements: Math.round(data.achievementsScore || 0)
+        skills: typeof data.skillsScore === 'number' ? Math.round(data.skillsScore) : 0,
+        experience: typeof data.experienceScore === 'number' ? Math.round(data.experienceScore) : 0,
+        education: typeof data.educationScore === 'number' ? Math.round(data.educationScore) : 0,
+        keywords: typeof data.keywordsScore === 'number' ? Math.round(data.keywordsScore) : 0,
+        achievements: typeof data.achievementsScore === 'number' ? Math.round(data.achievementsScore) : 0
       },
       calculatedAt: new Date(),
       cacheKey: this.generateCacheKey(input),

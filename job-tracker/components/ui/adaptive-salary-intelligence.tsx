@@ -665,7 +665,7 @@ function ResumeMatchSection({
           <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
             <Briefcase className="w-5 h-5 text-blue-600" />
             <div>
-              <div className="font-semibold">Skills Match</div>
+              <div className="font-semibold">Detailed Skills Match</div>
               <div className="text-sm text-gray-600">
                 {resumeMatch.skillsAnalysis.matchedSkills.length} / {resumeMatch.skillsAnalysis.matchedSkills.length + resumeMatch.skillsAnalysis.missingSkills.length} skills
               </div>

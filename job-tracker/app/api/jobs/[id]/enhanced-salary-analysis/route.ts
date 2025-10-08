@@ -51,6 +51,53 @@ export async function GET(
       return NextResponse.json({ error: 'Job not found' }, { status: 404 });
     }
 
+    // Get user's active resume for skills analysis
+    const resume = await prisma.resume.findFirst({
+      where: {
+        userId: user.id,
+        isActive: true
+      },
+      orderBy: { updatedAt: 'desc' }
+    });
+
+    if (!resume || !resume.content) {
+      return NextResponse.json({
+        error: 'No active resume found. Please upload a resume to get personalized salary analysis.'
+      }, { status: 400 });
+    }
+
+    // Parse resume data
+    let resumeSkills: string[] = [];
+    let resumeExperience: any = null;
+
+    try {
+      if (resume.skills) resumeSkills = JSON.parse(resume.skills);
+      if (resume.experience) resumeExperience = JSON.parse(resume.experience);
+    } catch (error) {
+      console.warn('Failed to parse resume structured data:', error);
+    }
+
+    console.log(`📄 Resume loaded: ${resumeSkills.length} skills extracted`);
+
+    // Detect currency based on job location
+    const detectCurrency = (location: string): string => {
+      const loc = location.toLowerCase();
+      if (loc.includes('korea') || loc.includes('seoul') || loc.includes('busan')) return 'KRW';
+      if (loc.includes('japan') || loc.includes('tokyo')) return 'JPY';
+      if (loc.includes('china') || loc.includes('beijing') || loc.includes('shanghai')) return 'CNY';
+      if (loc.includes('india') || loc.includes('bangalore') || loc.includes('mumbai')) return 'INR';
+      if (loc.includes('uk') || loc.includes('london') || loc.includes('united kingdom')) return 'GBP';
+      if (loc.includes('france') || loc.includes('paris') || loc.includes('germany') || loc.includes('berlin') || loc.includes('europe')) return 'EUR';
+      if (loc.includes('singapore')) return 'SGD';
+      if (loc.includes('australia') || loc.includes('sydney')) return 'AUD';
+      if (loc.includes('canada') || loc.includes('toronto')) return 'CAD';
+      return 'USD'; // Default
+    };
+
+    const expectedCurrency = detectCurrency(job.location || 'US');
+    console.log(`💱 Detected currency for ${job.location || 'Unknown'}: ${expectedCurrency}`);
+    console.log(`💰 User salary info: Current=${job.user.profile?.currentSalary}, Expected=${job.user.profile?.expectedSalaryMin}-${job.user.profile?.expectedSalaryMax}, Currency=${job.user.profile?.preferredCurrency}`);
+
     // Handle cache check parameter
     const checkCache = request.nextUrl.searchParams.get('checkCache') === 'true';
     const forceRefresh = request.nextUrl.searchParams.get('forceRefresh') === 'true';
@@ -132,51 +179,55 @@ export async function GET(
       }
     }
 
-    // STEP 1: Perform REAL web searches for salary data
+    // STEP 1: Perform REAL web searches for salary data (IN PARALLEL for speed)
     console.log(`🔍 Starting REAL web search for salary data: ${job.title} at ${job.company}`);
 
     const currentYear = new Date().getFullYear();
 
-    // Search 1: Salary data
-    const salaryQuery = `"${job.title}" salary ${job.location} ${currentYear} ${job.company} glassdoor levels.fyi payscale compensation`;
-    console.log(`💰 Searching: ${salaryQuery}`);
+    // Search queries - emphasize location/country for better geo-targeting
+    const jobLocation = job.location || 'Unknown';
+    const locationEmphasis = jobLocation.includes('Remote')
+      ? jobLocation.replace('Remote', '').trim() || jobLocation
+      : jobLocation;
+    const salaryQuery = `"${job.title}" salary "${locationEmphasis}" ${currentYear} ${job.company} ${expectedCurrency} compensation levels.fyi glassdoor`;
+    const companyQuery = `"${job.company}" employee reviews benefits culture ${currentYear} glassdoor indeed`;
 
-    const salarySearchResults = await gpt5Service.searchWeb(salaryQuery, {
-      userId: user.id,
-      maxResults: 10,
-      domains: [
-        'glassdoor.com',
-        'levels.fyi',
-        'salary.com',
-        'payscale.com',
-        'indeed.com',
-        'linkedin.com'
-      ],
-      searchType: 'salary',
-      reasoning: 'high' // Need high reasoning for accurate salary extraction
-    });
+    console.log(`💰 Searching salary: ${salaryQuery}`);
+    console.log(`🏢 Searching company: ${companyQuery}`);
+
+    // Run BOTH searches in parallel to save time
+    const [salarySearchResults, companySearchResults] = await Promise.all([
+      gpt5Service.searchWeb(salaryQuery, {
+        userId: user.id,
+        maxResults: 5, // Reduced from 10 for speed
+        domains: [
+          'glassdoor.com',
+          'levels.fyi',
+          'salary.com',
+          'payscale.com',
+          'indeed.com',
+          'linkedin.com'
+        ],
+        searchType: 'salary',
+        reasoning: 'low' // Low reasoning for speed - GPT-5 will do fewer autonomous searches
+      }),
+      gpt5Service.searchWeb(companyQuery, {
+        userId: user.id,
+        maxResults: 3, // Reduced from 5 for speed
+        domains: [
+          'glassdoor.com',
+          'indeed.com',
+          'linkedin.com',
+          'comparably.com'
+        ],
+        searchType: 'company',
+        reasoning: 'low' // Low reasoning for speed
+      })
+    ]);
 
     console.log(`✅ Found ${salarySearchResults.results.length} salary sources`);
-    console.log(`📊 Sources:`, salarySearchResults.results.map(r => r.url).filter(u => u));
-
-    // Search 2: Company information
-    const companyQuery = `"${job.company}" employee reviews benefits compensation culture ${currentYear}`;
-    console.log(`🏢 Searching: ${companyQuery}`);
-
-    const companySearchResults = await gpt5Service.searchWeb(companyQuery, {
-      userId: user.id,
-      maxResults: 5,
-      domains: [
-        'glassdoor.com',
-        'indeed.com',
-        'linkedin.com',
-        'comparably.com'
-      ],
-      searchType: 'company',
-      reasoning: 'medium'
-    });
-
     console.log(`✅ Found ${companySearchResults.results.length} company sources`);
+    console.log(`📊 Sources:`, salarySearchResults.results.map(r => r.url).filter(u => u));
 
     // STEP 2: Generate analysis using REAL web search data
     console.log(`🤖 Analyzing with AI using real web search data...`);
@@ -246,10 +297,14 @@ For VIE: set min=max=median=ACCURATE_CURRENT_AMOUNT, isFixed=true, currency="EUR
 - Salary Info: ${job.salary || job.salaryMin ? `${job.salaryMin || 'N/A'} - ${job.salaryMax || 'N/A'}` : 'Not specified'}
 
 **User Profile:**
-- Current Salary: ${job.user.profile?.currentSalary || 'Not specified'}
-- Expected: ${job.user.profile?.expectedSalaryMin || 'N/A'} - ${job.user.profile?.expectedSalaryMax || 'N/A'}
-- Experience: ${job.user.profile?.yearsOfExperience || 'Not specified'} years
-- Skills: ${job.user.profile?.skills || 'Not specified'}
+- Current Salary: ${job.user.profile?.currentSalary ? `${job.user.profile.currentSalary} ${job.user.profile?.preferredCurrency || 'USD'}` : 'Not specified'}
+- Expected: ${job.user.profile?.expectedSalaryMin || job.user.profile?.expectedSalaryMax ? `${job.user.profile.expectedSalaryMin || job.user.profile.expectedSalaryMax} - ${job.user.profile.expectedSalaryMax || job.user.profile.expectedSalaryMin} ${job.user.profile?.preferredCurrency || 'USD'}` : 'Not specified'}
+- Salary Currency: ${job.user.profile?.preferredCurrency || 'USD'}
+- Experience: ${job.user.profile?.yearsOfExperience || resumeExperience?.totalYears || 'Not specified'} years
+- Resume Skills: ${resumeSkills.length > 0 ? resumeSkills.join(', ') : 'No skills extracted from resume'}
+- Resume Content: ${resume.content.substring(0, 3000)}...
+
+**IMPORTANT:** You MUST use the resume content and skills above to analyze skill matches. The resume is provided - do NOT say skills are missing.
 
 **CRITICAL REQUIREMENTS:**
 1. DETECT special job types (VIE/internship/contract) and adjust analysis accordingly
@@ -259,6 +314,7 @@ For VIE: set min=max=median=ACCURATE_CURRENT_AMOUNT, isFixed=true, currency="EUR
 5. ALL fields required - adapt them to job type (e.g., VIE has no negotiation)
 6. Generate sources relevant to job type (e.g., VIE sources: civiweb.com, diplomatie.gouv.fr)
 7. NEVER use "N/A" in salaryProgression fields - if data missing, provide helpful message or omit field entirely
+8. CURRENCY HANDLING: User's current/expected salary includes currency (e.g., "40000 EUR"). Job offer is in ${expectedCurrency}. You MUST calculate percentage comparisons by converting currencies if they differ. Use standard exchange rates.
 
 **Response Format (EXACT JSON structure required):**
 {
@@ -267,7 +323,7 @@ For VIE: set min=max=median=ACCURATE_CURRENT_AMOUNT, isFixed=true, currency="EUR
       "min": <For VIE: fixed amount (e.g., 2530 for Japan), For standard: realistic minimum>,
       "max": <For VIE: same as min, For standard: realistic maximum>,
       "median": <For VIE: same as min, For standard: realistic median>,
-      "currency": <For VIE: "EUR", For standard: "${job.user.profile?.preferredCurrency || 'USD'}">,
+      "currency": <For VIE: "EUR", For standard: "${expectedCurrency}" (MUST match job location: ${job.location})>,
       "confidence": <For VIE: 0.95, For standard: 0.65-0.92>,
       "isFixed": <true for VIE/internship, false for standard>
     },
@@ -299,24 +355,24 @@ For VIE: set min=max=median=ACCURATE_CURRENT_AMOUNT, isFixed=true, currency="EUR
   "analysis": {
     "jobType": "standard|vie|internship|contract|apprenticeship|government",
     "jobTypeNotes": "For VIE: 'VIE position with fixed €2530/month gratification for Japan'",
-    "overallScore": <realistic_score_45-88>,
+    "overallScore": <CALCULATE from resume: (matching_skills / total_required_skills) * 100, realistic range 30-95, MUST be data-driven from actual resume analysis>,
     "careerProgression": "Adapt to job type: VIE->permanent hire pathway, or standard progression",
     "experienceAlignment": "How experience fits THIS job type (VIE requires <28yo, etc.)",
     "experienceJustification": "Justification based on job type constraints",
     "locationAnalysis": "For VIE: country coefficient. For standard: market analysis.",
     "skillsBreakdown": {
-      "matchingSkills": ["List actual matching skills from job description even if user has no profile"],
-      "missingSkills": ["List actual required skills from job description"],
-      "partialMatches": ["List partially matching skills"],
-      "matchExplanation": "Explain match % or note 'Profile skills not provided, showing job requirements'"
+      "matchingSkills": ["MUST list ONLY skills found in user's resume that match job requirements - be specific"],
+      "missingSkills": ["MUST list ONLY required skills from job description that are NOT in user's resume"],
+      "partialMatches": ["MUST list ONLY skills where resume shows related/similar but not exact match"],
+      "matchExplanation": "MUST explain: (X matching skills / Y total required) = Z% match, based on actual resume content"
     },
     "negotiationRange": {
       "reasoning": "Target median due to X. Stretch if Y."
     },
     "salaryProgression": {
-      "currentVsOffer": "If user current salary provided: 'X% increase from current $Y'. If NOT provided: 'Current salary not provided in profile'",
-      "expectedVsOffer": "If user expected salary provided: 'Meets/exceeds/below expected by X%'. If NOT provided: 'Expected salary not set in profile'",
-      "growthPotential": "5-year: $X to $Y (Z% growth)"
+      "currentVsOffer": "If user current salary provided WITH currency: MUST calculate % increase (convert currencies if needed). Format: 'X% increase from current [amount] [currency]'. If currency missing or cannot convert: state limitation clearly. If NOT provided: 'Current salary not provided in profile'",
+      "expectedVsOffer": "If user expected salary provided WITH currency: MUST calculate % comparison (convert currencies if needed). Format: 'Meets/Exceeds/Below expected by X%'. If currency missing or cannot convert: state limitation clearly. If NOT provided: 'Expected salary not set in profile'",
+      "growthPotential": "5-year projection in ${expectedCurrency}: [min] to [max] (Z% growth potential)"
     },
     "pros": [
       "Strong market position: X% growth",
@@ -370,10 +426,10 @@ For VIE: set min=max=median=ACCURATE_CURRENT_AMOUNT, isFixed=true, currency="EUR
     "keyFactors": ["factor1", "factor2", "factor3"],
     "improvementSuggestions": ["suggestion1", "suggestion2"],
     "dataUsed": {
-      "resumeUsed": false,
-      "skillsUsed": true,
-      "experienceUsed": true,
-      "salaryHistoryUsed": false
+      "resumeUsed": true,
+      "skillsUsed": ${resumeSkills.length > 0},
+      "experienceUsed": ${resumeExperience ? true : false},
+      "salaryHistoryUsed": ${job.user.profile?.currentSalary ? true : false}
     }
   },
   "sources": {
@@ -427,7 +483,15 @@ IMPORTANT:
     const processingTime = Date.now() - startTime;
 
     if (!response.success) {
-      throw new Error(`AI analysis failed: ${response.error}`);
+      const errorMsg = response.error?.message || 'Unknown error';
+      const errorDetails = response.error?.details ? JSON.stringify(response.error.details) : '';
+      console.error('❌ AI Analysis Failed:', {
+        type: response.error?.type,
+        message: response.error?.message,
+        details: response.error?.details,
+        originalResponse: response.error?.originalResponse
+      });
+      throw new Error(`AI analysis failed: ${errorMsg}${errorDetails ? ' - ' + errorDetails : ''}`);
     }
 
     // Parse JSON response with proper error handling
@@ -481,11 +545,11 @@ IMPORTANT:
                       analysisData.analysis.overallScore > 65 ? 'good' :
                       analysisData.analysis.overallScore > 50 ? 'fair' : 'poor',
         careerProgression: analysisData.analysis.careerProgression,
-        skillsMatch: analysisData.analysis.overallScore,
+        skillsMatch: analysisData.analysis.overallScore, // AI determines based on weighted analysis (partial matches, skill importance, experience depth)
         skillsBreakdown: {
-          matchingSkills: analysisData.analysis.skillsBreakdown.matchingSkills,
-          missingSkills: analysisData.analysis.skillsBreakdown.missingSkills,
-          partialMatches: analysisData.analysis.skillsBreakdown.partialMatches,
+          matchingSkills: analysisData.analysis.skillsBreakdown.matchingSkills || [],
+          missingSkills: analysisData.analysis.skillsBreakdown.missingSkills || [],
+          partialMatches: analysisData.analysis.skillsBreakdown.partialMatches || [],
           strengthAreas: analysisData.analysis.pros.slice(0, 3),
           improvementAreas: analysisData.analysis.cons.slice(0, 2),
           matchExplanation: analysisData.analysis.skillsBreakdown.matchExplanation
@@ -527,34 +591,61 @@ IMPORTANT:
       },
       sources: {
         // Use REAL web search sources, not AI-generated fake ones
-        webSources: [
-          ...salarySearchResults.results.map(r => ({
-            title: r.title,
-            url: r.url,
-            type: 'salary data' as const,
-            relevance: Math.round((r.relevance || 0.8) * 100)
-          })),
-          ...companySearchResults.results.map(r => ({
-            title: r.title,
-            url: r.url,
-            type: 'company reviews' as const,
-            relevance: Math.round((r.relevance || 0.7) * 100)
-          }))
-        ].filter(s => s.url), // Remove any sources without URLs
-        dataSources: [
-          ...salarySearchResults.results.map(r => ({
-            name: r.title,
-            url: r.url,
-            relevance: `${Math.round((r.relevance || 0.8) * 100)}%`,
-            category: 'salary data' as const
-          })),
-          ...companySearchResults.results.map(r => ({
-            name: r.title,
-            url: r.url,
-            relevance: `${Math.round((r.relevance || 0.7) * 100)}%`,
-            category: 'company reviews' as const
-          }))
-        ].filter(s => s.url) // Remove any sources without URLs
+        // Remove duplicates by URL and keep the highest relevance
+        webSources: (() => {
+          const allSources = [
+            ...salarySearchResults.results.map(r => ({
+              title: r.title,
+              url: r.url,
+              type: 'salary data' as const,
+              relevance: Math.round((r.relevance || 0.8) * 100)
+            })),
+            ...companySearchResults.results.map(r => ({
+              title: r.title,
+              url: r.url,
+              type: 'company reviews' as const,
+              relevance: Math.round((r.relevance || 0.7) * 100)
+            }))
+          ].filter(s => s.url);
+
+          // Deduplicate by URL, keeping highest relevance
+          const urlMap = new Map();
+          allSources.forEach(source => {
+            const existing = urlMap.get(source.url);
+            if (!existing || source.relevance > existing.relevance) {
+              urlMap.set(source.url, source);
+            }
+          });
+
+          return Array.from(urlMap.values());
+        })(),
+        dataSources: (() => {
+          const allSources = [
+            ...salarySearchResults.results.map(r => ({
+              name: r.title,
+              url: r.url,
+              relevance: `${Math.round((r.relevance || 0.8) * 100)}%`,
+              category: 'salary data' as const
+            })),
+            ...companySearchResults.results.map(r => ({
+              name: r.title,
+              url: r.url,
+              relevance: `${Math.round((r.relevance || 0.7) * 100)}%`,
+              category: 'company reviews' as const
+            }))
+          ].filter(s => s.url);
+
+          // Deduplicate by URL, keeping highest relevance
+          const urlMap = new Map();
+          allSources.forEach(source => {
+            const existing = urlMap.get(source.url);
+            if (!existing || parseInt(source.relevance) > parseInt(existing.relevance)) {
+              urlMap.set(source.url, source);
+            }
+          });
+
+          return Array.from(urlMap.values());
+        })()
       }
     };
 

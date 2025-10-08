@@ -1,29 +1,32 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   MapPin,
   DollarSign,
   Home,
   Car,
   Heart,
-  GraduationCap,
-  Shield,
-  Sun,
   Users,
   Briefcase,
-  Plane,
   AlertCircle,
   RefreshCw,
-  TrendingUp,
   Globe,
   Clock,
-  Zap
+  Zap,
+  ChevronDown,
+  ExternalLink,
+  TrendingUp,
+  Target,
+  Shield,
+  GraduationCap,
+  Trees
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -32,13 +35,7 @@ interface LocationIntelligenceProps {
   jobLocation: string;
   jobTitle: string;
   company: string;
-  salaryData?: {
-    min: number;
-    max: number;
-    median: number;
-    currency: string;
-    isFixed?: boolean;
-  };
+  token: string;
 }
 
 interface LocationAnalysis {
@@ -95,7 +92,7 @@ interface LocationAnalysis {
 }
 
 interface LocationIntelligenceState {
-  status: 'idle' | 'loading' | 'complete' | 'error';
+  status: 'idle' | 'searching' | 'analyzing' | 'complete' | 'error';
   progress: number;
   currentStep: string;
   analysis: LocationAnalysis | null;
@@ -107,7 +104,7 @@ export default function LocationIntelligence({
   jobLocation,
   jobTitle,
   company,
-  salaryData
+  token
 }: LocationIntelligenceProps) {
   const [state, setState] = useState<LocationIntelligenceState>({
     status: 'idle',
@@ -117,71 +114,103 @@ export default function LocationIntelligence({
     error: null,
   });
 
-  const runLocationAnalysis = async (forceRefresh = false) => {
-    setState(prev => ({
-      ...prev,
-      status: 'loading',
-      progress: 0,
-      currentStep: 'Initializing location analysis...',
-      error: null,
-    }));
+  const lastJobIdRef = useRef<string | null>(null);
+  const hasAutoLoadedRef = useRef(false);
 
+  // Auto-load cached analysis ONCE when component first mounts
+  useEffect(() => {
+    if (!hasAutoLoadedRef.current) {
+      hasAutoLoadedRef.current = true;
+      lastJobIdRef.current = jobId;
+      checkForCachedAnalysis();
+    } else if (lastJobIdRef.current !== jobId) {
+      lastJobIdRef.current = jobId;
+      checkForCachedAnalysis();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId]);
+
+  const checkForCachedAnalysis = async () => {
     try {
-      // Check cache first
-      setState(prev => ({ ...prev, progress: 10, currentStep: 'Checking cached analysis...' }));
+      const cacheCheckResponse = await fetch(`/api/jobs/${jobId}/location-analysis?checkCache=true`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
 
-      if (!forceRefresh) {
-        const cacheResponse = await fetch(`/api/jobs/${jobId}/location-analysis?checkCache=true`, {
-          headers: { 'Content-Type': 'application/json' }
-        });
-
-        if (cacheResponse.ok) {
-          const cacheData = await cacheResponse.json();
-          if (cacheData.cached && cacheData.analysis) {
-            setState(prev => ({
-              ...prev,
-              status: 'complete',
-              progress: 100,
-              currentStep: `Using cached analysis (${cacheData.cacheAge})`,
-              analysis: cacheData.analysis,
-            }));
-            toast.success(`Location analysis loaded from cache (${cacheData.cacheAge})`);
-            return;
-          }
+      if (cacheCheckResponse.ok) {
+        const cacheData = await cacheCheckResponse.json();
+        if (cacheData.cached && cacheData.analysis) {
+          setState({
+            status: 'complete',
+            progress: 100,
+            currentStep: '',
+            analysis: cacheData.analysis,
+            error: null,
+          });
         }
       }
+    } catch (error) {
+      console.log('No cached analysis found');
+    }
+  };
 
-      // Run fresh analysis
-      setState(prev => ({ ...prev, progress: 25, currentStep: 'Analyzing location data...' }));
+  const runAnalysis = async (forceRefresh = false) => {
+    setState({
+      status: 'searching',
+      progress: 5,
+      currentStep: forceRefresh ? 'Running fresh analysis...' : 'Initializing location analysis...',
+      analysis: null,
+      error: null,
+    });
 
-      const analysisResponse = await fetch(`/api/jobs/${jobId}/location-analysis`, {
+    try {
+      // Step 1: Search cost data
+      await new Promise(resolve => setTimeout(resolve, 800));
+      setState(prev => ({
+        ...prev,
+        progress: 40,
+        currentStep: 'Searching cost of living databases...',
+      }));
+
+      // Step 2: Search quality data
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setState(prev => ({
+        ...prev,
+        status: 'analyzing',
+        progress: 70,
+        currentStep: 'Analyzing location intelligence...',
+      }));
+
+      const analysisResponse = await fetch(`/api/jobs/${jobId}/location-analysis${forceRefresh ? '?forceRefresh=true' : ''}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
         body: JSON.stringify({
           location: jobLocation,
           jobTitle,
           company,
-          salaryData,
           forceRefresh
         }),
       });
 
-      setState(prev => ({ ...prev, progress: 75, currentStep: 'Processing analysis results...' }));
-
       if (!analysisResponse.ok) {
-        throw new Error('Failed to analyze location');
+        const errorData = await analysisResponse.json();
+        throw new Error(errorData.message || 'Failed to analyze location');
       }
 
       const data = await analysisResponse.json();
-      const analysisData = data.analysis || data;
 
-      setState(prev => ({
-        ...prev,
+      setState({
         status: 'complete',
         progress: 100,
         currentStep: 'Location analysis complete!',
-        analysis: analysisData,
-      }));
+        analysis: data.analysis,
+        error: null,
+      });
 
       toast.success(forceRefresh ? 'Fresh location analysis completed!' : 'Location analysis completed successfully!');
     } catch (error) {
@@ -197,19 +226,12 @@ export default function LocationIntelligence({
 
   const getAffordabilityColor = (rating: string) => {
     switch (rating) {
-      case 'excellent': return 'text-green-600 bg-green-50 border-green-200';
-      case 'good': return 'text-blue-600 bg-blue-50 border-blue-200';
-      case 'fair': return 'text-orange-600 bg-orange-50 border-orange-200';
-      case 'challenging': return 'text-red-600 bg-red-50 border-red-200';
-      default: return 'text-gray-600 bg-gray-50 border-gray-200';
+      case 'excellent': return 'bg-green-100 text-green-700 border-green-300';
+      case 'good': return 'bg-blue-100 text-blue-700 border-blue-300';
+      case 'fair': return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+      case 'challenging': return 'bg-red-100 text-red-700 border-red-300';
+      default: return 'bg-gray-100 text-gray-700 border-gray-300';
     }
-  };
-
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600';
-    if (score >= 60) return 'text-blue-600';
-    if (score >= 40) return 'text-orange-600';
-    return 'text-red-600';
   };
 
   const renderInitialState = () => (
@@ -218,25 +240,21 @@ export default function LocationIntelligence({
         <CardTitle className="flex items-center gap-2">
           <MapPin className="w-5 h-5 text-blue-600" />
           Location Intelligence
-          <Badge className="bg-blue-100 text-blue-700 border-blue-200">
-            <Globe className="w-3 h-3 mr-1" />
-            Quality of Life Analysis
-          </Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="text-center space-y-4 p-8 bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg">
+        <div className="text-center space-y-4 p-8 bg-gray-50 rounded-lg border border-gray-200">
           <MapPin className="w-12 h-12 text-blue-600 mx-auto" />
           <div className="space-y-2">
             <h3 className="text-lg font-medium">Analyze Location & Quality of Life</h3>
             <p className="text-gray-600 text-sm">
-              Get comprehensive insights about living in {jobLocation} including cost of living,
-              quality of life metrics, cultural factors, and practical information for your move.
+              Get comprehensive insights about living in <span className="font-medium">{jobLocation}</span> including
+              cost of living, quality of life metrics, and practical information.
             </p>
           </div>
-          <Button onClick={() => runLocationAnalysis()} className="w-full">
+          <Button onClick={() => runAnalysis()} className="w-full">
             <Zap className="w-4 h-4 mr-2" />
-            Analyze Location Intelligence
+            Start Location Analysis
           </Button>
         </div>
       </CardContent>
@@ -260,23 +278,23 @@ export default function LocationIntelligence({
           <Progress value={state.progress} className="h-2" />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className={`p-3 rounded-lg border ${state.progress >= 25 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
+        <div className="grid grid-cols-3 gap-4">
+          <div className={`p-3 rounded-lg border ${state.progress >= 40 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
             <div className="flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              <span className="text-sm">Cost Analysis</span>
+              <div className={`w-2 h-2 rounded-full ${state.progress >= 40 ? 'bg-blue-500' : 'bg-gray-300'}`} />
+              <span className="text-sm font-medium">Cost Data</span>
             </div>
           </div>
-          <div className={`p-3 rounded-lg border ${state.progress >= 50 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
+          <div className={`p-3 rounded-lg border ${state.progress >= 70 ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
             <div className="flex items-center gap-2">
-              <Heart className="w-4 h-4" />
-              <span className="text-sm">Quality of Life</span>
+              <div className={`w-2 h-2 rounded-full ${state.progress >= 70 ? 'bg-green-500' : 'bg-gray-300'}`} />
+              <span className="text-sm font-medium">Quality Data</span>
             </div>
           </div>
-          <div className={`p-3 rounded-lg border ${state.progress >= 75 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
+          <div className={`p-3 rounded-lg border ${state.progress >= 100 ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
             <div className="flex items-center gap-2">
-              <Users className="w-4 h-4" />
-              <span className="text-sm">Cultural Insights</span>
+              <div className={`w-2 h-2 rounded-full ${state.progress >= 100 ? 'bg-purple-500' : 'bg-gray-300'}`} />
+              <span className="text-sm font-medium">AI Analysis</span>
             </div>
           </div>
         </div>
@@ -296,27 +314,19 @@ export default function LocationIntelligence({
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2">
                 <MapPin className="w-5 h-5 text-blue-600" />
-                Location Overview
-                <Badge className={`${getAffordabilityColor(analysis.costOfLiving.affordabilityRating)} border`}>
+                {analysis.location.city}, {analysis.location.country}
+                <Badge variant="outline" className={getAffordabilityColor(analysis.costOfLiving.affordabilityRating)}>
                   {analysis.costOfLiving.affordabilityRating.toUpperCase()}
                 </Badge>
               </CardTitle>
-              <Button variant="outline" size="sm" onClick={() => runLocationAnalysis(true)}>
+              <Button variant="outline" size="sm" onClick={() => runAnalysis(true)}>
                 <RefreshCw className="w-4 h-4 mr-1" />
                 Refresh
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div>
-                <div className="text-gray-600">City</div>
-                <div className="font-medium">{analysis.location.city}</div>
-              </div>
-              <div>
-                <div className="text-gray-600">Country</div>
-                <div className="font-medium">{analysis.location.country}</div>
-              </div>
               <div>
                 <div className="text-gray-600">Region</div>
                 <div className="font-medium">{analysis.location.region}</div>
@@ -324,6 +334,14 @@ export default function LocationIntelligence({
               <div>
                 <div className="text-gray-600">Timezone</div>
                 <div className="font-medium">{analysis.location.timezone}</div>
+              </div>
+              <div>
+                <div className="text-gray-600">Cost Index</div>
+                <div className="font-medium">{analysis.costOfLiving.overallIndex}/100</div>
+              </div>
+              <div>
+                <div className="text-gray-600">Quality Score</div>
+                <div className="font-medium">{analysis.qualityOfLife.overallScore}/100</div>
               </div>
             </div>
           </CardContent>
@@ -338,28 +356,35 @@ export default function LocationIntelligence({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
-                <div className="text-2xl font-bold text-green-700">{analysis.costOfLiving.overallIndex}</div>
-                <div className="text-sm text-green-600">Overall Index</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <div className="text-sm text-gray-600">Overall Index</div>
+                <div className="text-2xl font-bold">{analysis.costOfLiving.overallIndex}</div>
               </div>
-              <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="text-2xl font-bold text-blue-700">{analysis.costOfLiving.housingCostPercentage}%</div>
-                <div className="text-sm text-blue-600">Housing Cost</div>
+              <div className="space-y-2">
+                <div className="text-sm text-gray-600">Housing</div>
+                <div className="text-2xl font-bold">{analysis.costOfLiving.housingCostPercentage}%</div>
               </div>
-              <div className="text-center p-4 bg-purple-50 rounded-lg border border-purple-200">
-                <div className="text-2xl font-bold text-purple-700">{analysis.costOfLiving.transportationIndex}</div>
-                <div className="text-sm text-purple-600">Transport Index</div>
+              <div className="space-y-2">
+                <div className="text-sm text-gray-600">Transport</div>
+                <div className="text-2xl font-bold">{analysis.costOfLiving.transportationIndex}</div>
+              </div>
+              <div className="space-y-2">
+                <div className="text-sm text-gray-600">Food</div>
+                <div className="text-2xl font-bold">{analysis.costOfLiving.foodIndex}</div>
               </div>
             </div>
 
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <p className="text-sm text-gray-700">{analysis.costOfLiving.comparison}</p>
+            <div className="p-4 bg-gray-50 rounded-lg border">
+              <div className="flex items-start gap-2">
+                <TrendingUp className="w-4 h-4 text-gray-600 mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-gray-700">{analysis.costOfLiving.comparison}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Quality of Life Metrics */}
+        {/* Quality of Life */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -369,22 +394,30 @@ export default function LocationIntelligence({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {Object.entries(analysis.qualityOfLife).map(([key, score]) => (
+              {[
+                { key: 'healthcare', label: 'Healthcare', icon: Heart, value: analysis.qualityOfLife.healthcare },
+                { key: 'safety', label: 'Safety', icon: Shield, value: analysis.qualityOfLife.safety },
+                { key: 'education', label: 'Education', icon: GraduationCap, value: analysis.qualityOfLife.education },
+                { key: 'environment', label: 'Environment', icon: Trees, value: analysis.qualityOfLife.environment },
+                { key: 'infrastructure', label: 'Infrastructure', icon: Globe, value: analysis.qualityOfLife.infrastructure },
+                { key: 'workLifeBalance', label: 'Work-Life Balance', icon: Clock, value: analysis.qualityOfLife.workLifeBalance }
+              ].map(({ key, label, icon: Icon, value }) => (
                 <div key={key} className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                    <span className={`text-sm font-medium ${getScoreColor(score as number)}`}>
-                      {score}/100
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <Icon className="w-4 h-4 text-gray-600" />
+                      <span className="text-sm font-medium">{label}</span>
+                    </div>
+                    <span className="text-sm font-medium">{value}/100</span>
                   </div>
-                  <Progress value={score as number} className="h-2" />
+                  <Progress value={value} className="h-2" />
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
 
-        {/* Cultural Factors */}
+        {/* Cultural & Social */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -396,7 +429,11 @@ export default function LocationIntelligence({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <div className="text-sm font-medium text-gray-600 mb-2">Languages</div>
-                <div className="text-sm">{analysis.culturalFactors.languages.join(', ')}</div>
+                <div className="flex flex-wrap gap-2">
+                  {analysis.culturalFactors.languages.map((lang, index) => (
+                    <Badge key={index} variant="outline">{lang}</Badge>
+                  ))}
+                </div>
               </div>
               <div>
                 <div className="text-sm font-medium text-gray-600 mb-2">Work Culture</div>
@@ -422,24 +459,22 @@ export default function LocationIntelligence({
               Practical Information
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-3">
-              <div>
-                <div className="text-sm font-medium text-gray-600">Visa Requirements</div>
-                <div className="text-sm">{analysis.practicalInfo.visaRequirements}</div>
-              </div>
-              <div>
-                <div className="text-sm font-medium text-gray-600">Tax Implications</div>
-                <div className="text-sm">{analysis.practicalInfo.taxImplications}</div>
-              </div>
-              <div>
-                <div className="text-sm font-medium text-gray-600">Banking Access</div>
-                <div className="text-sm">{analysis.practicalInfo.bankingAccess}</div>
-              </div>
-              <div>
-                <div className="text-sm font-medium text-gray-600">Healthcare Access</div>
-                <div className="text-sm">{analysis.practicalInfo.healthcareAccess}</div>
-              </div>
+          <CardContent className="space-y-3">
+            <div>
+              <div className="text-sm font-medium text-gray-600">Visa Requirements</div>
+              <div className="text-sm mt-1">{analysis.practicalInfo.visaRequirements}</div>
+            </div>
+            <div>
+              <div className="text-sm font-medium text-gray-600">Tax Implications</div>
+              <div className="text-sm mt-1">{analysis.practicalInfo.taxImplications}</div>
+            </div>
+            <div>
+              <div className="text-sm font-medium text-gray-600">Banking Access</div>
+              <div className="text-sm mt-1">{analysis.practicalInfo.bankingAccess}</div>
+            </div>
+            <div>
+              <div className="text-sm font-medium text-gray-600">Healthcare Access</div>
+              <div className="text-sm mt-1">{analysis.practicalInfo.healthcareAccess}</div>
             </div>
           </CardContent>
         </Card>
@@ -448,52 +483,64 @@ export default function LocationIntelligence({
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-yellow-600" />
-              Recommendations
+              <Target className="w-5 h-5 text-blue-600" />
+              Recommendations & Tips
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <div className="text-sm font-medium text-gray-600 mb-2">Recommended Neighborhoods</div>
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-600 mb-2">
+                  <Home className="w-4 h-4" />
+                  Recommended Neighborhoods
+                </div>
                 <ul className="text-sm space-y-1">
-                  {analysis.recommendations.neighborhoods.map((neighborhood, index) => (
-                    <li key={index} className="flex items-center gap-2">
-                      <Home className="w-3 h-3 text-gray-400" />
-                      {neighborhood}
+                  {analysis.recommendations.neighborhoods.map((item, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <span className="text-gray-400">•</span>
+                      <span>{item}</span>
                     </li>
                   ))}
                 </ul>
               </div>
               <div>
-                <div className="text-sm font-medium text-gray-600 mb-2">Transportation Tips</div>
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-600 mb-2">
+                  <Car className="w-4 h-4" />
+                  Transportation Tips
+                </div>
                 <ul className="text-sm space-y-1">
-                  {analysis.recommendations.transportationTips.map((tip, index) => (
-                    <li key={index} className="flex items-center gap-2">
-                      <Car className="w-3 h-3 text-gray-400" />
-                      {tip}
+                  {analysis.recommendations.transportationTips.map((item, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <span className="text-gray-400">•</span>
+                      <span>{item}</span>
                     </li>
                   ))}
                 </ul>
               </div>
               <div>
-                <div className="text-sm font-medium text-gray-600 mb-2">Cultural Tips</div>
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-600 mb-2">
+                  <Users className="w-4 h-4" />
+                  Cultural Tips
+                </div>
                 <ul className="text-sm space-y-1">
-                  {analysis.recommendations.culturalTips.map((tip, index) => (
-                    <li key={index} className="flex items-center gap-2">
-                      <Users className="w-3 h-3 text-gray-400" />
-                      {tip}
+                  {analysis.recommendations.culturalTips.map((item, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <span className="text-gray-400">•</span>
+                      <span>{item}</span>
                     </li>
                   ))}
                 </ul>
               </div>
               <div>
-                <div className="text-sm font-medium text-gray-600 mb-2">Financial Advice</div>
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-600 mb-2">
+                  <DollarSign className="w-4 h-4" />
+                  Financial Advice
+                </div>
                 <ul className="text-sm space-y-1">
-                  {analysis.recommendations.financialAdvice.map((advice, index) => (
-                    <li key={index} className="flex items-center gap-2">
-                      <DollarSign className="w-3 h-3 text-gray-400" />
-                      {advice}
+                  {analysis.recommendations.financialAdvice.map((item, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <span className="text-gray-400">•</span>
+                      <span>{item}</span>
                     </li>
                   ))}
                 </ul>
@@ -503,35 +550,49 @@ export default function LocationIntelligence({
         </Card>
 
         {/* Data Sources */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Globe className="w-5 h-5 text-gray-600" />
-              Data Sources
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm text-gray-600 mb-3">
-              {analysis.sources.webSources.length} sources
-            </div>
-            <div className="space-y-3">
-              {analysis.sources.webSources.map((source, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex-1">
-                    <div className="font-medium text-sm">{source.title}</div>
-                    <div className="text-xs text-gray-500">{source.url}</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">
-                      {source.type.replace('_', ' ')}
-                    </Badge>
-                    <div className="text-xs text-gray-500">{Math.round(source.relevance * 100)}% relevance</div>
-                  </div>
+        <Collapsible>
+          <Card>
+            <CollapsibleTrigger className="w-full">
+              <CardHeader className="cursor-pointer hover:bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Globe className="w-5 h-5 text-gray-600" />
+                    Data Sources
+                    <Badge variant="outline">{analysis.sources.webSources.length} sources</Badge>
+                  </CardTitle>
+                  <ChevronDown className="w-5 h-5 text-gray-400" />
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent>
+                <div className="space-y-2">
+                  {analysis.sources.webSources.map((source, index) => (
+                    <a
+                      key={index}
+                      href={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors group"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm text-gray-900 group-hover:text-blue-600 transition-colors truncate">
+                          {source.title}
+                        </div>
+                        <div className="text-xs text-gray-500 truncate">{source.url}</div>
+                      </div>
+                      <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                        <Badge variant="outline" className="text-xs">{source.type}</Badge>
+                        <div className="text-xs text-gray-500">{source.relevance}%</div>
+                        <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-blue-600" />
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
       </div>
     );
   };
@@ -551,7 +612,7 @@ export default function LocationIntelligence({
             {state.error || 'Failed to analyze location. Please try again.'}
           </AlertDescription>
         </Alert>
-        <Button onClick={() => runLocationAnalysis()} className="w-full">
+        <Button onClick={() => runAnalysis()} className="w-full">
           <RefreshCw className="w-4 h-4 mr-2" />
           Retry Analysis
         </Button>
@@ -561,7 +622,8 @@ export default function LocationIntelligence({
 
   // Render based on current state
   switch (state.status) {
-    case 'loading':
+    case 'searching':
+    case 'analyzing':
       return renderLoadingState();
     case 'complete':
       return renderAnalysisResults();

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -83,11 +83,23 @@ export default function ModernSalaryIntelligence({
     currency: string;
   } | null>(null);
   const [convertingCurrency, setConvertingCurrency] = useState(false);
+  const lastJobIdRef = useRef<string | null>(null);
+  const hasAutoLoadedRef = useRef(false);
 
-  // Manual triggering only - NO AUTO-LOAD
-  // useEffect(() => {
-  //   checkForCachedAnalysis();
-  // }, [jobId]);
+  // Auto-load cached analysis ONCE when component first mounts
+  useEffect(() => {
+    // Only auto-load once per session, not on every re-render or jobId change
+    if (!hasAutoLoadedRef.current) {
+      hasAutoLoadedRef.current = true;
+      lastJobIdRef.current = jobId;
+      checkForCachedAnalysis();
+    } else if (lastJobIdRef.current !== jobId) {
+      // If jobId changes, reset and check cache for new job
+      lastJobIdRef.current = jobId;
+      checkForCachedAnalysis();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId]);
 
   const checkForCachedAnalysis = async () => {
     try {
@@ -603,7 +615,7 @@ export default function ModernSalaryIntelligence({
                 </div>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Skills Match</span>
+                    <span className="text-sm font-medium">Detailed Skills Match</span>
                     <div className="flex items-center gap-2">
                       <Progress value={analysis.personalizedInsights.skillsMatch} className="w-16 h-2" />
                       <span className="text-sm">{analysis.personalizedInsights.skillsMatch}%</span>

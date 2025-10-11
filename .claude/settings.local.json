@@ -32,7 +32,8 @@
       "Bash(npx eslint:*)",
       "Bash(find:*)",
       "Bash(cat:*)",
-      "WebFetch(domain:openai.com)"
+      "WebFetch(domain:openai.com)",
+      "Bash(timeout 10s npm run dev)"
     ],
     "deny": [],
     "ask": []

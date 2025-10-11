@@ -241,12 +241,12 @@ export function ResumeOptimizer({
   const [isProcessingUpload, setIsProcessingUpload] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-load optimization if user has resume
-  useEffect(() => {
-    if (hasResume && description && description.length > 50 && resumeSource === 'profile') {
-      loadOptimization();
-    }
-  }, [jobId, hasResume, description, resumeSource]);
+  // DISABLED: Auto-load optimization - user must click button to generate
+  // useEffect(() => {
+  //   if (hasResume && description && description.length > 50 && resumeSource === 'profile') {
+  //     loadOptimization();
+  //   }
+  // }, [jobId, hasResume, description, resumeSource]);
 
   // Handle file upload
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -310,7 +310,7 @@ export function ResumeOptimizer({
     }
   };
 
-  const loadOptimization = async () => {
+  const loadOptimization = async (forceRefresh: boolean = false) => {
     if (!hasResume && resumeSource === 'profile') {
       setError('Resume required for optimization analysis');
       return;
@@ -330,45 +330,91 @@ export function ResumeOptimizer({
     setError(null);
 
     try {
-      // Check cache first
-      const cachedOptimization = await checkCachedOptimization();
-      if (cachedOptimization) {
-        setOptimization(cachedOptimization);
-        setIsLoading(false);
-        return;
-      }
+      // For profile resume, use the new unified API route
+      if (resumeSource === 'profile') {
+        const response = await fetch(`/api/jobs/${jobId}/resume-optimization?forceRefresh=${forceRefresh}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
 
-      // Get resume data based on selected source
-      const resumeData = resumeSource === 'upload' ? uploadedResumeData : await fetchUserResume();
-      if (!resumeData) {
-        throw new Error('Could not fetch resume data');
-      }
-
-      // Generate optimization analysis
-      const optimizationPrompt = buildOptimizationPrompt(resumeData, resumeSource);
-
-      const response = await aiServiceManagerClient.generateCompletion(
-        optimizationPrompt,
-        'resume_optimization',
-        userId,
-        {
-          temperature: 0.2,
-          max_tokens: 3000,
-          format: 'json'
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Optimization failed');
         }
-      );
 
-      const parsedOptimization = parseOptimizationResponse(response.content);
+        const data = await response.json();
 
-      // Add metadata about the resume source
-      parsedOptimization.resumeSource = resumeSource;
-      parsedOptimization.fileName = resumeSource === 'upload' ? uploadedResume?.name : 'Profile Resume';
+        // Validate structure
+        if (!data.optimization) {
+          console.error('Invalid response: missing optimization data', data);
+          throw new Error('Invalid optimization response structure');
+        }
 
-      // Save to cache
-      await saveOptimizationToCache(parsedOptimization);
+        const opt = data.optimization;
 
-      setOptimization(parsedOptimization);
-      toast.success('Resume optimization completed!');
+        // Check for required fields
+        const requiredFields = ['overallScore', 'atsCompatibility', 'gapAnalysis'];
+        const missingFields = requiredFields.filter(field => !opt[field]);
+
+        if (missingFields.length > 0) {
+          console.error('Missing required fields:', missingFields);
+          console.error('Received data:', JSON.stringify(opt, null, 2));
+          throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+        }
+
+        // Add metadata about the resume source
+        opt.resumeSource = 'profile';
+        opt.fileName = 'Profile Resume';
+        opt.lastOptimized = new Date();
+        if (!opt.confidence) {
+          opt.confidence = 0.7;
+        }
+
+        setOptimization(opt);
+        toast.success('Resume optimization completed!');
+      } else {
+        // For uploaded resume, use the old method (TODO: migrate this too)
+        const cachedOptimization = await checkCachedOptimization();
+        if (cachedOptimization) {
+          // Validate cached data has required structure
+          if (cachedOptimization.gapAnalysis && cachedOptimization.keywordOptimization) {
+            setOptimization(cachedOptimization);
+            setIsLoading(false);
+            return;
+          } else {
+            console.warn('Cached optimization has invalid structure, will regenerate');
+          }
+        }
+
+        const resumeData = uploadedResumeData;
+        if (!resumeData) {
+          throw new Error('Could not fetch resume data');
+        }
+
+        const optimizationPrompt = buildOptimizationPrompt(resumeData, resumeSource);
+
+        const response = await aiServiceManagerClient.generateCompletion(
+          optimizationPrompt,
+          'resume_optimization',
+          userId,
+          {
+            temperature: 0.2,
+            max_tokens: 3000,
+            format: 'json'
+          }
+        );
+
+        const parsedOptimization = parseOptimizationResponse(response.content);
+        parsedOptimization.resumeSource = 'upload';
+        parsedOptimization.fileName = uploadedResume?.name || 'Uploaded Resume';
+
+        await saveOptimizationToCache(parsedOptimization);
+        setOptimization(parsedOptimization);
+        toast.success('Resume optimization completed!');
+      }
 
     } catch (error) {
       console.error('Resume optimization failed:', error);
@@ -813,17 +859,35 @@ IMPORTANT: Base all suggestions on actual job requirements and resume content. P
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileText className="w-5 h-5 text-blue-600" />
-          AI Resume Optimizer
-          <Badge variant="outline" className="text-blue-600">
-            <Sparkles className="w-3 h-3 mr-1" />
-            Intelligent
-          </Badge>
-        </CardTitle>
-        <CardDescription>
-          AI-powered resume optimization tailored for this specific job
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-blue-600" />
+              AI Resume Optimizer
+              <Badge variant="outline" className="text-blue-600">
+                <Sparkles className="w-3 h-3 mr-1" />
+                Intelligent
+              </Badge>
+            </CardTitle>
+            <CardDescription>
+              AI-powered resume optimization tailored for this specific job
+            </CardDescription>
+          </div>
+          {optimization && !isLoading && (
+            <Button
+              onClick={() => {
+                setOptimization(null);
+                loadOptimization(true); // Force refresh, bypass cache
+              }}
+              disabled={isLoading}
+              variant="outline"
+              size="sm"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh Analysis
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Resume Source Selection */}
@@ -878,12 +942,14 @@ IMPORTANT: Base all suggestions on actual job requirements and resume content. P
                 </div>
                 <div className="text-sm text-gray-600">ATS Score</div>
               </div>
-              <div className="text-center">
-                <div className={`text-2xl font-bold ${getScoreColor(optimization.gapAnalysis.overallFitScore)}`}>
-                  {optimization.gapAnalysis.overallFitScore}
+              {optimization.gapAnalysis?.overallFitScore !== undefined && (
+                <div className="text-center">
+                  <div className={`text-2xl font-bold ${getScoreColor(optimization.gapAnalysis.overallFitScore)}`}>
+                    {optimization.gapAnalysis.overallFitScore}
+                  </div>
+                  <div className="text-sm text-gray-600">Job Fit</div>
                 </div>
-                <div className="text-sm text-gray-600">Job Fit</div>
-              </div>
+              )}
               <div className="text-center">
                 <div className="text-2xl font-bold text-blue-600">
                   {Math.round(optimization.confidence * 100)}%
@@ -1083,7 +1149,7 @@ IMPORTANT: Base all suggestions on actual job requirements and resume content. P
 
               <TabsContent value="gaps" className="space-y-4 mt-4">
                 {/* Critical Gaps */}
-                {optimization.gapAnalysis.criticalGaps.length > 0 && (
+                {optimization.gapAnalysis?.criticalGaps && optimization.gapAnalysis.criticalGaps.length > 0 && (
                   <div>
                     <h4 className="font-semibold text-red-700 mb-3">Critical Skill Gaps</h4>
                     <div className="space-y-2">
@@ -1106,7 +1172,7 @@ IMPORTANT: Base all suggestions on actual job requirements and resume content. P
                 )}
 
                 {/* Strength Areas */}
-                {optimization.gapAnalysis.strengthAreas.length > 0 && (
+                {optimization.gapAnalysis?.strengthAreas && optimization.gapAnalysis.strengthAreas.length > 0 && (
                   <div>
                     <h4 className="font-semibold text-green-700 mb-3">Your Strength Areas</h4>
                     <div className="space-y-2">

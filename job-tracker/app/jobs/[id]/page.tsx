@@ -17,8 +17,7 @@ import { MatchScoreDonut } from '@/components/ui/match-score-donut';
 import { MatchScoreCard } from '@/components/ui/match-score-card';
 // Removed: JobAnalysisCard and SmartRequirements from overview tab
 import { ResumeOptimizer } from '@/components/ui/resume-optimizer';
-import ApplicationTimelineIntelligenceSmart from '@/components/ui/application-timeline-intelligence-smart';
-import CommunicationAssistantSmart from '@/components/ui/communication-assistant-smart';
+import UnifiedApplicationStrategy from '@/components/ui/unified-application-strategy';
 import InterviewPipelineManagerSmart from '@/components/ui/interview-pipeline-manager-smart';
 import SmartQuestionsSmart from '@/components/ui/smart-questions-smart';
 import { LinkedInNetworkIntegration } from '@/components/ui/linkedin-network-integration';
@@ -1241,50 +1240,14 @@ export default function JobDetailPage() {
             </div>
           )}
 
-          {/* Application Strategy Tab - LAZY LOADED */}
+          {/* Application Strategy Tab - LAZY LOADED - Unified component */}
           {activeTab === 'application' && (
-            <div className="space-y-6">
-              {/* Resume Optimizer */}
-              <ResumeOptimizer
-                jobId={job.id}
-                jobTitle={job.title}
-                company={job.company}
-                description={job.description || ''}
-                requirements={job.requirements || ''}
-                userId={user?.id || ''}
-                token={token || ''}
-                hasResume={hasResume}
-              />
-
-              {/* Application Timeline Intelligence */}
-              <ApplicationTimelineIntelligenceSmart
-                jobId={job.id}
-                jobTitle={job.title}
-                company={job.company}
-                userId={user?.id || ''}
-                token={token || ''}
-                jobData={{
-                  applicationDeadline: job.applicationDeadline ? new Date(job.applicationDeadline) : undefined,
-                  postedDate: job.postedDate ? new Date(job.postedDate) : undefined,
-                  location: job.location,
-                  requirements: job.requirements || '',
-                }}
-              />
-
-              {/* Communication Assistant */}
-              <CommunicationAssistantSmart
-                jobId={job.id}
-                jobTitle={job.title}
-                company={job.company}
-                userId={user?.id || ''}
-                token={token || ''}
-                jobData={{
-                  description: job.description || '',
-                  requirements: job.requirements || '',
-                  location: job.location,
-                }}
-              />
-            </div>
+            <UnifiedApplicationStrategy
+              jobId={job.id}
+              jobTitle={job.title}
+              company={job.company}
+              token={token || ''}
+            />
           )}
 
           {/* Unified Interview Center Tab - LAZY LOADED */}

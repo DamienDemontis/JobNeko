@@ -213,12 +213,14 @@ export async function GET(
 You are a location and quality of life analyst. Analyze the following REAL web search data to provide comprehensive location intelligence.
 
 **Job Information:**
-- Location: ${job.location}
+- Job Location: ${job.location}
 - Job Title: ${job.title}
 - Company: ${job.company}
 - Salary: ${salaryInfo}
-- User Current Location: ${job.user.profile?.currentLocation || 'Not specified'}
-- User Experience: ${job.user.profile?.yearsOfExperience || 'Not specified'} years
+
+**User Profile:**
+- Current Location: ${job.user.profile?.currentLocation || 'Not specified'}
+- Experience: ${job.user.profile?.yearsOfExperience || 'Not specified'} years
 
 **REAL WEB SEARCH DATA - Cost of Living:**
 ${costSearchResults.summary}
@@ -249,7 +251,14 @@ ${qualitySearchResults.summary}
     "transportationIndex": <from web data OR estimate based on city type>,
     "foodIndex": <from web data OR estimate based on city type>,
     "utilitiesIndex": <from web data OR estimate based on city type>,
-    "comparison": "MUST cite specific data from web searches. Format: 'According to [source], cost of living is X% higher/lower than [reference]. Monthly expenses approximately [amount].'",
+    "monthlyEstimate": "Clean formatted estimate: e.g., '$1,500-2,000 per month'",
+    "vsWorldAverage": "Simple statement: e.g., '32% lower than world average'",
+    "vsUserLocation": "${job.user.profile?.currentLocation ? `Comparison vs ${job.user.profile.currentLocation} (user's current location) - e.g., '15% cheaper than New York'` : 'User current location not specified'}",
+    "keyInsights": [
+      "Insight 1: Brief, clear statement with source",
+      "Insight 2: Brief, clear statement with source",
+      "Insight 3: Brief, clear statement with source"
+    ],
     "affordabilityRating": "excellent|good|fair|challenging - MUST be based on salary vs cost data"
   },
   "qualityOfLife": {
@@ -262,7 +271,10 @@ ${qualitySearchResults.summary}
     "workLifeBalance": <from web data OR reasonable estimate 0-100>
   },
   "culturalFactors": {
-    "languages": ["List primary language(s) - use common knowledge if not in data"],
+    "languages": [
+      {"name": "Primary language name", "percentage": <0-100, % of population speaking it>},
+      {"name": "Secondary language name", "percentage": <0-100, % of population speaking it>}
+    ],
     "workCulture": "Describe typical work culture (e.g., hierarchical, work-life balance focus)",
     "socialIntegration": "How easy for expats to integrate (easy/moderate/challenging + brief reason)",
     "expatCommunity": "Size and presence of expat community (large/moderate/small + details)"

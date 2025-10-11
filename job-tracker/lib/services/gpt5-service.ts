@@ -214,6 +214,16 @@ export class GPT5Service {
       const content = response.choices[0]?.message?.content;
 
       if (!content) {
+        const finishReason = response.choices?.[0]?.finish_reason;
+        const reasoningTokens = response.usage?.completion_tokens_details?.reasoning_tokens || 0;
+
+        // Special case: If finish_reason is "length" and reasoning consumed all tokens
+        if (finishReason === 'length' && reasoningTokens > 0) {
+          console.warn('⚠️ GPT-5 consumed all tokens on reasoning, no content generated');
+          console.warn(`Reasoning tokens: ${reasoningTokens}, Total completion: ${response.usage?.completion_tokens}`);
+          throw new Error('GPT-5 used all tokens for reasoning. Try using reasoning="low" or increase max_completion_tokens');
+        }
+
         console.error('❌ GPT-5 returned empty content despite token usage');
         console.error('Full response object:', JSON.stringify(response, null, 2));
         throw new Error('GPT-5 returned empty content despite consuming tokens');

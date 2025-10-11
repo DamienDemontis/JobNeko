@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   MapPin,
   DollarSign,
@@ -20,8 +19,6 @@ import {
   Globe,
   Clock,
   Zap,
-  ChevronDown,
-  ExternalLink,
   TrendingUp,
   Target,
   Shield,
@@ -29,6 +26,9 @@ import {
   Trees
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { DataSourcesSection, DataSource } from '@/components/shared/data-sources-section';
+import { QualityMetricGrid, QualityMetric } from '@/components/shared/quality-metric-grid';
+import { InfoGrid, InfoItem } from '@/components/shared/info-grid';
 
 interface LocationIntelligenceProps {
   jobId: string;
@@ -36,6 +36,11 @@ interface LocationIntelligenceProps {
   jobTitle: string;
   company: string;
   token: string;
+}
+
+interface LanguageInfo {
+  name: string;
+  percentage: number;
 }
 
 interface LocationAnalysis {
@@ -51,7 +56,10 @@ interface LocationAnalysis {
     transportationIndex: number;
     foodIndex: number;
     utilitiesIndex: number;
-    comparison: string;
+    monthlyEstimate: string;
+    vsWorldAverage: string;
+    vsUserLocation: string;
+    keyInsights: string[];
     affordabilityRating: 'excellent' | 'good' | 'fair' | 'challenging';
   };
   qualityOfLife: {
@@ -64,7 +72,7 @@ interface LocationAnalysis {
     workLifeBalance: number;
   };
   culturalFactors: {
-    languages: string[];
+    languages: LanguageInfo[];
     workCulture: string;
     socialIntegration: string;
     expatCommunity: string;
@@ -82,12 +90,7 @@ interface LocationAnalysis {
     financialAdvice: string[];
   };
   sources: {
-    webSources: Array<{
-      title: string;
-      url: string;
-      relevance: number;
-      type: string;
-    }>;
+    webSources: DataSource[];
   };
 }
 
@@ -117,7 +120,6 @@ export default function LocationIntelligence({
   const lastJobIdRef = useRef<string | null>(null);
   const hasAutoLoadedRef = useRef(false);
 
-  // Auto-load cached analysis ONCE when component first mounts
   useEffect(() => {
     if (!hasAutoLoadedRef.current) {
       hasAutoLoadedRef.current = true;
@@ -134,9 +136,7 @@ export default function LocationIntelligence({
     try {
       const cacheCheckResponse = await fetch(`/api/jobs/${jobId}/location-analysis?checkCache=true`, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Authorization': `Bearer ${token}` },
       });
 
       if (cacheCheckResponse.ok) {
@@ -166,22 +166,11 @@ export default function LocationIntelligence({
     });
 
     try {
-      // Step 1: Search cost data
       await new Promise(resolve => setTimeout(resolve, 800));
-      setState(prev => ({
-        ...prev,
-        progress: 40,
-        currentStep: 'Searching cost of living databases...',
-      }));
+      setState(prev => ({ ...prev, progress: 40, currentStep: 'Searching cost of living databases...' }));
 
-      // Step 2: Search quality data
       await new Promise(resolve => setTimeout(resolve, 1000));
-      setState(prev => ({
-        ...prev,
-        status: 'analyzing',
-        progress: 70,
-        currentStep: 'Analyzing location intelligence...',
-      }));
+      setState(prev => ({ ...prev, status: 'analyzing', progress: 70, currentStep: 'Analyzing location intelligence...' }));
 
       const analysisResponse = await fetch(`/api/jobs/${jobId}/location-analysis${forceRefresh ? '?forceRefresh=true' : ''}`, {
         method: 'POST',
@@ -189,12 +178,7 @@ export default function LocationIntelligence({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          location: jobLocation,
-          jobTitle,
-          company,
-          forceRefresh
-        }),
+        body: JSON.stringify({ location: jobLocation, jobTitle, company, forceRefresh }),
       });
 
       if (!analysisResponse.ok) {
@@ -247,12 +231,12 @@ export default function LocationIntelligence({
           <MapPin className="w-12 h-12 text-blue-600 mx-auto" />
           <div className="space-y-2">
             <h3 className="text-lg font-medium">Analyze Location & Quality of Life</h3>
-            <p className="text-gray-600 text-sm">
+            <p className="text-gray-600 text-sm max-w-lg mx-auto">
               Get comprehensive insights about living in <span className="font-medium">{jobLocation}</span> including
               cost of living, quality of life metrics, and practical information.
             </p>
           </div>
-          <Button onClick={() => runAnalysis()} className="w-full">
+          <Button onClick={() => runAnalysis()} className="w-full max-w-md mx-auto">
             <Zap className="w-4 h-4 mr-2" />
             Start Location Analysis
           </Button>
@@ -306,6 +290,30 @@ export default function LocationIntelligence({
     const { analysis } = state;
     if (!analysis) return null;
 
+    // Prepare data for shared components
+    const locationInfo: InfoItem[] = [
+      { label: 'Region', value: analysis.location.region },
+      { label: 'Timezone', value: analysis.location.timezone },
+      { label: 'Cost Index', value: `${analysis.costOfLiving.overallIndex}/100` },
+      { label: 'Quality Score', value: `${analysis.qualityOfLife.overallScore}/100` }
+    ];
+
+    const costMetrics: InfoItem[] = [
+      { label: 'Overall Index', value: analysis.costOfLiving.overallIndex.toString() },
+      { label: 'Housing', value: `${analysis.costOfLiving.housingCostPercentage}%` },
+      { label: 'Transport', value: analysis.costOfLiving.transportationIndex.toString() },
+      { label: 'Food', value: analysis.costOfLiving.foodIndex.toString() }
+    ];
+
+    const qualityMetrics: QualityMetric[] = [
+      { key: 'healthcare', label: 'Healthcare', value: analysis.qualityOfLife.healthcare, icon: Heart },
+      { key: 'safety', label: 'Safety', value: analysis.qualityOfLife.safety, icon: Shield },
+      { key: 'education', label: 'Education', value: analysis.qualityOfLife.education, icon: GraduationCap },
+      { key: 'environment', label: 'Environment', value: analysis.qualityOfLife.environment, icon: Trees },
+      { key: 'infrastructure', label: 'Infrastructure', value: analysis.qualityOfLife.infrastructure, icon: Globe },
+      { key: 'workLifeBalance', label: 'Work-Life Balance', value: analysis.qualityOfLife.workLifeBalance, icon: Clock }
+    ];
+
     return (
       <div className="space-y-6">
         {/* Location Overview */}
@@ -326,24 +334,7 @@ export default function LocationIntelligence({
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div>
-                <div className="text-gray-600">Region</div>
-                <div className="font-medium">{analysis.location.region}</div>
-              </div>
-              <div>
-                <div className="text-gray-600">Timezone</div>
-                <div className="font-medium">{analysis.location.timezone}</div>
-              </div>
-              <div>
-                <div className="text-gray-600">Cost Index</div>
-                <div className="font-medium">{analysis.costOfLiving.overallIndex}/100</div>
-              </div>
-              <div>
-                <div className="text-gray-600">Quality Score</div>
-                <div className="font-medium">{analysis.qualityOfLife.overallScore}/100</div>
-              </div>
-            </div>
+            <InfoGrid items={locationInfo} columns={4} />
           </CardContent>
         </Card>
 
@@ -356,31 +347,49 @@ export default function LocationIntelligence({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="space-y-2">
-                <div className="text-sm text-gray-600">Overall Index</div>
-                <div className="text-2xl font-bold">{analysis.costOfLiving.overallIndex}</div>
-              </div>
-              <div className="space-y-2">
-                <div className="text-sm text-gray-600">Housing</div>
-                <div className="text-2xl font-bold">{analysis.costOfLiving.housingCostPercentage}%</div>
-              </div>
-              <div className="space-y-2">
-                <div className="text-sm text-gray-600">Transport</div>
-                <div className="text-2xl font-bold">{analysis.costOfLiving.transportationIndex}</div>
-              </div>
-              <div className="space-y-2">
-                <div className="text-sm text-gray-600">Food</div>
-                <div className="text-2xl font-bold">{analysis.costOfLiving.foodIndex}</div>
-              </div>
-            </div>
+            <InfoGrid items={costMetrics} columns={4} centered />
 
-            <div className="p-4 bg-gray-50 rounded-lg border">
-              <div className="flex items-start gap-2">
-                <TrendingUp className="w-4 h-4 text-gray-600 mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-gray-700">{analysis.costOfLiving.comparison}</p>
+            {/* Clean summary section */}
+            {(analysis.costOfLiving.monthlyEstimate || analysis.costOfLiving.vsWorldAverage || analysis.costOfLiving.vsUserLocation) && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {analysis.costOfLiving.monthlyEstimate && (
+                  <div className="p-4 bg-gray-50 rounded-lg border">
+                    <div className="text-xs text-gray-600 mb-1">Monthly Estimate</div>
+                    <div className="text-sm font-medium text-gray-900">{analysis.costOfLiving.monthlyEstimate}</div>
+                  </div>
+                )}
+                {analysis.costOfLiving.vsWorldAverage && (
+                  <div className="p-4 bg-gray-50 rounded-lg border">
+                    <div className="text-xs text-gray-600 mb-1">vs World Average</div>
+                    <div className="text-sm font-medium text-gray-900">{analysis.costOfLiving.vsWorldAverage}</div>
+                  </div>
+                )}
+                {analysis.costOfLiving.vsUserLocation && analysis.costOfLiving.vsUserLocation !== 'User current location not specified' && (
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="text-xs text-blue-600 mb-1">vs Your Location</div>
+                    <div className="text-sm font-medium text-blue-900">{analysis.costOfLiving.vsUserLocation}</div>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
+
+            {/* Key insights */}
+            {analysis.costOfLiving.keyInsights && analysis.costOfLiving.keyInsights.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-gray-600" />
+                  <h4 className="text-sm font-medium text-gray-900">Key Insights</h4>
+                </div>
+                <ul className="space-y-2">
+                  {analysis.costOfLiving.keyInsights.map((insight, index) => (
+                    <li key={index} className="flex items-start gap-2 text-sm text-gray-700">
+                      <span className="text-green-600 font-bold">•</span>
+                      <span>{insight}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -392,28 +401,8 @@ export default function LocationIntelligence({
               Quality of Life Metrics
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {[
-                { key: 'healthcare', label: 'Healthcare', icon: Heart, value: analysis.qualityOfLife.healthcare },
-                { key: 'safety', label: 'Safety', icon: Shield, value: analysis.qualityOfLife.safety },
-                { key: 'education', label: 'Education', icon: GraduationCap, value: analysis.qualityOfLife.education },
-                { key: 'environment', label: 'Environment', icon: Trees, value: analysis.qualityOfLife.environment },
-                { key: 'infrastructure', label: 'Infrastructure', icon: Globe, value: analysis.qualityOfLife.infrastructure },
-                { key: 'workLifeBalance', label: 'Work-Life Balance', icon: Clock, value: analysis.qualityOfLife.workLifeBalance }
-              ].map(({ key, label, icon: Icon, value }) => (
-                <div key={key} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Icon className="w-4 h-4 text-gray-600" />
-                      <span className="text-sm font-medium">{label}</span>
-                    </div>
-                    <span className="text-sm font-medium">{value}/100</span>
-                  </div>
-                  <Progress value={value} className="h-2" />
-                </div>
-              ))}
-            </div>
+          <CardContent>
+            <QualityMetricGrid metrics={qualityMetrics} columns={3} />
           </CardContent>
         </Card>
 
@@ -431,7 +420,9 @@ export default function LocationIntelligence({
                 <div className="text-sm font-medium text-gray-600 mb-2">Languages</div>
                 <div className="flex flex-wrap gap-2">
                   {analysis.culturalFactors.languages.map((lang, index) => (
-                    <Badge key={index} variant="outline">{lang}</Badge>
+                    <Badge key={index} variant="outline" className="text-sm">
+                      {lang.name} ({lang.percentage}%)
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -549,50 +540,8 @@ export default function LocationIntelligence({
           </CardContent>
         </Card>
 
-        {/* Data Sources */}
-        <Collapsible>
-          <Card>
-            <CollapsibleTrigger className="w-full">
-              <CardHeader className="cursor-pointer hover:bg-gray-50">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2">
-                    <Globe className="w-5 h-5 text-gray-600" />
-                    Data Sources
-                    <Badge variant="outline">{analysis.sources.webSources.length} sources</Badge>
-                  </CardTitle>
-                  <ChevronDown className="w-5 h-5 text-gray-400" />
-                </div>
-              </CardHeader>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <CardContent>
-                <div className="space-y-2">
-                  {analysis.sources.webSources.map((source, index) => (
-                    <a
-                      key={index}
-                      href={source.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors group"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm text-gray-900 group-hover:text-blue-600 transition-colors truncate">
-                          {source.title}
-                        </div>
-                        <div className="text-xs text-gray-500 truncate">{source.url}</div>
-                      </div>
-                      <div className="flex items-center gap-2 ml-4 flex-shrink-0">
-                        <Badge variant="outline" className="text-xs">{source.type}</Badge>
-                        <div className="text-xs text-gray-500">{source.relevance}%</div>
-                        <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-blue-600" />
-                      </div>
-                    </a>
-                  ))}
-                </div>
-              </CardContent>
-            </CollapsibleContent>
-          </Card>
-        </Collapsible>
+        {/* Data Sources - Using shared component */}
+        <DataSourcesSection sources={analysis.sources.webSources} defaultExpanded={false} />
       </div>
     );
   };
@@ -620,7 +569,6 @@ export default function LocationIntelligence({
     </Card>
   );
 
-  // Render based on current state
   switch (state.status) {
     case 'searching':
     case 'analyzing':

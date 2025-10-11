@@ -6,6 +6,7 @@
 import { prisma } from '@/lib/prisma';
 import { extractJobDataWithAI } from '@/lib/ai-service';
 import { ExtractionStatus, ExtractionQueue } from '@prisma/client';
+import { aiTaskTracker, AITaskType, AITaskStatus } from './ai-task-tracker';
 
 export interface ExtractionProgress {
   id: string;
@@ -75,6 +76,14 @@ class ExtractionQueueService {
       return existingInQueue;
     }
 
+    // CREATE AI TASK for tracking
+    const aiTask = await aiTaskTracker.createTask({
+      userId,
+      type: AITaskType.JOB_EXTRACTION,
+      navigationPath: '/dashboard', // Will update to job page after extraction
+      estimatedDuration: 30000, // 30 seconds
+    });
+
     // Create new queue entry with optional pre-extracted HTML
     const queueEntry = await prisma.extractionQueue.create({
       data: {
@@ -82,11 +91,11 @@ class ExtractionQueueService {
         url,
         priority,
         status: 'PENDING',
-        result: preExtractedHtml ? { preExtractedHtml } : null // Store HTML in result field
+        result: preExtractedHtml ? { preExtractedHtml, aiTaskId: aiTask.id } : { aiTaskId: aiTask.id } // Store HTML and taskId in result field
       }
     });
 
-    console.log(`✅ Queue entry created${preExtractedHtml ? ' with pre-extracted HTML' : ''}`);
+    console.log(`✅ Queue entry created${preExtractedHtml ? ' with pre-extracted HTML' : ''} [Task: ${aiTask.id}]`);
 
     // Start processing if not already running
     this.startProcessing();
@@ -223,6 +232,9 @@ class ExtractionQueueService {
    * Process a single extraction item
    */
   private async processItem(item: ExtractionQueue) {
+    // Get AI task ID from result
+    const aiTaskId = (item.result as any)?.aiTaskId;
+
     try {
       // Get user's API key (handles encryption and platform fallback securely)
       const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
@@ -239,6 +251,15 @@ class ExtractionQueueService {
         }
       });
 
+      // UPDATE AI TASK: PROCESSING
+      if (aiTaskId) {
+        await aiTaskTracker.updateProgress(aiTaskId, {
+          status: AITaskStatus.PROCESSING,
+          currentStep: 'Starting extraction...',
+          progress: 10
+        });
+      }
+
       // Check if we have pre-extracted HTML from browser extension
       let html: string;
       const preExtractedHtml = (item.result as any)?.preExtractedHtml;
@@ -247,9 +268,21 @@ class ExtractionQueueService {
         console.log('✅ Using pre-extracted HTML from browser extension');
         html = preExtractedHtml;
         await this.updateProgress(item.id, 25, 'Using pre-extracted content...');
+        if (aiTaskId) {
+          await aiTaskTracker.updateProgress(aiTaskId, {
+            currentStep: 'Using pre-extracted content...',
+            progress: 25
+          });
+        }
       } else {
         // Fetch page content with proper headers to avoid 403 errors
         await this.updateProgress(item.id, 25, 'Fetching page content...');
+        if (aiTaskId) {
+          await aiTaskTracker.updateProgress(aiTaskId, {
+            currentStep: 'Fetching page content...',
+            progress: 25
+          });
+        }
         console.log('⬇️ Fetching HTML from URL...');
 
         const response = await fetch(item.url, {
@@ -275,6 +308,12 @@ class ExtractionQueueService {
       }
 
       await this.updateProgress(item.id, 40, 'Parsing page content...');
+      if (aiTaskId) {
+        await aiTaskTracker.updateProgress(aiTaskId, {
+          currentStep: 'Parsing page content...',
+          progress: 40
+        });
+      }
 
       // Extract text content from HTML
       const textMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
@@ -307,6 +346,12 @@ class ExtractionQueueService {
       }
 
       await this.updateProgress(item.id, 60, 'Extracting job data with AI...');
+      if (aiTaskId) {
+        await aiTaskTracker.updateProgress(aiTaskId, {
+          currentStep: 'Extracting job data with AI...',
+          progress: 60
+        });
+      }
 
       // COMPREHENSIVE LOGO EXTRACTION from entire HTML
       const logoUrl = this.extractCompanyLogo(html, item.url);
@@ -349,6 +394,12 @@ class ExtractionQueueService {
       });
 
       await this.updateProgress(item.id, 80, 'Processing extracted data...');
+      if (aiTaskId) {
+        await aiTaskTracker.updateProgress(aiTaskId, {
+          currentStep: 'Saving job data...',
+          progress: 80
+        });
+      }
 
       // Save the job
       const job = await prisma.job.create({
@@ -396,6 +447,15 @@ class ExtractionQueueService {
         // Don't fail the extraction if auto-analysis fails
       });
 
+      // UPDATE AI TASK NAVIGATION to job page
+      if (aiTaskId) {
+        await aiTaskTracker.updateNavigation(
+          aiTaskId,
+          `/jobs/${job.id}`,
+          'overview'
+        );
+      }
+
       // Mark as completed
       await prisma.extractionQueue.update({
         where: { id: item.id },
@@ -404,9 +464,14 @@ class ExtractionQueueService {
           progress: 100,
           currentStep: 'Extraction complete',
           completedAt: new Date(),
-          result: { jobId: job.id }
+          result: { jobId: job.id, aiTaskId }
         }
       });
+
+      // COMPLETE AI TASK
+      if (aiTaskId) {
+        await aiTaskTracker.completeTask(aiTaskId, { jobId: job.id });
+      }
 
       // Broadcast completion (will be handled by WebSocket/SSE)
       this.broadcastUpdate(item.userId, {
@@ -431,6 +496,16 @@ class ExtractionQueueService {
           currentStep: shouldRetry ? 'Scheduled for retry...' : 'Extraction failed'
         }
       });
+
+      // FAIL AI TASK (only if not retrying)
+      if (aiTaskId && !shouldRetry) {
+        await aiTaskTracker.failTask(aiTaskId, errorMessage);
+      } else if (aiTaskId && shouldRetry) {
+        // Update task to show retry status
+        await aiTaskTracker.updateProgress(aiTaskId, {
+          currentStep: `Retry ${item.retryCount + 1}/${item.maxRetries}...`
+        });
+      }
 
       this.broadcastUpdate(item.userId, {
         id: item.id,

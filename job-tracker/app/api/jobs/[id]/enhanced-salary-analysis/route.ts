@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { validateToken } from '@/lib/auth';
 import { unifiedAI } from '@/lib/services/unified-ai-service';
 import { gpt5Service } from '@/lib/services/gpt5-service';
+import { aiTaskTracker, AITaskType, AITaskStatus } from '@/lib/services/ai-task-tracker';
 
 export const runtime = 'nodejs';
 
@@ -13,6 +14,8 @@ export async function GET(
 ) {
   const requestId = Math.random().toString(36).substr(2, 9);
   console.log(`🚀 [${requestId}] Enhanced salary analysis API called`);
+
+  let aiTask: any = null; // Track AI task for error handling
 
   try {
     // Authentication
@@ -145,6 +148,18 @@ export async function GET(
       });
     }
 
+    // CREATE AI TASK for tracking
+    aiTask = await aiTaskTracker.createTask({
+      userId: user.id,
+      type: AITaskType.SALARY_ANALYSIS,
+      jobId: jobId,
+      jobTitle: job.title,
+      company: job.company,
+      navigationPath: `/jobs/${jobId}`,
+      navigationTab: 'salary',
+      estimatedDuration: 45000, // 45 seconds
+    });
+
     if (!forceRefresh && job.extractedData) {
       try {
         const cached = JSON.parse(job.extractedData);
@@ -159,6 +174,10 @@ export async function GET(
               // Continue to fresh analysis
             } else {
               console.log(`📋 [${requestId}] Using cached enhanced salary analysis (${hoursSinceAnalysis.toFixed(1)}h old)`);
+
+              // MARK AI TASK AS CACHED
+              await aiTaskTracker.markAsCached(aiTask.id);
+
               return NextResponse.json({
                 success: true,
                 analysis: cachedAnalysis,
@@ -178,6 +197,13 @@ export async function GET(
         console.warn(`⚠️ [${requestId}] Failed to parse cached data:`, error);
       }
     }
+
+    // UPDATE AI TASK: PROCESSING
+    await aiTaskTracker.updateProgress(aiTask.id, {
+      status: AITaskStatus.PROCESSING,
+      currentStep: 'Searching for salary data...',
+      progress: 10
+    });
 
     // STEP 1: Perform REAL web searches for salary data (IN PARALLEL for speed)
     console.log(`🔍 Starting REAL web search for salary data: ${job.title} at ${job.company}`);
@@ -228,6 +254,12 @@ export async function GET(
     console.log(`✅ Found ${salarySearchResults.results.length} salary sources`);
     console.log(`✅ Found ${companySearchResults.results.length} company sources`);
     console.log(`📊 Sources:`, salarySearchResults.results.map(r => r.url).filter(u => u));
+
+    // UPDATE AI TASK: Analyzing data
+    await aiTaskTracker.updateProgress(aiTask.id, {
+      currentStep: 'Analyzing salary data with AI...',
+      progress: 40
+    });
 
     // STEP 2: Generate analysis using REAL web search data
     console.log(`🤖 Analyzing with AI using real web search data...`);
@@ -473,6 +505,12 @@ IMPORTANT:
 
     const startTime = Date.now();
 
+    // UPDATE AI TASK: Generating insights
+    await aiTaskTracker.updateProgress(aiTask.id, {
+      currentStep: 'Generating insights...',
+      progress: 70
+    });
+
     const response = await unifiedAI.complete(
       analysisPrompt,
       'gpt-5-mini',
@@ -491,6 +529,10 @@ IMPORTANT:
         details: response.error?.details,
         originalResponse: response.error?.originalResponse
       });
+
+      // FAIL AI TASK
+      await aiTaskTracker.failTask(aiTask.id, `${errorMsg}${errorDetails ? ' - ' + errorDetails : ''}`);
+
       throw new Error(`AI analysis failed: ${errorMsg}${errorDetails ? ' - ' + errorDetails : ''}`);
     }
 
@@ -680,6 +722,12 @@ IMPORTANT:
       }
     });
 
+    // COMPLETE AI TASK
+    await aiTaskTracker.completeTask(aiTask.id, {
+      analysis: 'success',
+      salaryRange: transformedAnalysis.salaryIntelligence?.range
+    });
+
     return NextResponse.json({
       success: true,
       analysis: transformedAnalysis,
@@ -693,6 +741,15 @@ IMPORTANT:
 
   } catch (error) {
     console.error('Enhanced salary analysis failed:', error);
+
+    // FAIL AI TASK if it exists
+    try {
+      if (aiTask) {
+        await aiTaskTracker.failTask(aiTask.id, error instanceof Error ? error.message : 'Unknown error');
+      }
+    } catch (taskError) {
+      console.error('Failed to update AI task:', taskError);
+    }
 
     return NextResponse.json({
       error: 'Salary analysis failed',

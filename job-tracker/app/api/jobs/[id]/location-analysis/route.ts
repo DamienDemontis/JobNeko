@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { validateToken } from '@/lib/auth';
 import { unifiedAI } from '@/lib/services/unified-ai-service';
 import { gpt5Service } from '@/lib/services/gpt5-service';
+import { aiTaskTracker, AITaskType, AITaskStatus } from '@/lib/services/ai-task-tracker';
 
 export const runtime = 'nodejs';
 
@@ -13,6 +14,8 @@ export async function GET(
 ) {
   const requestId = Math.random().toString(36).substr(2, 9);
   console.log(`🌍 [${requestId}] Location analysis API called`);
+
+  let aiTask: any = null; // Track AI task for error handling
 
   try {
     // Authentication
@@ -57,7 +60,7 @@ export async function GET(
     const checkCache = request.nextUrl.searchParams.get('checkCache') === 'true';
     const forceRefresh = request.nextUrl.searchParams.get('forceRefresh') === 'true';
 
-    // If this is just a cache check, only check cache and return
+    // If this is just a cache check, only check cache and return (DON'T CREATE TASK)
     if (checkCache) {
       if (job.extractedData) {
         try {
@@ -100,6 +103,18 @@ export async function GET(
       });
     }
 
+    // CREATE AI TASK for tracking (only when actually running analysis)
+    aiTask = await aiTaskTracker.createTask({
+      userId: user.id,
+      type: AITaskType.LOCATION_ANALYSIS,
+      jobId: jobId,
+      jobTitle: job.title,
+      company: job.company,
+      navigationPath: `/jobs/${jobId}`,
+      navigationTab: 'location',
+      estimatedDuration: 40000, // 40 seconds
+    });
+
     // Check cache unless force refresh
     if (!forceRefresh && job.extractedData) {
       try {
@@ -115,6 +130,12 @@ export async function GET(
               // Continue to fresh analysis
             } else {
               console.log(`🏠 [${requestId}] Using cached location analysis (${hoursSinceAnalysis.toFixed(1)}h old)`);
+
+              // MARK AI TASK AS CACHED
+              if (aiTask) {
+                await aiTaskTracker.markAsCached(aiTask.id);
+              }
+
               return NextResponse.json({
                 cached: true,
                 analysis: cachedAnalysis,
@@ -132,6 +153,15 @@ export async function GET(
       } catch (error) {
         console.warn(`⚠️ [${requestId}] Failed to parse cached data:`, error);
       }
+    }
+
+    // UPDATE AI TASK: PROCESSING
+    if (aiTask) {
+      await aiTaskTracker.updateProgress(aiTask.id, {
+        status: AITaskStatus.PROCESSING,
+        currentStep: 'Searching for location data...',
+        progress: 10
+      });
     }
 
     console.log(`🔍 Starting REAL web search for location data: ${job.location}`);
@@ -303,6 +333,14 @@ ${qualitySearchResults.summary}
 
     const startTime = Date.now();
 
+    // UPDATE AI TASK: Analyzing
+    if (aiTask) {
+      await aiTaskTracker.updateProgress(aiTask.id, {
+        currentStep: 'Analyzing location with AI...',
+        progress: 50
+      });
+    }
+
     const response = await unifiedAI.complete(
       analysisPrompt,
       'gpt-5-mini',
@@ -393,6 +431,11 @@ ${qualitySearchResults.summary}
     console.log(`✅ [${requestId}] Location analysis completed in ${processingTime}ms`);
     console.log(`📤 [${requestId}] Returning analysis with ${webSources.length} sources`);
 
+    // COMPLETE AI TASK
+    if (aiTask) {
+      await aiTaskTracker.completeTask(aiTask.id, { analysis: 'success' });
+    }
+
     return NextResponse.json({
       cached: false,
       analysis: finalAnalysis,
@@ -406,6 +449,15 @@ ${qualitySearchResults.summary}
 
   } catch (error) {
     console.error('Location analysis failed:', error);
+
+    // FAIL AI TASK
+    try {
+      if (aiTask) {
+        await aiTaskTracker.failTask(aiTask.id, error instanceof Error ? error.message : 'Unknown error');
+      }
+    } catch (taskError) {
+      console.error('Failed to update AI task:', taskError);
+    }
 
     return NextResponse.json({
       error: 'Location analysis failed',

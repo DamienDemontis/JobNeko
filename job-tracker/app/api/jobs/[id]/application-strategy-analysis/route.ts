@@ -4,6 +4,7 @@ import { validateToken } from '@/lib/auth';
 import { unifiedAI } from '@/lib/services/unified-ai-service';
 import { gpt5Service } from '@/lib/services/gpt5-service';
 import { centralizedMatchService } from '@/lib/services/centralized-match-service';
+import { aiTaskTracker, AITaskType, AITaskStatus } from '@/lib/services/ai-task-tracker';
 
 export const runtime = 'nodejs';
 

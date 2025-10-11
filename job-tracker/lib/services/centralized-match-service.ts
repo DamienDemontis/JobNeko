@@ -17,6 +17,7 @@ import { skillsGapAnalysis } from './skills-gap-analysis';
 import { resumeMatchingService, type ResumeMatchResult } from './resume-matching-service';
 import { SubscriptionTier, getTierLimits, getUserTier } from './subscription-tiers';
 import { prisma } from '@/lib/prisma';
+import { aiTaskTracker, AITaskType, AITaskStatus } from './ai-task-tracker';
 
 export interface MatchScoreResult {
   // Core Score
@@ -68,31 +69,67 @@ class CentralizedMatchService {
   async calculateMatch(input: MatchCalculationInput): Promise<MatchScoreResult> {
     console.log('🎯 Calculating match score for:', input.jobTitle, 'at', input.jobCompany);
 
-    // Get user's subscription tier
-    const tier = await getUserTier(input.userId);
-    const limits = getTierLimits(tier);
+    // CREATE AI TASK for tracking
+    const aiTask = await aiTaskTracker.createTask({
+      userId: input.userId,
+      type: AITaskType.MATCH_CALCULATION,
+      jobId: input.jobId,
+      jobTitle: input.jobTitle,
+      company: input.jobCompany,
+      navigationPath: input.jobId ? `/jobs/${input.jobId}` : '/dashboard',
+      navigationTab: 'overview',
+      estimatedDuration: 20000, // 20 seconds
+    });
 
-    // Generate cache key
-    const cacheKey = this.generateCacheKey(input);
+    try {
+      // Get user's subscription tier
+      const tier = await getUserTier(input.userId);
+      const limits = getTierLimits(tier);
 
-    // Check cache first (unless force recalculate is requested)
-    if (!input.forceRecalculate) {
-      const cached = await this.getFromCache(cacheKey, limits.cacheExpirationHours);
-      if (cached) {
-        console.log('✅ Retrieved match score from cache');
-        return cached;
+      // Generate cache key
+      const cacheKey = this.generateCacheKey(input);
+
+      // Check cache first (unless force recalculate is requested)
+      if (!input.forceRecalculate) {
+        const cached = await this.getFromCache(cacheKey, limits.cacheExpirationHours);
+        if (cached) {
+          console.log('✅ Retrieved match score from cache');
+
+          // MARK AI TASK AS CACHED
+          await aiTaskTracker.markAsCached(aiTask.id);
+
+          return cached;
+        }
+      } else {
+        console.log('🔄 Force recalculate requested - bypassing cache');
       }
-    } else {
-      console.log('🔄 Force recalculate requested - bypassing cache');
+
+      // UPDATE AI TASK: PROCESSING
+      await aiTaskTracker.updateProgress(aiTask.id, {
+        status: AITaskStatus.PROCESSING,
+        currentStep: 'Analyzing resume match...',
+        progress: 50
+      });
+
+      // Perform AI-powered matching analysis
+      const result = await this.performMatching(input, tier, limits);
+
+      // Cache the result
+      await this.saveToCache(cacheKey, result, limits.cacheExpirationHours);
+
+      // COMPLETE AI TASK
+      await aiTaskTracker.completeTask(aiTask.id, {
+        matchScore: result.matchScore,
+        confidence: result.confidence
+      });
+
+      return result;
+
+    } catch (error) {
+      // FAIL AI TASK
+      await aiTaskTracker.failTask(aiTask.id, error instanceof Error ? error.message : 'Match calculation failed');
+      throw error;
     }
-
-    // Perform AI-powered matching analysis
-    const result = await this.performMatching(input, tier, limits);
-
-    // Cache the result
-    await this.saveToCache(cacheKey, result, limits.cacheExpirationHours);
-
-    return result;
   }
 
   /**

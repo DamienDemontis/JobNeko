@@ -83,6 +83,8 @@ model Job {
   extractedData     String?        // JSON string for raw extracted data
   matchScore        Float?
   matchAnalysis     String?        // JSON string for detailed match analysis (strengths, missing elements)
+  matchAnalysisVersion Int?        // Format version: 1=old, 2=enhanced
+  matchResumeId     String?        // Track which resume was used for match calculation
   
   // Enhanced Application Tracking
   applicationStatus String         @default("not_applied")

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { validateToken } from '@/lib/auth';
-import { centralizedMatchService } from '@/lib/services/centralized-match-service';
+import { enhancedSkillsMatchService } from '@/lib/services/enhanced-skills-match-service';
 import {
   withErrorHandling,
   AuthenticationError,
@@ -13,7 +13,7 @@ export const runtime = 'nodejs';
 
 /**
  * POST /api/jobs/[id]/calculate-match
- * Calculate or recalculate the resume-to-job match score
+ * Calculate or recalculate the resume-to-job match score using enhanced skills match service
  */
 export const POST = withErrorHandling(async (
   request: NextRequest,
@@ -85,10 +85,11 @@ export const POST = withErrorHandling(async (
   const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
   const apiKey = await getUserApiKey(user.id);
 
-  // Calculate match using centralized service with force flag to bypass cache
-  const matchResult = await centralizedMatchService.calculateMatch({
+  // Calculate match using ENHANCED skills match service with force flag to bypass cache
+  const matchResult = await enhancedSkillsMatchService.calculateMatch({
     userId: user.id,
     jobId: job.id,
+    resumeId: resume.id,
     resumeContent: resume.content,
     resumeSkills,
     resumeExperience,
@@ -99,54 +100,29 @@ export const POST = withErrorHandling(async (
     jobRequirements: job.requirements || '',
     jobSkills,
     jobLocation: job.location || undefined,
-    forceRecalculate: true, // NEW: Force fresh calculation
+    forceRecalculate: true, // Force fresh calculation
     apiKey // Pass user's API key for AI operations
   });
 
-  // Update job with match score AND detailed analysis
-  await centralizedMatchService.updateJobMatchScore(job.id, matchResult.matchScore);
+  console.log(`✅ Match score calculated: ${matchResult.overallScore}% (confidence: ${(matchResult.confidence * 100).toFixed(1)}%)`);
+  console.log(`📊 Skills breakdown: ${matchResult.matchingSkills.length} exact, ${matchResult.partialMatches.length} partial, ${matchResult.missingSkills.length} missing`);
 
-  // Save detailed analysis to database
-  if (matchResult.detailedAnalysis) {
-    await prisma.job.update({
-      where: { id: job.id },
-      data: {
-        matchAnalysis: JSON.stringify(matchResult.detailedAnalysis)
-      }
-    });
-  }
-
-  console.log(`✅ Match score calculated: ${matchResult.matchScore}% (confidence: ${(matchResult.confidence * 100).toFixed(1)}%)`);
-
-  // Debug: Log improvement plan
-  if (matchResult.detailedAnalysis?.improvementPlan) {
-    const plan = matchResult.detailedAnalysis.improvementPlan;
-    console.log('📋 Improvement Plan:', {
-      quickWins: plan.quickWins?.length || 0,
-      shortTerm: plan.shortTerm?.length || 0,
-      longTerm: plan.longTerm?.length || 0,
-      total: (plan.quickWins?.length || 0) + (plan.shortTerm?.length || 0) + (plan.longTerm?.length || 0)
-    });
-  } else {
-    console.log('⚠️ No improvement plan generated');
-  }
-
+  // Return enhanced match result
   return NextResponse.json({
     success: true,
-    matchScore: matchResult.matchScore,
+    matchScore: matchResult.overallScore,
     confidence: matchResult.confidence,
-    tier: matchResult.tier,
     components: matchResult.components,
-    detailedAnalysis: matchResult.detailedAnalysis ? {
-      overallMatch: matchResult.detailedAnalysis.overallMatch,
-      matchBreakdown: matchResult.detailedAnalysis.matchBreakdown,
-      improvementPlan: matchResult.detailedAnalysis.improvementPlan,
-      missingElements: matchResult.detailedAnalysis.missingElements,
-      strengthsHighlights: matchResult.detailedAnalysis.strengthsHighlights,
+    // Detailed analysis for UI
+    detailedAnalysis: {
+      matchingSkills: matchResult.matchingSkills,
+      missingSkills: matchResult.missingSkills,
+      partialMatches: matchResult.partialMatches,
+      matchExplanation: matchResult.matchExplanation,
+      atsKeywords: matchResult.atsKeywords,
       hasDetailedAnalysis: true
-    } : null,
+    },
     calculatedAt: matchResult.calculatedAt,
-    dataSources: matchResult.dataSources
   }, {
     headers: {
       'Cache-Control': 'no-store, no-cache, must-revalidate',

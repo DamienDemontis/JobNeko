@@ -4,6 +4,7 @@ import { validateToken } from '@/lib/auth';
 import { unifiedAI } from '@/lib/services/unified-ai-service';
 import { gpt5Service } from '@/lib/services/gpt5-service';
 import { aiTaskTracker, AITaskType, AITaskStatus } from '@/lib/services/ai-task-tracker';
+import { enhancedSkillsMatchService } from '@/lib/services/enhanced-skills-match-service';
 
 export const runtime = 'nodejs';
 
@@ -201,8 +202,55 @@ export async function GET(
     // UPDATE AI TASK: PROCESSING
     await aiTaskTracker.updateProgress(aiTask.id, {
       status: AITaskStatus.PROCESSING,
+      currentStep: 'Calculating skills match...',
+      progress: 5
+    });
+
+    // STEP 0: Calculate enhanced skills match (SHARED across all tabs)
+    console.log(`🎯 Calculating enhanced skills match...`);
+
+    // Get user's API key
+    const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+    const apiKey = await getUserApiKey(user.id);
+
+    // Parse job skills
+    let jobSkills: string[] | undefined;
+    if (job.skills) {
+      jobSkills = job.skills.split(',').map(s => s.trim()).filter(Boolean);
+    }
+
+    let resumeEducation: any = null;
+    try {
+      if (resume.education) resumeEducation = JSON.parse(resume.education);
+    } catch (error) {
+      console.warn('Failed to parse resume education:', error);
+    }
+
+    // Calculate skills match (uses cache if available)
+    const skillsMatch = await enhancedSkillsMatchService.calculateMatch({
+      userId: user.id,
+      jobId: jobId,
+      resumeId: resume.id,
+      resumeContent: resume.content,
+      resumeSkills,
+      resumeExperience,
+      resumeEducation,
+      jobTitle: job.title,
+      jobCompany: job.company,
+      jobDescription: job.description || '',
+      jobRequirements: job.requirements || '',
+      jobSkills,
+      jobLocation: job.location || undefined,
+      forceRecalculate: false, // Use cache if available
+      apiKey
+    });
+
+    console.log(`✅ Skills match calculated: ${skillsMatch.overallScore}% (${skillsMatch.matchingSkills.length} exact, ${skillsMatch.partialMatches.length} partial)`);
+
+    // UPDATE AI TASK: Searching
+    await aiTaskTracker.updateProgress(aiTask.id, {
       currentStep: 'Searching for salary data...',
-      progress: 10
+      progress: 15
     });
 
     // STEP 1: Perform REAL web searches for salary data (IN PARALLEL for speed)
@@ -333,10 +381,16 @@ For VIE: set min=max=median=ACCURATE_CURRENT_AMOUNT, isFixed=true, currency="EUR
 - Expected: ${job.user.profile?.expectedSalaryMin || job.user.profile?.expectedSalaryMax ? `${job.user.profile.expectedSalaryMin || job.user.profile.expectedSalaryMax} - ${job.user.profile.expectedSalaryMax || job.user.profile.expectedSalaryMin} ${job.user.profile?.preferredCurrency || 'USD'}` : 'Not specified'}
 - Salary Currency: ${job.user.profile?.preferredCurrency || 'USD'}
 - Experience: ${job.user.profile?.yearsOfExperience || resumeExperience?.totalYears || 'Not specified'} years
-- Resume Skills: ${resumeSkills.length > 0 ? resumeSkills.join(', ') : 'No skills extracted from resume'}
-- Resume Content: ${resume.content.substring(0, 3000)}...
 
-**IMPORTANT:** You MUST use the resume content and skills above to analyze skill matches. The resume is provided - do NOT say skills are missing.
+**SKILLS MATCH ANALYSIS (Pre-calculated - USE THESE EXACT VALUES):**
+- Overall Match Score: ${skillsMatch.overallScore}%
+- Confidence: ${(skillsMatch.confidence * 100).toFixed(1)}%
+- Matching Skills (${skillsMatch.matchingSkills.length}): ${skillsMatch.matchingSkills.join(', ') || 'None'}
+- Partial Matches (${skillsMatch.partialMatches.length}): ${skillsMatch.partialMatches.join(', ') || 'None'}
+- Missing Skills (${skillsMatch.missingSkills.length}): ${skillsMatch.missingSkills.join(', ') || 'None'}
+- Explanation: ${skillsMatch.matchExplanation}
+
+**CRITICAL: Do NOT recalculate skills match. Use the pre-calculated values above in your response.**
 
 **CRITICAL REQUIREMENTS:**
 1. DETECT special job types (VIE/internship/contract) and adjust analysis accordingly
@@ -387,16 +441,16 @@ For VIE: set min=max=median=ACCURATE_CURRENT_AMOUNT, isFixed=true, currency="EUR
   "analysis": {
     "jobType": "standard|vie|internship|contract|apprenticeship|government",
     "jobTypeNotes": "For VIE: 'VIE position with fixed €2530/month gratification for Japan'",
-    "overallScore": <CALCULATE from resume: (matching_skills / total_required_skills) * 100, realistic range 30-95, MUST be data-driven from actual resume analysis>,
+    "overallScore": ${skillsMatch.overallScore},
     "careerProgression": "Adapt to job type: VIE->permanent hire pathway, or standard progression",
     "experienceAlignment": "How experience fits THIS job type (VIE requires <28yo, etc.)",
     "experienceJustification": "Justification based on job type constraints",
     "locationAnalysis": "For VIE: country coefficient. For standard: market analysis.",
     "skillsBreakdown": {
-      "matchingSkills": ["MUST list ONLY skills found in user's resume that match job requirements - be specific"],
-      "missingSkills": ["MUST list ONLY required skills from job description that are NOT in user's resume"],
-      "partialMatches": ["MUST list ONLY skills where resume shows related/similar but not exact match"],
-      "matchExplanation": "MUST explain: (X matching skills / Y total required) = Z% match, based on actual resume content"
+      "matchingSkills": ${JSON.stringify(skillsMatch.matchingSkills)},
+      "missingSkills": ${JSON.stringify(skillsMatch.missingSkills)},
+      "partialMatches": ${JSON.stringify(skillsMatch.partialMatches)},
+      "matchExplanation": "${skillsMatch.matchExplanation.replace(/"/g, '\\"')}"
     },
     "negotiationRange": {
       "reasoning": "Target median due to X. Stretch if Y."

@@ -629,10 +629,6 @@ export default function ModernSalaryIntelligence({
                         View detailed breakdown
                       </CollapsibleTrigger>
                       <CollapsibleContent className="mt-2 space-y-2">
-                        <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
-                          {analysis.personalizedInsights.skillsBreakdown.matchExplanation}
-                        </div>
-
                         {analysis.personalizedInsights.skillsBreakdown.matchingSkills.length > 0 && (
                           <div>
                             <div className="text-xs font-medium text-green-700 mb-1">✓ Matching Skills</div>

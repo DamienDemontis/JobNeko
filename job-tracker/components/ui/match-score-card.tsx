@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { MatchScoreDonut } from '@/components/ui/match-score-donut';
+import { MatchScoreDonut, getScoreColorClass } from '@/components/ui/match-score-donut';
 import {
   Target,
   TrendingUp,
@@ -36,6 +36,15 @@ interface Strength {
 }
 
 interface DetailedAnalysis {
+  matchingSkills?: string[];
+  missingSkills?: string[];
+  partialMatches?: string[];
+  matchExplanation?: string;
+  atsKeywords?: {
+    matched: string[];
+    missing: string[];
+    recommendations: string[];
+  };
   missingElements?: {
     criticalGaps?: MissingElement[];
     importantGaps?: MissingElement[];
@@ -102,30 +111,10 @@ export function MatchScoreCard({
   showDetails = true
 }: MatchScoreCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const [showFeedback, setShowFeedback] = useState(false);
+  const [showSkillsBreakdown, setShowSkillsBreakdown] = useState(false);
 
   const tierInfo = TIER_LABELS[tier];
   const TierIcon = tierInfo.icon;
-
-  // Flatten arrays from nested structure and filter out empty elements
-  const allStrengths = detailedAnalysis ? [
-    ...(detailedAnalysis.strengthsHighlights?.topStrengths || []),
-    ...(detailedAnalysis.strengthsHighlights?.uniqueAdvantages || []),
-    ...(detailedAnalysis.strengthsHighlights?.competitiveEdge || [])
-  ].filter(s => s.element && s.element.trim()) : [];
-
-  const allMissing = detailedAnalysis ? [
-    ...(detailedAnalysis.missingElements?.criticalGaps || []),
-    ...(detailedAnalysis.missingElements?.importantGaps || [])
-  ].filter(m => m.element && m.element.trim()) : [];
-
-  // Debug: Log detailed analysis
-  console.log('🔍 MatchScoreCard props:', {
-    hasDetailedAnalysis: !!detailedAnalysis,
-    detailedAnalysis,
-    missingCount: allMissing.length,
-    strengthsCount: allStrengths.length
-  });
 
   // Get match level and color
   const getMatchLevel = (score: number) => {
@@ -192,10 +181,16 @@ export function MatchScoreCard({
     );
   }
 
-  const score = matchScore || 0;
+  const score = Math.round(matchScore || 0);
   const matchLevel = getMatchLevel(score);
   const confidenceInfo = confidence ? getConfidenceDisplay(confidence) : null;
   const ConfidenceIcon = confidenceInfo?.icon;
+
+  // Get match explanation data
+  const matchingSkills = detailedAnalysis?.matchingSkills || [];
+  const partialMatches = detailedAnalysis?.partialMatches || [];
+  const missingSkills = detailedAnalysis?.missingSkills || [];
+  const matchExplanation = detailedAnalysis?.matchExplanation || '';
 
   if (compact) {
     return (
@@ -203,7 +198,7 @@ export function MatchScoreCard({
         <MatchScoreDonut score={score} size={50} strokeWidth={6} />
         <div className="flex-1">
           <div className="flex items-center space-x-2">
-            <span className={`text-sm font-semibold ${matchLevel.color}`}>
+            <span className={`text-sm font-semibold ${getScoreColorClass(score)}`}>
               {score}% Match
             </span>
             {tier !== 'free' && (
@@ -258,10 +253,10 @@ export function MatchScoreCard({
           <div className="flex items-center space-x-4">
             <MatchScoreDonut score={score} size={80} strokeWidth={8} />
             <div>
-              <div className={`text-3xl font-bold ${matchLevel.color}`}>
+              <div className={`text-3xl font-bold ${getScoreColorClass(score)}`}>
                 {score}%
               </div>
-              <div className={`text-sm font-medium ${matchLevel.color}`}>
+              <div className={`text-sm font-medium ${getScoreColorClass(score)}`}>
                 {matchLevel.label}
               </div>
               {confidence && ConfidenceIcon && (
@@ -273,6 +268,85 @@ export function MatchScoreCard({
             </div>
           </div>
         </div>
+
+        {/* Skills Breakdown - Collapsible, full width */}
+        {(matchingSkills.length > 0 || partialMatches.length > 0 || missingSkills.length > 0) && (
+          <div className="space-y-3 pt-2 border-t border-gray-200">
+            <button
+              onClick={() => setShowSkillsBreakdown(!showSkillsBreakdown)}
+              className="flex items-center justify-between w-full text-sm font-medium text-gray-700 hover:text-gray-900"
+            >
+              <div className="flex items-center gap-2">
+                <span>Skills Analysis</span>
+                <div className="flex items-center gap-1.5 text-xs text-gray-600 font-normal">
+                  {matchingSkills.length > 0 && (
+                    <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded">
+                      {matchingSkills.length} matching
+                    </span>
+                  )}
+                  {partialMatches.length > 0 && (
+                    <span className="px-2 py-0.5 bg-orange-50 text-orange-700 rounded">
+                      {partialMatches.length} partial
+                    </span>
+                  )}
+                  {missingSkills.length > 0 && (
+                    <span className="px-2 py-0.5 bg-red-50 text-red-700 rounded">
+                      {missingSkills.length} missing
+                    </span>
+                  )}
+                </div>
+              </div>
+              {showSkillsBreakdown ? (
+                <ChevronUp className="w-4 h-4" />
+              ) : (
+                <ChevronDown className="w-4 h-4" />
+              )}
+            </button>
+
+            {showSkillsBreakdown && (
+              <div className="space-y-3 pt-2">
+                {matchingSkills.length > 0 && (
+                  <div>
+                    <div className="text-xs font-medium text-green-700 mb-1">✓ Matching Skills</div>
+                    <div className="flex flex-wrap gap-1">
+                      {matchingSkills.map((skill, index) => (
+                        <Badge key={index} variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200">
+                          {skill}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {partialMatches.length > 0 && (
+                  <div>
+                    <div className="text-xs font-medium text-orange-700 mb-1">⚡ Partial Matches</div>
+                    <div className="space-y-1">
+                      {partialMatches.map((match, index) => (
+                        <div key={index} className="text-xs text-orange-700 bg-orange-50 p-1 rounded">
+                          {match}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {missingSkills.length > 0 && (
+                  <div>
+                    <div className="text-xs font-medium text-red-700 mb-1">◯ Missing Skills</div>
+                    <div className="flex flex-wrap gap-1">
+                      {missingSkills.map((skill, index) => (
+                        <Badge key={index} variant="outline" className="text-xs text-red-700 border-red-200">
+                          {skill}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Component Breakdown */}
         {showDetails && components && (
@@ -294,7 +368,8 @@ export function MatchScoreCard({
                 {Object.entries(components).map(([key, value]) => {
                   const Icon = COMPONENT_ICONS[key as keyof typeof components];
                   const label = COMPONENT_LABELS[key as keyof typeof components];
-                  const componentLevel = getMatchLevel(value);
+                  const roundedValue = Math.round(value);
+                  const componentLevel = getMatchLevel(roundedValue);
 
                   return (
                     <div key={key} className="space-y-1">
@@ -303,11 +378,11 @@ export function MatchScoreCard({
                           <Icon className="w-4 h-4 text-gray-400" />
                           <span className="text-gray-700">{label}</span>
                         </div>
-                        <span className={`font-semibold ${componentLevel.color}`}>
-                          {value}%
+                        <span className={`font-semibold ${getScoreColorClass(roundedValue)}`}>
+                          {roundedValue}%
                         </span>
                       </div>
-                      <Progress value={value} className="h-2" />
+                      <Progress value={roundedValue} className="h-2" />
                     </div>
                   );
                 })}
@@ -336,104 +411,6 @@ export function MatchScoreCard({
           </div>
         )}
 
-        {/* Match Analysis Feedback */}
-        {matchScore && matchScore > 0 ? (
-          <div className="mt-4 space-y-2">
-            <button
-              onClick={() => setShowFeedback(!showFeedback)}
-              className="w-full flex items-center justify-between p-3 border border-gray-300 rounded-md hover:border-gray-400 hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-900">
-                  Match Analysis
-                </span>
-                <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                  {allStrengths.length > 0 && (
-                    <span className="px-2 py-0.5 bg-gray-100 rounded">
-                      {allStrengths.length} strengths
-                    </span>
-                  )}
-                  {allMissing.length > 0 && (
-                    <span className="px-2 py-0.5 bg-gray-100 rounded">
-                      {allMissing.length} missing
-                    </span>
-                  )}
-                </div>
-              </div>
-              {showFeedback ? (
-                <ChevronUp className="w-4 h-4 text-gray-600" />
-              ) : (
-                <ChevronDown className="w-4 h-4 text-gray-600" />
-              )}
-            </button>
-
-            {showFeedback && (
-              <div className="space-y-3 p-4 border border-gray-200 rounded-md bg-white animate-in slide-in-from-top duration-200">
-                {/* No analysis available yet */}
-                {allStrengths.length === 0 && allMissing.length === 0 ? (
-                  <div className="text-center py-4">
-                    <p className="text-sm text-gray-600">
-                      Click "Calculate Match Score" to generate detailed feedback
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    {/* Strengths */}
-                    {allStrengths.length > 0 && (
-                  <div>
-                    <h4 className="text-xs font-semibold text-green-700 mb-2 flex items-center gap-1.5">
-                      <CheckCircle className="w-3.5 h-3.5 text-green-600" />
-                      What You Have
-                    </h4>
-                    <div className="space-y-1.5">
-                      {allStrengths.map((strength, idx) => (
-                        <div key={idx} className="flex items-start gap-2 text-xs">
-                          <span className="text-green-500 mt-0.5">✓</span>
-                          <div className="flex-1">
-                            <span className="font-medium text-gray-900">{strength.element}</span>
-                            {strength.details && (
-                              <span className="text-gray-600"> - {strength.details}</span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Divider */}
-                {allStrengths.length > 0 && allMissing.length > 0 && (
-                  <div className="border-t border-gray-200" />
-                )}
-
-                {/* Missing Elements */}
-                {allMissing.length > 0 && (
-                  <div>
-                    <h4 className="text-xs font-semibold text-red-700 mb-2 flex items-center gap-1.5">
-                      <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                      What's Missing
-                    </h4>
-                    <div className="space-y-1.5">
-                      {allMissing.map((missing, idx) => (
-                        <div key={idx} className="flex items-start gap-2 text-xs">
-                          <span className="text-red-500 mt-0.5">✗</span>
-                          <div className="flex-1">
-                            <span className="font-medium text-gray-900">{missing.element}</span>
-                            {missing.details && (
-                              <span className="text-gray-600"> - {missing.details}</span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        ) : null}
       </CardContent>
     </Card>
   );

@@ -1033,6 +1033,33 @@ export default function JobDetailPage() {
 
               {/* Sidebar */}
               <div className="space-y-6">
+                {/* Job Rating */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Your Rating</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-center space-x-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <StarIcon
+                          key={star}
+                          className={`w-8 h-8 cursor-pointer transition-all ${
+                            star <= (job.rating || 0)
+                              ? 'fill-black text-black'
+                              : 'text-gray-300 hover:text-gray-400 hover:scale-110'
+                          }`}
+                          onClick={() => handleRating(star)}
+                        />
+                      ))}
+                    </div>
+                    {job.rating && (
+                      <p className="text-center text-sm text-gray-500 mt-2">
+                        {job.rating} out of 5 stars
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+
                 {/* Resume Match Score */}
                 <MatchScoreCard
                   matchScore={job.matchScore}
@@ -1104,33 +1131,6 @@ export default function JobDetailPage() {
                   }}
                   onCancel={() => cancelAnalysis('match-score')}
                 />
-
-                {/* Job Rating */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Your Rating</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-center space-x-2">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <StarIcon
-                          key={star}
-                          className={`w-8 h-8 cursor-pointer transition-all ${
-                            star <= (job.rating || 0)
-                              ? 'fill-black text-black'
-                              : 'text-gray-300 hover:text-gray-400 hover:scale-110'
-                          }`}
-                          onClick={() => handleRating(star)}
-                        />
-                      ))}
-                    </div>
-                    {job.rating && (
-                      <p className="text-center text-sm text-gray-500 mt-2">
-                        {job.rating} out of 5 stars
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
 
                 {/* Quick Actions */}
                 <Card>

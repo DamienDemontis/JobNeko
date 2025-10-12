@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { validateToken } from '@/lib/auth';
 import { unifiedAI } from '@/lib/services/unified-ai-service';
 import { gpt5Service } from '@/lib/services/gpt5-service';
-import { centralizedMatchService } from '@/lib/services/centralized-match-service';
+import { enhancedSkillsMatchService } from '@/lib/services/enhanced-skills-match-service';
 import { aiTaskTracker, AITaskType, AITaskStatus } from '@/lib/services/ai-task-tracker';
 
 export const runtime = 'nodejs';
@@ -207,23 +207,52 @@ export async function GET(
 
     console.log(`📊 Sources: ${Array.from(allSourcesMap.keys())}`);
 
-    // STEP 3: Get centralized match analysis (shared across all tabs)
-    console.log(`🎯 Calculating centralized resume match...`);
-    const matchResult = await centralizedMatchService.calculateMatch({
+    // STEP 3: Get enhanced skills match analysis (shared across all tabs)
+    console.log(`🎯 Calculating enhanced skills match...`);
+
+    // Get user's API key
+    const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+    const apiKey = await getUserApiKey(user.id);
+
+    // Parse resume data
+    let resumeSkills: string[] = [];
+    let resumeExperience: any = null;
+    let resumeEducation: any = null;
+    try {
+      if (resume.skills) resumeSkills = JSON.parse(resume.skills);
+      if (resume.experience) resumeExperience = JSON.parse(resume.experience);
+      if (resume.education) resumeEducation = JSON.parse(resume.education);
+    } catch (error) {
+      console.warn('Failed to parse resume structured data:', error);
+    }
+
+    // Parse job skills
+    let jobSkills: string[] | undefined;
+    if (job.skills) {
+      jobSkills = job.skills.split(',').map(s => s.trim()).filter(Boolean);
+    }
+
+    const matchResult = await enhancedSkillsMatchService.calculateMatch({
       userId: user.id,
       jobId: jobId,
+      resumeId: resume.id,
       resumeContent: resumeContent,
+      resumeSkills,
+      resumeExperience,
+      resumeEducation,
       jobTitle: job.title,
       jobCompany: job.company,
       jobDescription: jobDescription,
       jobRequirements: job.requirements || '',
+      jobSkills,
       jobLocation: job.location,
-      forceRecalculate: false // Use cache if available
+      forceRecalculate: false, // Use cache if available
+      apiKey
     });
 
-    console.log(`✅ Match score: ${matchResult.matchScore}% (Skills: ${matchResult.components.skills}, Keywords: ${matchResult.components.keywords})`);
+    console.log(`✅ Skills match: ${matchResult.overallScore}% (${matchResult.matchingSkills.length} exact, ${matchResult.partialMatches.length} partial, ${matchResult.missingSkills.length} missing)`);
 
-    // STEP 4: Analyze with AI using REAL web search data + centralized match
+    // STEP 4: Analyze with AI using REAL web search data + enhanced match
     console.log(`🤖 Analyzing with AI using real web search data + match analysis...`);
 
     const analysisPrompt = `
@@ -255,24 +284,23 @@ ${companySearchResults.summary}
 **REAL WEB SEARCH DATA - Timing Strategies:**
 ${timingSearchResults.summary}
 
-**CENTRALIZED RESUME MATCH ANALYSIS (Already calculated - USE THESE EXACT VALUES):**
-- Overall Match Score: ${matchResult.matchScore}%
-- Skills Match: ${matchResult.components.skills}%
-- Keywords Match: ${matchResult.components.keywords}%
+**ENHANCED SKILLS MATCH ANALYSIS (Pre-calculated - USE THESE EXACT VALUES):**
+- Overall Match Score: ${matchResult.overallScore}%
+- Confidence: ${(matchResult.confidence * 100).toFixed(1)}%
+- Matching Skills (${matchResult.matchingSkills.length}): ${matchResult.matchingSkills.join(', ') || 'None'}
+- Partial Matches (${matchResult.partialMatches.length}): ${matchResult.partialMatches.join(', ') || 'None'}
+- Missing Skills (${matchResult.missingSkills.length}): ${matchResult.missingSkills.join(', ') || 'None'}
+- Matched ATS Keywords: ${matchResult.atsKeywords.matched.join(', ') || 'None'}
+- Missing ATS Keywords: ${matchResult.atsKeywords.missing.join(', ') || 'None'}
 - Experience Match: ${matchResult.components.experience}%
 - Education Match: ${matchResult.components.education}%
-${matchResult.detailedAnalysis ? `
-- Matched Skills: ${JSON.stringify(matchResult.detailedAnalysis.matchedSkills || [])}
-- Missing Skills: ${JSON.stringify(matchResult.detailedAnalysis.missingSkills || [])}
-- Matched Keywords: ${JSON.stringify(matchResult.detailedAnalysis.matchedKeywords || [])}
-- Missing Keywords: ${JSON.stringify(matchResult.detailedAnalysis.missingKeywords || [])}
-` : ''}
+- Explanation: ${matchResult.matchExplanation}
 
 **CRITICAL INSTRUCTIONS:**
-1. Use ONLY the real web search data and centralized match analysis - NO MADE-UP INFORMATION
-2. For ATS data, use the EXACT match scores and keywords from centralized analysis above
-3. DO NOT recalculate match scores - use the provided values exactly
-4. Focus on actionable recommendations based on the match analysis gaps
+1. Use ONLY the real web search data and enhanced skills match analysis - NO MADE-UP INFORMATION
+2. For ATS data, use the EXACT pre-calculated values above - DO NOT recalculate
+3. Focus on actionable recommendations based on missing skills and ATS keywords
+4. Use matched vs missing keywords to optimize resume for ATS
 5. For timing recommendations, use actual data from timing strategies search
 6. Be specific and cite sources when making claims
 
@@ -286,14 +314,10 @@ ${matchResult.detailedAnalysis ? `
     "reasoning": "Detailed explanation based on posting date, deadline, and timing research data"
   },
   "atsOptimization": {
-    "keywordsFromJob": ${matchResult.detailedAnalysis?.matchedKeywords ? JSON.stringify(matchResult.detailedAnalysis.matchedKeywords) : '[]'},
-    "missingFromResume": ${matchResult.detailedAnalysis?.missingKeywords ? JSON.stringify(matchResult.detailedAnalysis.missingKeywords) : '[]'},
-    "matchScore": ${matchResult.matchScore},
-    "recommendations": [
-      "Specific recommendation based on missing keywords/skills",
-      "Specific formatting tip from ATS web search",
-      "Specific section advice from web research"
-    ]
+    "keywordsFromJob": ${JSON.stringify(matchResult.atsKeywords.matched)},
+    "missingFromResume": ${JSON.stringify(matchResult.atsKeywords.missing)},
+    "matchScore": ${matchResult.overallScore},
+    "recommendations": ${JSON.stringify(matchResult.atsKeywords.recommendations)}
   },
   "applicationProcess": {
     "expectedTimeline": {

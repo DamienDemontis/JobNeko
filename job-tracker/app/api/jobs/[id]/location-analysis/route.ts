@@ -266,6 +266,8 @@ ${qualitySearchResults.summary}
 5. Factor in the salary amount ${salaryInfo} for affordability analysis
 6. **Quality scores MUST be 0-100 range** - if sum exceeds 100, normalize it
 7. **Fill ALL fields** - do not leave fields as 0 or "Data not available" unless absolutely no data exists
+8. **ALL NUMERIC FIELDS MUST BE NUMBERS ONLY** - NO WORDS (e.g., use 50, not "fifty")
+9. **VALID JSON ONLY** - ensure all quotes are closed, no trailing commas, all brackets matched
 
 **Response Format (EXACT JSON structure required):**
 {
@@ -276,11 +278,11 @@ ${qualitySearchResults.summary}
     "timezone": "Standard timezone for this location (e.g., KST, EST, CET) - use common knowledge"
   },
   "costOfLiving": {
-    "overallIndex": <number from web data, 100 = world average>,
-    "housingCostPercentage": <% of salary for housing from web data OR reasonable estimate>,
-    "transportationIndex": <from web data OR estimate based on city type>,
-    "foodIndex": <from web data OR estimate based on city type>,
-    "utilitiesIndex": <from web data OR estimate based on city type>,
+    "overallIndex": <NUMBER ONLY: from web data, 100 = world average, e.g., 67.3>,
+    "housingCostPercentage": <NUMBER ONLY: % of salary for housing from web data OR reasonable estimate, e.g., 35>,
+    "transportationIndex": <NUMBER ONLY: from web data OR estimate based on city type, e.g., 41>,
+    "foodIndex": <NUMBER ONLY: from web data OR estimate based on city type, e.g., 67>,
+    "utilitiesIndex": <NUMBER ONLY: from web data OR estimate based on city type, e.g., 50>,
     "monthlyEstimate": "Clean formatted estimate: e.g., '$1,500-2,000 per month'",
     "vsWorldAverage": "Simple statement: e.g., '32% lower than world average'",
     "vsUserLocation": "${job.user.profile?.currentLocation ? `Comparison vs ${job.user.profile.currentLocation} (user's current location) - e.g., '15% cheaper than New York'` : 'User current location not specified'}",
@@ -328,7 +330,8 @@ ${qualitySearchResults.summary}
 - All quality scores: 0-100 only
 - NEVER say "Data not available in sources" - provide reasonable estimates
 - ALL array fields must have 3 items minimum
-- Return ONLY the JSON object, no additional text
+- **ALL NUMBERS MUST BE NUMERIC VALUES, NOT WORDS** (50, not "fifty")
+- Return ONLY the JSON object, no additional text, VALID JSON syntax only
 `;
 
     const startTime = Date.now();

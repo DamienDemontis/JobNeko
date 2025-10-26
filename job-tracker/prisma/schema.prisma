@@ -168,20 +168,38 @@ model Rating {
 model Resume {
   id            String         @id @default(cuid())
   userId        String
-  fileName      String
-  fileUrl       String
+
+  // User-provided metadata
+  displayName   String         @default("My Resume") // User-friendly name
+  fileName      String         // Original file name
+
+  // File storage
+  fileUrl       String         // Path to stored file
+  fileSizeBytes Int            @default(0) // Track file size for limits
+
+  // Extracted content
   content       String?        // Extracted text content
   skills        String?        // JSON array of skills
   experience    String?        // JSON array of experience
   education     String?        // JSON array of education
   embedding     String?        // JSON array for vector embedding
-  isActive      Boolean        @default(true)
+
+  // Status & organization
+  isPrimary     Boolean        @default(false) // Main resume flag (only one per user)
+  isActive      Boolean        @default(true)  // Active = not deleted (soft delete)
+
+  // Usage tracking
+  lastUsedAt    DateTime?      // Track when last used for analysis
+  usageCount    Int            @default(0)     // Track how many times used
+
+  // Metadata
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
-  
+
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   @@index([userId])
+  @@index([isPrimary])
   @@index([isActive])
 }
 

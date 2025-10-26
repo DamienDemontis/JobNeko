@@ -8,6 +8,7 @@ import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -51,7 +52,7 @@ interface ModernSalaryIntelligenceProps {
 }
 
 interface AnalysisState {
-  status: 'idle' | 'searching' | 'analyzing' | 'complete' | 'error';
+  status: 'checking-cache' | 'idle' | 'searching' | 'analyzing' | 'complete' | 'error';
   progress: number;
   currentStep: string;
   analysis: PersonalizedSalaryAnalysis | null;
@@ -67,9 +68,9 @@ export default function ModernSalaryIntelligence({
   token
 }: ModernSalaryIntelligenceProps) {
   const [state, setState] = useState<AnalysisState>({
-    status: 'idle',
+    status: 'checking-cache',
     progress: 0,
-    currentStep: '',
+    currentStep: 'Checking for cached analysis...',
     analysis: null,
     error: null,
   });
@@ -121,10 +122,27 @@ export default function ModernSalaryIntelligence({
             analysis: cacheData.analysis,
             error: null,
           });
+          return;
         }
       }
+      // No cache found, show initial state
+      setState({
+        status: 'idle',
+        progress: 0,
+        currentStep: '',
+        analysis: null,
+        error: null,
+      });
     } catch (error) {
       console.log('No cached analysis found');
+      // On error, show initial state
+      setState({
+        status: 'idle',
+        progress: 0,
+        currentStep: '',
+        analysis: null,
+        error: null,
+      });
     }
   };
 
@@ -309,6 +327,32 @@ export default function ModernSalaryIntelligence({
     if (confidence >= 0.4) return 'text-orange-600 bg-orange-50 border-orange-200';
     return 'text-red-600 bg-red-50 border-red-200';
   };
+
+  const renderCacheLoading = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Brain className="w-5 h-5 text-purple-600" />
+          Enhanced Salary Intelligence
+          <Badge className="bg-purple-100 text-purple-700 border-purple-200">
+            <Zap className="w-3 h-3 mr-1" />
+            AI + Live Data
+          </Badge>
+        </CardTitle>
+        <CardDescription>
+          Checking for cached analysis...
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
+        <Skeleton className="h-12 w-full" />
+      </CardContent>
+    </Card>
+  );
 
   const renderInitialState = () => (
     <Card>
@@ -868,6 +912,7 @@ export default function ModernSalaryIntelligence({
     </Card>
   );
 
+  if (state.status === 'checking-cache') return renderCacheLoading();
   if (state.status === 'idle') return renderInitialState();
   if (state.status === 'searching' || state.status === 'analyzing') return renderProgress();
   if (state.status === 'complete') return renderAnalysis();

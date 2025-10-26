@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Target,
   FileText,
@@ -20,10 +21,18 @@ import {
   Zap,
   TrendingUp,
   MessageSquare,
-  Calendar
+  Calendar,
+  Star
 } from 'lucide-react';
 import { DataSourcesSection, InfoGrid } from '@/components/shared';
 import { toast } from 'sonner';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 // Strategy data from ApplicationStrategyIntelligence API
 interface StrategyAnalysis {
@@ -83,6 +92,31 @@ interface StrategyAnalysis {
       relevance: number;
     }>;
   };
+  // Enhanced skills match data from centralized service
+  enhancedSkillsMatch?: {
+    matchingSkills: string[];
+    partialMatches: string[];
+    missingSkills: string[];
+    overallScore: number;
+    confidence: number;
+  };
+  usedResume?: {
+    id: string;
+    displayName: string;
+    isPrimary: boolean;
+  };
+}
+
+interface Resume {
+  id: string;
+  displayName: string;
+  fileName: string;
+  isPrimary: boolean;
+  fileSizeBytes: number;
+  lastUsedAt: string | null;
+  usageCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface UnifiedApplicationStrategyProps {
@@ -100,12 +134,21 @@ export default function UnifiedApplicationStrategy({
 }: UnifiedApplicationStrategyProps) {
   const [analysis, setAnalysis] = useState<StrategyAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
+  const [checkingCache, setCheckingCache] = useState(true);
   const [cached, setCached] = useState(false);
   const [cacheAge, setCacheAge] = useState<string>('');
   const [activeTab, setActiveTab] = useState('resume');
+  const [resumes, setResumes] = useState<Resume[]>([]);
+  const [selectedResumeId, setSelectedResumeId] = useState<string>('');
+  const [loadingResumes, setLoadingResumes] = useState(true);
 
   const lastJobIdRef = useRef<string | null>(null);
   const hasAutoLoadedRef = useRef(false);
+
+  // Fetch user's resumes on mount
+  useEffect(() => {
+    fetchResumes();
+  }, []);
 
   // Auto-load cached analysis on mount (only once per jobId) - NO AUTO GENERATION
   useEffect(() => {
@@ -119,7 +162,40 @@ export default function UnifiedApplicationStrategy({
     }
   }, [jobId]);
 
+  const fetchResumes = async () => {
+    setLoadingResumes(true);
+    try {
+      const response = await fetch('/api/resumes', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        console.error('Failed to fetch resumes:', response.status);
+        setLoadingResumes(false);
+        return;
+      }
+
+      const data = await response.json();
+      setResumes(data.resumes || []);
+
+      // Auto-select primary resume
+      const primaryResume = data.resumes?.find((r: Resume) => r.isPrimary);
+      if (primaryResume) {
+        setSelectedResumeId(primaryResume.id);
+      } else if (data.resumes?.length > 0) {
+        setSelectedResumeId(data.resumes[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to fetch resumes:', error);
+    } finally {
+      setLoadingResumes(false);
+    }
+  };
+
   const checkForCachedAnalysis = async () => {
+    setCheckingCache(true);
     try {
       const response = await fetch(`/api/jobs/${jobId}/application-strategy-analysis?checkCache=true`, {
         headers: {
@@ -129,6 +205,7 @@ export default function UnifiedApplicationStrategy({
 
       if (!response.ok) {
         console.error('Cache check failed:', response.status);
+        setCheckingCache(false);
         return;
       }
 
@@ -141,6 +218,8 @@ export default function UnifiedApplicationStrategy({
       }
     } catch (error) {
       console.error('Failed to check cache:', error);
+    } finally {
+      setCheckingCache(false);
     }
   };
 
@@ -149,9 +228,21 @@ export default function UnifiedApplicationStrategy({
     setCached(false);
 
     try {
-      const url = forceRefresh
-        ? `/api/jobs/${jobId}/application-strategy-analysis?forceRefresh=true`
-        : `/api/jobs/${jobId}/application-strategy-analysis`;
+      // Build URL with resumeId parameter if selected
+      let url = `/api/jobs/${jobId}/application-strategy-analysis`;
+      const params = new URLSearchParams();
+
+      if (forceRefresh) {
+        params.append('forceRefresh', 'true');
+      }
+
+      if (selectedResumeId) {
+        params.append('resumeId', selectedResumeId);
+      }
+
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
 
       const response = await fetch(url, {
         method: 'POST',
@@ -225,12 +316,78 @@ export default function UnifiedApplicationStrategy({
       </CardHeader>
 
       <CardContent>
+        {/* Cache Checking State */}
+        {checkingCache && (
+          <div className="space-y-4 py-8">
+            <div className="text-center text-sm text-gray-600 mb-6">
+              Checking for cached analysis...
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-32 w-full" />
+            </div>
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        )}
+
         {/* Empty State */}
-        {!analysis && !loading && (
+        {!analysis && !loading && !checkingCache && (
           <div className="text-center py-12">
             <Sparkles className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 mb-4">No application strategy yet</p>
-            <Button onClick={() => runAnalysis(false)} disabled={loading}>
+            <p className="text-gray-600 mb-6">No application strategy yet</p>
+
+            {/* Resume Selector */}
+            {!loadingResumes && resumes.length > 0 && (
+              <div className="max-w-md mx-auto mb-6">
+                <div className="text-left mb-2">
+                  <label className="text-sm font-medium text-gray-700">
+                    Select Resume
+                  </label>
+                </div>
+                <Select value={selectedResumeId} onValueChange={setSelectedResumeId}>
+                  <SelectTrigger className="w-full text-left border-gray-300">
+                    <SelectValue placeholder="Choose a resume..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {resumes.map((resume) => (
+                      <SelectItem key={resume.id} value={resume.id}>
+                        <div className="flex items-center gap-2">
+                          <span>{resume.displayName}</span>
+                          {resume.isPrimary && (
+                            <Badge variant="outline" className="text-xs border-black text-black">
+                              <Star className="w-3 h-3 fill-black mr-1" />
+                              Primary
+                            </Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500 mt-1 text-left">
+                  Strategy will be generated using the selected resume
+                </p>
+              </div>
+            )}
+
+            {loadingResumes && (
+              <div className="text-sm text-gray-500 mb-6">Loading resumes...</div>
+            )}
+
+            {!loadingResumes && resumes.length === 0 && (
+              <div className="max-w-md mx-auto mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  Please upload a resume in your Profile page to generate an application strategy.
+                </p>
+              </div>
+            )}
+
+            <Button
+              onClick={() => runAnalysis(false)}
+              disabled={loading || loadingResumes || resumes.length === 0 || !selectedResumeId}
+            >
               <Target className="w-4 h-4 mr-2" />
               Generate Strategy
             </Button>
@@ -248,21 +405,39 @@ export default function UnifiedApplicationStrategy({
 
         {/* Analysis Results with Tabs */}
         {analysis && (
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="resume">
-                <FileText className="w-4 h-4 mr-2" />
-                Resume & ATS
-              </TabsTrigger>
-              <TabsTrigger value="materials">
-                <Mail className="w-4 h-4 mr-2" />
-                Materials
-              </TabsTrigger>
-              <TabsTrigger value="action">
-                <CheckSquare className="w-4 h-4 mr-2" />
-                Action Plan
-              </TabsTrigger>
-            </TabsList>
+          <>
+            {/* Show which resume was used */}
+            {analysis.usedResume && (
+              <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg flex items-center gap-2 text-sm">
+                <FileText className="w-4 h-4 text-gray-600" />
+                <span className="text-gray-700">
+                  Generated with:{' '}
+                  <span className="font-medium text-black">{analysis.usedResume.displayName}</span>
+                </span>
+                {analysis.usedResume.isPrimary && (
+                  <Badge variant="outline" className="text-xs border-black text-black ml-1">
+                    <Star className="w-3 h-3 fill-black mr-1" />
+                    Primary
+                  </Badge>
+                )}
+              </div>
+            )}
+
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="resume">
+                  <FileText className="w-4 h-4 mr-2" />
+                  Resume & ATS
+                </TabsTrigger>
+                <TabsTrigger value="materials">
+                  <Mail className="w-4 h-4 mr-2" />
+                  Materials
+                </TabsTrigger>
+                <TabsTrigger value="action">
+                  <CheckSquare className="w-4 h-4 mr-2" />
+                  Action Plan
+                </TabsTrigger>
+              </TabsList>
 
             {/* TAB 2: Resume & ATS - Combined optimization */}
             <TabsContent value="resume" className="space-y-6 mt-6">
@@ -278,10 +453,59 @@ export default function UnifiedApplicationStrategy({
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium">Resume Match Score</span>
-                      <span className="text-sm font-medium">{analysis.atsOptimization.matchScore}/100</span>
+                      <span className="text-sm font-medium">{Math.round(analysis.atsOptimization.matchScore)}/100</span>
                     </div>
-                    <Progress value={analysis.atsOptimization.matchScore} className="h-2" />
+                    <Progress value={Math.round(analysis.atsOptimization.matchScore)} className="h-2" />
                   </div>
+
+                  {/* Enhanced Skills Match (from centralized service) */}
+                  {analysis.enhancedSkillsMatch && (
+                    <div className="space-y-3 p-4 bg-gray-50 rounded-lg border">
+                      <div className="text-sm font-semibold text-gray-800 mb-2">Skills Match Analysis</div>
+
+                      {/* Matching Skills */}
+                      {analysis.enhancedSkillsMatch.matchingSkills.length > 0 && (
+                        <div>
+                          <div className="text-xs font-medium text-green-700 mb-1">✓ Matching Skills</div>
+                          <div className="flex flex-wrap gap-1">
+                            {analysis.enhancedSkillsMatch.matchingSkills.map((skill, index) => (
+                              <Badge key={index} variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200">
+                                {skill}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Partial Matches */}
+                      {analysis.enhancedSkillsMatch.partialMatches.length > 0 && (
+                        <div>
+                          <div className="text-xs font-medium text-orange-700 mb-1">⚡ Partial Matches</div>
+                          <div className="space-y-1">
+                            {analysis.enhancedSkillsMatch.partialMatches.map((match, index) => (
+                              <div key={index} className="text-xs text-orange-700 bg-orange-50 p-1 rounded">
+                                {match}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Missing Skills */}
+                      {analysis.enhancedSkillsMatch.missingSkills.length > 0 && (
+                        <div>
+                          <div className="text-xs font-medium text-red-700 mb-1">◯ Missing Skills</div>
+                          <div className="flex flex-wrap gap-1">
+                            {analysis.enhancedSkillsMatch.missingSkills.map((skill, index) => (
+                              <Badge key={index} variant="outline" className="text-xs text-red-700 border-red-200">
+                                {skill}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Keywords */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -517,6 +741,7 @@ export default function UnifiedApplicationStrategy({
               </Card>
             </TabsContent>
           </Tabs>
+          </>
         )}
 
         {/* Data Sources */}

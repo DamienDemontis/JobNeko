@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import prisma from '@/lib/prisma';
+import { validateToken } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
 
 /**
  * POST /api/ai-tasks/cleanup
@@ -12,18 +11,14 @@ import prisma from '@/lib/prisma';
 export async function POST(request: NextRequest) {
   try {
     // Authentication check
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
+    const token = request.headers.get('authorization')?.replace('Bearer ', '');
+    if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true }
-    });
-
+    const user = await validateToken(token);
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
     }
 
     console.log('🧹 Starting task cleanup...');

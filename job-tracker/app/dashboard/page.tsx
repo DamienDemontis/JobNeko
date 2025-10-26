@@ -78,10 +78,11 @@ const applicationStatusConfig: Record<string, {
 
 const getMatchScoreDisplay = (score?: number) => {
   if (!score) return { text: 'No Score', className: 'text-gray-400' };
-  if (score >= 85) return { text: `${score}%`, className: 'text-black font-semibold' };
-  if (score >= 70) return { text: `${score}%`, className: 'text-gray-700 font-medium' };
-  if (score >= 50) return { text: `${score}%`, className: 'text-gray-500' };
-  return { text: `${score}%`, className: 'text-gray-400' };
+  const roundedScore = Math.round(score);
+  if (roundedScore >= 85) return { text: `${roundedScore}%`, className: 'text-black font-semibold' };
+  if (roundedScore >= 70) return { text: `${roundedScore}%`, className: 'text-gray-700 font-medium' };
+  if (roundedScore >= 50) return { text: `${roundedScore}%`, className: 'text-gray-500' };
+  return { text: `${roundedScore}%`, className: 'text-gray-400' };
 };
 
 const getSalaryDisplay = (salary?: string): { display: string; hasAmount: boolean } => {

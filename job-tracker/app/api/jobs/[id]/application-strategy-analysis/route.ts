@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { validateToken } from '@/lib/auth';
 import { unifiedAI } from '@/lib/services/unified-ai-service';
 import { gpt5Service } from '@/lib/services/gpt5-service';
-import { enhancedSkillsMatchService } from '@/lib/services/enhanced-skills-match-service';
 import { aiTaskTracker, AITaskType, AITaskStatus } from '@/lib/services/ai-task-tracker';
 
 export const runtime = 'nodejs';
@@ -74,6 +73,25 @@ export async function GET(
                 console.warn(`⚠️ [${requestId}] Cached analysis has invalid structure, forcing refresh`);
               } else {
                 console.log(`📋 [${requestId}] Returning cached application strategy (${hoursSinceAnalysis.toFixed(1)}h old)`);
+
+                // Try to get the resume that was used (stored in cache or use primary)
+                const cachedResumeId = cached.usedResumeId;
+                let usedResume = null;
+                if (cachedResumeId) {
+                  usedResume = await prisma.resume.findFirst({
+                    where: { id: cachedResumeId, isActive: true },
+                    select: { id: true, displayName: true, isPrimary: true }
+                  });
+                }
+
+                // Fallback to primary resume if cached resume not found
+                if (!usedResume) {
+                  usedResume = await prisma.resume.findFirst({
+                    where: { userId: user.id, isActive: true, isPrimary: true },
+                    select: { id: true, displayName: true, isPrimary: true }
+                  });
+                }
+
                 return NextResponse.json({
                   cached: true,
                   analysis: cachedAnalysis,
@@ -83,7 +101,14 @@ export async function GET(
                     title: job.title,
                     company: job.company,
                     location: job.location
-                  }
+                  },
+                  ...(usedResume && {
+                    usedResume: {
+                      id: usedResume.id,
+                      displayName: usedResume.displayName,
+                      isPrimary: usedResume.isPrimary
+                    }
+                  })
                 });
               }
             }
@@ -136,22 +161,67 @@ export async function GET(
 
     console.log(`🔍 Starting REAL web search for application strategy: ${job.title} at ${job.company}`);
 
-    // Get actual uploaded resume from database (same as resume-optimization)
-    const resume = await prisma.resume.findFirst({
-      where: {
-        userId: user.id,
-        isActive: true
-      },
-      orderBy: {
-        createdAt: 'desc'
+    // Get resumeId from query params (optional - uses primary if not provided)
+    const resumeId = request.nextUrl.searchParams.get('resumeId');
+
+    let resume;
+    if (resumeId) {
+      // Use specified resume
+      resume = await prisma.resume.findFirst({
+        where: {
+          id: resumeId,
+          userId: user.id,
+          isActive: true
+        }
+      });
+
+      if (!resume) {
+        return NextResponse.json({
+          error: 'Specified resume not found'
+        }, { status: 404 });
       }
-    });
+
+      console.log(`📄 Using specified resume: ${resume.displayName}`);
+    } else {
+      // Use primary resume
+      resume = await prisma.resume.findFirst({
+        where: {
+          userId: user.id,
+          isActive: true,
+          isPrimary: true
+        }
+      });
+
+      if (!resume) {
+        // Fallback to most recent if no primary set
+        resume = await prisma.resume.findFirst({
+          where: {
+            userId: user.id,
+            isActive: true
+          },
+          orderBy: {
+            createdAt: 'desc'
+          }
+        });
+      }
+
+      console.log(`📄 Using ${resume?.isPrimary ? 'primary' : 'most recent'} resume: ${resume?.displayName || 'Unknown'}`);
+    }
 
     if (!resume || !resume.content) {
       return NextResponse.json({
         error: 'No resume found. Please upload a resume first to get application strategy.'
       }, { status: 400 });
     }
+
+    // Update usage tracking
+    await prisma.resume.update({
+      where: { id: resume.id },
+      data: {
+        lastUsedAt: new Date(),
+        usageCount: { increment: 1 }
+      }
+    });
 
     const resumeContent = resume.content;
     const resumeSummary = resumeContent.substring(0, 2000);
@@ -207,50 +277,30 @@ export async function GET(
 
     console.log(`📊 Sources: ${Array.from(allSourcesMap.keys())}`);
 
-    // STEP 3: Get enhanced skills match analysis (shared across all tabs)
-    console.log(`🎯 Calculating enhanced skills match...`);
+    // STEP 3: Get enhanced skills match analysis from cached data (single source of truth)
+    console.log(`🎯 Retrieving cached skills match analysis...`);
 
-    // Get user's API key
-    const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
-    const apiKey = await getUserApiKey(user.id);
+    // Check if match analysis exists in the job
+    if (!job.matchAnalysis) {
+      console.warn('⚠️ No match analysis found for job. User needs to calculate match score first.');
+      return NextResponse.json({
+        error: 'Match score not calculated',
+        message: 'Please calculate the Resume Match Score in the Overview tab first before generating application strategy.'
+      }, { status: 400 });
+    }
 
-    // Parse resume data
-    let resumeSkills: string[] = [];
-    let resumeExperience: any = null;
-    let resumeEducation: any = null;
+    // Parse the cached match result
+    let matchResult;
     try {
-      if (resume.skills) resumeSkills = JSON.parse(resume.skills);
-      if (resume.experience) resumeExperience = JSON.parse(resume.experience);
-      if (resume.education) resumeEducation = JSON.parse(resume.education);
+      matchResult = JSON.parse(job.matchAnalysis);
+      console.log(`✅ Using cached skills match: ${matchResult.overallScore}% (${matchResult.matchingSkills.length} exact, ${matchResult.partialMatches.length} partial, ${matchResult.missingSkills.length} missing)`);
     } catch (error) {
-      console.warn('Failed to parse resume structured data:', error);
+      console.error('Failed to parse match analysis:', error);
+      return NextResponse.json({
+        error: 'Invalid match data',
+        message: 'The cached match score data is invalid. Please recalculate the match score in the Overview tab.'
+      }, { status: 500 });
     }
-
-    // Parse job skills
-    let jobSkills: string[] | undefined;
-    if (job.skills) {
-      jobSkills = job.skills.split(',').map(s => s.trim()).filter(Boolean);
-    }
-
-    const matchResult = await enhancedSkillsMatchService.calculateMatch({
-      userId: user.id,
-      jobId: jobId,
-      resumeId: resume.id,
-      resumeContent: resumeContent,
-      resumeSkills,
-      resumeExperience,
-      resumeEducation,
-      jobTitle: job.title,
-      jobCompany: job.company,
-      jobDescription: jobDescription,
-      jobRequirements: job.requirements || '',
-      jobSkills,
-      jobLocation: job.location,
-      forceRecalculate: false, // Use cache if available
-      apiKey
-    });
-
-    console.log(`✅ Skills match: ${matchResult.overallScore}% (${matchResult.matchingSkills.length} exact, ${matchResult.partialMatches.length} partial, ${matchResult.missingSkills.length} missing)`);
 
     // STEP 4: Analyze with AI using REAL web search data + enhanced match
     console.log(`🤖 Analyzing with AI using real web search data + match analysis...`);
@@ -485,11 +535,19 @@ ${timingSearchResults.summary}
       };
     });
 
-    // Add sources to analysis
+    // Add sources AND enhanced skills match data to analysis
     const finalAnalysis = {
       ...analysisData,
       sources: {
         webSources
+      },
+      // Include enhanced skills match data for unified display across tabs
+      enhancedSkillsMatch: {
+        matchingSkills: matchResult.matchingSkills,
+        partialMatches: matchResult.partialMatches,
+        missingSkills: matchResult.missingSkills,
+        overallScore: matchResult.overallScore,
+        confidence: matchResult.confidence
       }
     };
 
@@ -502,7 +560,8 @@ ${timingSearchResults.summary}
           extractedData: JSON.stringify({
             ...existingData,
             applicationStrategyAnalysis: finalAnalysis,
-            applicationStrategyAnalysisDate: new Date()
+            applicationStrategyAnalysisDate: new Date(),
+            usedResumeId: resume.id // Track which resume was used
           }),
           updatedAt: new Date()
         }
@@ -523,6 +582,11 @@ ${timingSearchResults.summary}
         title: job.title,
         company: job.company,
         location: job.location
+      },
+      usedResume: {
+        id: resume.id,
+        displayName: resume.displayName,
+        isPrimary: resume.isPrimary
       }
     });
 

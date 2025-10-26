@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   MapPin,
   DollarSign,
@@ -95,7 +96,7 @@ interface LocationAnalysis {
 }
 
 interface LocationIntelligenceState {
-  status: 'idle' | 'searching' | 'analyzing' | 'complete' | 'error';
+  status: 'checking-cache' | 'idle' | 'searching' | 'analyzing' | 'complete' | 'error';
   progress: number;
   currentStep: string;
   analysis: LocationAnalysis | null;
@@ -110,9 +111,9 @@ export default function LocationIntelligence({
   token
 }: LocationIntelligenceProps) {
   const [state, setState] = useState<LocationIntelligenceState>({
-    status: 'idle',
+    status: 'checking-cache',
     progress: 0,
-    currentStep: 'Ready to analyze location',
+    currentStep: 'Checking for cached analysis...',
     analysis: null,
     error: null,
   });
@@ -149,10 +150,27 @@ export default function LocationIntelligence({
             analysis: cacheData.analysis,
             error: null,
           });
+          return;
         }
       }
+      // No cache found, show initial state
+      setState({
+        status: 'idle',
+        progress: 0,
+        currentStep: 'Ready to analyze location',
+        analysis: null,
+        error: null,
+      });
     } catch (error) {
       console.log('No cached analysis found');
+      // On error, show initial state
+      setState({
+        status: 'idle',
+        progress: 0,
+        currentStep: 'Ready to analyze location',
+        analysis: null,
+        error: null,
+      });
     }
   };
 
@@ -217,6 +235,30 @@ export default function LocationIntelligence({
       default: return 'bg-gray-100 text-gray-700 border-gray-300';
     }
   };
+
+  const renderCacheLoading = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <MapPin className="w-5 h-5 text-blue-600" />
+          Location Intelligence
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="text-center text-sm text-gray-600 mb-4">
+          Checking for cached analysis...
+        </div>
+        <div className="space-y-4">
+          <Skeleton className="h-24 w-full" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+          <Skeleton className="h-12 w-full" />
+        </div>
+      </CardContent>
+    </Card>
+  );
 
   const renderInitialState = () => (
     <Card>
@@ -570,6 +612,10 @@ export default function LocationIntelligence({
   );
 
   switch (state.status) {
+    case 'checking-cache':
+      return renderCacheLoading();
+    case 'idle':
+      return renderInitialState();
     case 'searching':
     case 'analyzing':
       return renderLoadingState();

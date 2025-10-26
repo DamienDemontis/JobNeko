@@ -1,7 +1,7 @@
-// AI-Powered Salary Intelligence Service
-// Uses OpenAI to analyze job offers with user context - NO hardcoded data
+// AI-Powered Salary Intelligence Service - MIGRATED TO UNIFIED ARCHITECTURE
+// Uses unified AI service for analysis - NO hardcoded data, NO token limits
 
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -152,18 +152,23 @@ export class AISalaryIntelligenceService {
       // 2. Create comprehensive analysis prompt
       const analysisPrompt = this.buildAnalysisPrompt(request, userContext);
       
-      // 3. Call OpenAI for analysis
-      const aiResponse = await generateCompletion(analysisPrompt, {
-        max_tokens: 1500,
-        temperature: 0
+      // 3. Call unified AI service for analysis - NO TOKEN LIMITS
+      const aiResponse = await unifiedAI.process({
+        operation: 'salary_analysis',
+        content: analysisPrompt,
+        overrides: {
+          model: 'gpt-5', // Use full GPT-5 for comprehensive salary analysis
+          reasoning: 'high'
+        }
       });
 
-      if (!aiResponse || !aiResponse.content) {
-        throw new Error('AI service returned empty response');
+      if (!aiResponse.success) {
+        throw new Error(`Salary analysis failed: ${aiResponse.error?.message}`);
       }
       
       // 4. Parse and validate AI response
-      const salaryAnalysis = this.parseAIResponse(aiResponse.content, generatedAt);
+      const responseContent = typeof aiResponse.data === 'string' ? aiResponse.data : JSON.stringify(aiResponse.data);
+      const salaryAnalysis = this.parseAIResponse(responseContent, generatedAt);
       
       // 5. Add metadata and source attribution
       salaryAnalysis.sources = [

@@ -1,7 +1,7 @@
-// Enhanced AI-Powered Salary Intelligence Service with RAG
-// Provides comprehensive salary analysis with caching and context-aware insights
+// Enhanced AI-Powered Salary Intelligence Service - MIGRATED TO UNIFIED ARCHITECTURE
+// Provides comprehensive salary analysis with NO token limits and clean error handling
 
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 import { PrismaClient } from '@prisma/client';
 // import { salaryCache } from './salary-cache';
 
@@ -364,18 +364,23 @@ export class EnhancedSalaryIntelligenceService {
     // Create enhanced prompt with RAG context
     const prompt = this.buildEnhancedPrompt(request, ragContext);
 
-    // Call AI for analysis
-    const aiResponse = await generateCompletion(prompt, {
-      max_tokens: 2000,
-      temperature: 0.1 // Low temperature for consistent results
+    // Call unified AI service for analysis - NO TOKEN LIMITS
+    const aiResponse = await unifiedAI.process({
+      operation: 'salary_analysis',
+      content: prompt,
+      overrides: {
+        model: 'gpt-5', // Use full GPT-5 for comprehensive analysis
+        reasoning: 'high'
+      }
     });
 
-    if (!aiResponse || !aiResponse.content) {
-      throw new Error('AI service unavailable or returned empty response. No fallback data will be provided.');
+    if (!aiResponse.success) {
+      throw new Error(`Enhanced salary analysis failed: ${aiResponse.error?.message}`);
     }
 
     // Parse and validate response
-    const analysis = this.parseAIResponse(aiResponse.content, request);
+    const responseContent = typeof aiResponse.data === 'string' ? aiResponse.data : JSON.stringify(aiResponse.data);
+    const analysis = this.parseAIResponse(responseContent, request);
 
     // Apply expense profile if provided
     if (request.expenseProfile) {

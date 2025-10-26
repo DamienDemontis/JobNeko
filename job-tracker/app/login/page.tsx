@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { JobNekoLogo } from '@/components/ui/jobneko-logo';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -48,7 +49,21 @@ export default function LoginPage() {
         console.log('Login successful, calling AuthContext login...');
         login(data.user, data.token);
         toast.success('Welcome back!');
-        
+
+        // Check if user needs onboarding
+        const onboardingResponse = await fetch('/api/user/onboarding-status', {
+          headers: { 'Authorization': `Bearer ${data.token}` }
+        });
+
+        if (onboardingResponse.ok) {
+          const onboardingData = await onboardingResponse.json();
+          if (!onboardingData.onboardingCompleted) {
+            console.log('User needs onboarding, redirecting...');
+            router.push('/onboarding');
+            return;
+          }
+        }
+
         // Navigation will be handled by the useEffect after state updates
         console.log('Login successful, waiting for useEffect to handle navigation...');
       } else {
@@ -68,8 +83,11 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Job Tracker</CardTitle>
-          <CardDescription>Sign in to your account</CardDescription>
+          <div className="flex justify-center mb-4">
+            <JobNekoLogo size={80} showText={false} />
+          </div>
+          <CardTitle className="text-2xl font-bold">Welcome to JobNeko</CardTitle>
+          <CardDescription>Sign in to your AI-powered job search assistant</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

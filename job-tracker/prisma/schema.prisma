@@ -17,13 +17,39 @@ model User {
   name          String?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
-  
+
+  // Subscription & Billing
+  subscriptionTier    String   @default("free") // free, pro, pro_max, self_hosted
+  subscriptionStatus  String   @default("active") // active, cancelled, expired, trial
+  subscriptionExpiresAt DateTime?
+  stripeCustomerId    String?
+  stripeSubscriptionId String?
+
+  // Self-Hosting Support
+  apiKeyMode          String   @default("platform") // platform, self_hosted
+  encryptedApiKey     String?  // User's own OpenAI key (encrypted)
+
+  // Onboarding Progress
+  onboardingCompleted Boolean  @default(false)
+  onboardingStep      Int      @default(0) // Current step in onboarding (0 = not started, 5 = completed)
+  profileCompleted    Boolean  @default(false)
+  resumeUploaded      Boolean  @default(false)
+  apiKeyConfigured    Boolean  @default(false)
+
   jobs          Job[]
   ratings       Rating[]
   resumes       Resume[]
   profile       UserProfile?
-  
+  preferences   UserPreferences?
+  aiUsage       AIUsageTracking[]
+  jobAnalysisCache JobAnalysisCache[]
+  extractionQueue ExtractionQueue[]
+  aiTasks       AITask[]
+
   @@index([email])
+  @@index([subscriptionTier])
+  @@index([apiKeyMode])
+  @@index([onboardingCompleted])
 }
 
 model Job {
@@ -56,11 +82,15 @@ model Job {
   workMode          String?        // remote/hybrid/onsite
   extractedData     String?        // JSON string for raw extracted data
   matchScore        Float?
+  matchAnalysis     String?        // JSON string for detailed match analysis (strengths, missing elements)
+  matchAnalysisVersion Int?        // Format version: 1=old, 2=enhanced
+  matchResumeId     String?        // Track which resume was used for match calculation
   
   // Enhanced Application Tracking
   applicationStatus String         @default("not_applied")
   appliedAt         DateTime?
   applicationDeadline DateTime?
+  postedDate        DateTime?      // When the job was originally posted by the company
   priority          String         @default("medium") // low/medium/high
   
   // Contact Information
@@ -92,6 +122,7 @@ model Job {
   user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   ratings           Rating[]
   activities        JobActivity[]
+  analysisCache     JobAnalysisCache[]
   
   @@index([userId])
   @@index([company])
@@ -137,20 +168,38 @@ model Rating {
 model Resume {
   id            String         @id @default(cuid())
   userId        String
-  fileName      String
-  fileUrl       String
+
+  // User-provided metadata
+  displayName   String         @default("My Resume") // User-friendly name
+  fileName      String         // Original file name
+
+  // File storage
+  fileUrl       String         // Path to stored file
+  fileSizeBytes Int            @default(0) // Track file size for limits
+
+  // Extracted content
   content       String?        // Extracted text content
   skills        String?        // JSON array of skills
   experience    String?        // JSON array of experience
   education     String?        // JSON array of education
   embedding     String?        // JSON array for vector embedding
-  isActive      Boolean        @default(true)
+
+  // Status & organization
+  isPrimary     Boolean        @default(false) // Main resume flag (only one per user)
+  isActive      Boolean        @default(true)  // Active = not deleted (soft delete)
+
+  // Usage tracking
+  lastUsedAt    DateTime?      // Track when last used for analysis
+  usageCount    Int            @default(0)     // Track how many times used
+
+  // Metadata
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
-  
+
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   @@index([userId])
+  @@index([isPrimary])
   @@index([isActive])
 }
 
@@ -168,26 +217,26 @@ model Session {
 model UserProfile {
   id                String         @id @default(cuid())
   userId            String         @unique
-  
+
   // Personal Context
   currentLocation   String?        // User's current city for remote jobs
   currentCountry    String?        // User's current country
   familySize        Int            @default(1)
   dependents        Int            @default(0)
   maritalStatus     String?        // single/married/partnered
-  
+
   // Financial Expectations
   expectedSalaryMin Float?         // Minimum acceptable in USD
   expectedSalaryMax Float?         // Ideal salary in USD
   currentSalary     Float?         // Current salary for comparison
   preferredCurrency String         @default("USD")
-  
+
   // Lifestyle Preferences
   housingPreference String?        // rent/buy/either
   commuteToleranceMinutes Int?     // Max minutes willing to commute
   openToRelocation  Boolean        @default(false)
   preferredCountries String?       // JSON array of preferred countries
-  
+
   // Career Preferences
   yearsOfExperience Int?
   industryPreferences String?      // JSON array of preferred industries
@@ -196,6 +245,7 @@ model UserProfile {
   additionalInfo    String?        // Additional context not in resume
   skills            String?        // JSON array of skills
   education         String?        // Education background
+  linkedinUrl       String?        // LinkedIn profile URL for network analysis
   certifications    String?        // Professional certifications
   achievements      String?        // Key career achievements
   negotiationHistory String?       // Past negotiation experiences
@@ -208,9 +258,48 @@ model UserProfile {
 
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
-  
+
   user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  preferences       UserPreferences?
+
+  @@index([userId])
+}
+
+model UserPreferences {
+  id                String         @id @default(cuid())
+  userId            String         @unique
+  userProfileId     String         @unique
+
+  // AI Auto-Analysis Preferences
+  autoAnalyzeAfterExtraction Boolean @default(false)  // Auto-run all analyses after job extraction
+  autoMatchScore    Boolean        @default(true)     // Auto-calculate match score
+  autoSalaryAnalysis Boolean       @default(false)    // Auto-run salary analysis
+  autoCompanyResearch Boolean      @default(false)    // Auto-run company research
+  autoSkillGapAnalysis Boolean     @default(false)    // Auto-run skill gap analysis
+  autoInterviewPrep Boolean        @default(false)    // Auto-generate interview prep
+
+  // UI Preferences
+  theme             String         @default("minimal") // minimal, dark, colorful
+  showAnimations    Boolean        @default(true)     // Show loading animations (cat mascot)
+  compactView       Boolean        @default(false)    // Use compact view for cards
+  showDetailedFeedback Boolean     @default(true)     // Show detailed match feedback
+
+  // Notification Preferences
+  emailNotifications Boolean       @default(false)    // Email notifications for job updates
+  browserNotifications Boolean     @default(true)     // Browser notifications
+  notifyOnExtraction Boolean       @default(true)     // Notify when extraction completes
+  notifyOnAnalysis  Boolean        @default(true)     // Notify when AI analysis completes
+
+  // Data Preferences
+  cacheAnalysisResults Boolean     @default(true)     // Cache AI results for performance
+  shareAnonymousData Boolean       @default(false)    // Share usage data for improvements
+
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userProfile       UserProfile    @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }
 
@@ -287,4 +376,158 @@ model SalaryAnalysisCache {
   @@index([userId])
   @@index([expiresAt])
   @@index([lastAccessedAt])
+}
+
+model AIUsageTracking {
+  id           String   @id @default(cuid())
+  userId       String
+  taskType     String   // job_analysis, resume_optimization, etc.
+  monthKey     String   // YYYY-MM format for monthly tracking
+  requestCount Int      @default(0)
+  tokensUsed   Int      @default(0)
+  lastUsedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, taskType, monthKey])
+  @@index([userId])
+  @@index([taskType])
+  @@index([monthKey])
+}
+
+model AIResponseCache {
+  id        String   @id @default(cuid())
+  cacheKey  String   @unique
+  response  String   // JSON response from AI
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([cacheKey])
+  @@index([expiresAt])
+}
+
+model JobAnalysisCache {
+  id           String   @id @default(cuid())
+  jobId        String
+  userId       String
+  analysisType String   // job_analysis, requirements_analysis, etc.
+  analysisData String   // JSON analysis results
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job  Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, userId, analysisType])
+  @@index([jobId])
+  @@index([userId])
+  @@index([analysisType])
+  @@index([expiresAt])
+}
+
+
+enum ExtractionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  RETRY
+}
+
+model ExtractionQueue {
+  id           String           @id @default(cuid())
+  userId       String
+  url          String
+  status       ExtractionStatus @default(PENDING)
+  progress     Int              @default(0)
+  currentStep  String?
+  result       Json?
+  error        String?
+  retryCount   Int              @default(0)
+  maxRetries   Int              @default(3)
+  priority     Int              @default(0)
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([priority, status])
+}
+
+enum AITaskType {
+  JOB_EXTRACTION
+  SALARY_ANALYSIS
+  LOCATION_ANALYSIS
+  APPLICATION_STRATEGY
+  RESUME_OPTIMIZATION
+  MATCH_CALCULATION
+  INTERVIEW_ANALYSIS
+  NETWORK_ANALYSIS
+  INSIDER_INTELLIGENCE
+  TIMELINE_ANALYSIS
+  COMPANY_INTELLIGENCE
+  CULTURE_ANALYSIS
+  COMPETITIVE_ANALYSIS
+  INTERVIEW_PIPELINE
+  INTERVIEW_COACHING
+  SMART_QUESTIONS
+  OUTREACH_GENERATION
+  COMMUNICATION_GENERATION
+}
+
+enum AITaskStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CACHED
+}
+
+model AITask {
+  id                String        @id @default(cuid())
+  userId            String
+  type              AITaskType
+  status            AITaskStatus  @default(PENDING)
+
+  // Job context
+  jobId             String?
+  jobTitle          String?
+  company           String?
+
+  // Progress
+  progress          Int           @default(0)
+  currentStep       String?
+
+  // Timing
+  startedAt         DateTime?
+  completedAt       DateTime?
+  estimatedDuration Int?          // milliseconds
+
+  // Results
+  error             String?
+  resultData        String?       // JSON
+
+  // Navigation
+  navigationPath    String
+  navigationTab     String?
+
+  // Metadata
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+  @@index([jobId])
+  @@index([status, updatedAt])
 }

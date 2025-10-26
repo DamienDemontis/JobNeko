@@ -109,8 +109,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       });
     }
 
+    // Get user's API key (handles encryption and platform fallback securely)
+    const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+    const apiKey = await getUserApiKey(user.id);
+
     // Extract job data using AI
-    const extractedData = await extractJobDataWithAI(pageData);
+    const extractedData = await extractJobDataWithAI(pageData, apiKey);
 
     // Create job record
     const job = await prisma.job.create({
@@ -131,6 +135,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         perks: extractedData.perks,
         workMode: extractedData.workMode,
         summary: extractedData.summary,
+        postedDate: extractedData.postedDate ? new Date(extractedData.postedDate) : null,
+        applicationDeadline: extractedData.applicationDeadline ? new Date(extractedData.applicationDeadline) : null,
         extractedData: JSON.stringify(extractedData),
       },
     });
@@ -143,25 +149,60 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       },
     });
 
-    if (activeResume) {
-      // This would be calculated with AI, but for now we'll set a placeholder
-      const matchScore = 75; // Placeholder
-      await prisma.job.update({
-        where: { id: job.id },
-        data: { matchScore },
-      });
+    let matchScore: number | undefined;
+
+    if (activeResume && activeResume.content) {
+      try {
+        // Import and use centralized match service
+        const { centralizedMatchService } = await import('@/lib/services/centralized-match-service');
+
+        // Parse resume data
+        let resumeSkills: string[] = [];
+        try {
+          if (activeResume.skills) resumeSkills = JSON.parse(activeResume.skills);
+        } catch (error) {
+          console.warn('Failed to parse resume skills:', error);
+        }
+
+        // Parse job skills
+        const jobSkills = extractedData.skills || [];
+
+        console.log(`🎯 Auto-calculating match score for new job: ${job.title}`);
+
+        const matchResult = await centralizedMatchService.calculateMatch({
+          userId: user.id,
+          jobId: job.id,
+          resumeContent: activeResume.content,
+          resumeSkills,
+          jobTitle: extractedData.title,
+          jobCompany: extractedData.company,
+          jobDescription: extractedData.description || '',
+          jobRequirements: extractedData.requirements || '',
+          jobSkills,
+          jobLocation: extractedData.location
+        });
+
+        matchScore = matchResult.matchScore;
+
+        await prisma.job.update({
+          where: { id: job.id },
+          data: { matchScore: matchResult.matchScore },
+        });
+
+        console.log(`✅ Auto-match score: ${matchScore}% (confidence: ${(matchResult.confidence * 100).toFixed(1)}%)`);
+      } catch (error) {
+        console.error('Failed to auto-calculate match score:', error);
+        // Don't fail the extraction if matching fails
+      }
     }
 
-    // Auto-start web-enhanced salary analysis in background
-    console.log('Starting background web-enhanced salary analysis for job:', job.id);
-    startBackgroundWebAnalysis(job.id, extractedData as unknown as Record<string, unknown>, job.location || undefined, job.company).catch(error => {
-      console.error('Background web-enhanced salary analysis failed for job', job.id, ':', error);
-    });
+    // Background analysis temporarily disabled to prevent interference with job extraction
+    console.log('Background web-enhanced salary analysis skipped for job:', job.id);
 
   return NextResponse.json({
     job,
-    message: 'Job extracted successfully with web intelligence',
-    webAnalysisStarted: true,
-    analysisType: 'web-enhanced'
+    message: 'Job extracted successfully',
+    webAnalysisStarted: false,
+    analysisType: 'basic'
   });
 });

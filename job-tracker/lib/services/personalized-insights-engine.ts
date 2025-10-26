@@ -7,7 +7,7 @@ import { ExtractedJobData } from '../ai-service';
 import { ResumeJobMatch, resumeAnalysisService, UserContext } from './resume-analysis-service';
 import { JobClassification, jobClassificationEngine } from './job-classification-engine';
 import { ContextualSalaryAnalysis, contextualSalaryAnalyzer } from './contextual-salary-analyzer';
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 
 export interface PersonalizedJobInsights {
   // Core matching data
@@ -435,17 +435,16 @@ Return detailed JSON following this structure:
 
 Be specific, actionable, and honest. Focus on practical advice they can implement immediately.`;
 
-    const response = await generateCompletion(prompt, {
-      max_tokens: 4000,
-      temperature: 0.3
+    const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt
     });
-
-    if (!response?.content) {
+    if (!response.success) {
       return this.getFallbackInsights(resumeMatch);
     }
 
     try {
-      const insights = JSON.parse(response.content);
+      const insights = JSON.parse((typeof response.data === 'string' ? response.data : JSON.stringify(response.data)));
 
       // Add metadata
       insights.insights_metadata = {

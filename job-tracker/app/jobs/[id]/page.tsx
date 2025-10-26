@@ -11,8 +11,31 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AdaptiveSalaryIntelligence } from '@/components/ui/adaptive-salary-intelligence';
 import ModernSalaryIntelligence from '@/components/ui/modern-salary-intelligence';
+import LocationIntelligence from '@/components/ui/location-intelligence';
 import JobEditForm from '@/components/ui/job-edit-form';
 import { MatchScoreDonut } from '@/components/ui/match-score-donut';
+import { MatchScoreCard } from '@/components/ui/match-score-card';
+// Removed: JobAnalysisCard and SmartRequirements from overview tab
+import { ResumeOptimizer } from '@/components/ui/resume-optimizer';
+import UnifiedApplicationStrategy from '@/components/ui/unified-application-strategy';
+import InterviewPipelineManagerSmart from '@/components/ui/interview-pipeline-manager-smart';
+import SmartQuestionsSmart from '@/components/ui/smart-questions-smart';
+import { LinkedInNetworkIntegration } from '@/components/ui/linkedin-network-integration';
+import { LinkedInNetworkIntegrationEnhanced } from '@/components/ui/linkedin-network-integration-enhanced';
+import { CompanyIntelligenceCenter } from '@/components/ui/company-intelligence-center';
+import { CompanyIntelligenceCenterEnhanced } from '@/components/ui/company-intelligence-center-enhanced';
+import { CachePreloader } from '@/components/ui/cache-preloader';
+import { SmartNotes } from '@/components/ui/smart-notes';
+import { CompanyInterviewAnalysis } from '@/components/ui/company-interview-analysis';
+import { InterviewCoach } from '@/components/ui/interview-coach';
+import { UnifiedInterviewCenter } from '@/components/ui/unified-interview-center';
+import { CultureAnalysis } from '@/components/ui/culture-analysis';
+import { CompetitiveAnalysis } from '@/components/ui/competitive-analysis';
+import { InsiderIntelligence } from '@/components/ui/insider-intelligence';
+import { InsiderIntelligenceEnhanced } from '@/components/ui/insider-intelligence-enhanced';
+import { OutreachAssistant } from '@/components/ui/outreach-assistant';
+import { OutreachAssistantEnhanced } from '@/components/ui/outreach-assistant-enhanced';
+import { SiteHeader } from '@/components/ui/site-header';
 import { toast } from 'sonner';
 import {
   ArrowTopRightOnSquareIcon as ExternalLinkIcon,
@@ -57,6 +80,7 @@ interface Job {
   rating?: number;
   appliedAt?: string;
   applicationDeadline?: string;
+  postedDate?: string;
   phoneScreeningAt?: string;
   firstInterviewAt?: string;
   secondInterviewAt?: string;
@@ -174,6 +198,15 @@ export default function JobDetailPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [userProfile, setUserProfile] = useState<any>(null);
   const [hasResume, setHasResume] = useState(false);
+  const [cacheStatus, setCacheStatus] = useState<Map<string, boolean>>(new Map());
+
+  // AI Analysis state management
+  const [analysisStates, setAnalysisStates] = useState<Record<string, {
+    loading: boolean;
+    lastRun?: number;
+    startTime?: number;
+  }>>({});
+  const [abortControllers, setAbortControllers] = useState<Record<string, AbortController>>({});
 
   // Parse extracted data from job
   const extractedData = job?.extractedData ? (() => {
@@ -288,13 +321,87 @@ export default function JobDetailPage() {
     }
   };
 
+  const handleRating = async (rating: number) => {
+    if (!token || !job) return;
+
+    try {
+      const response = await fetch(`/api/jobs/${job.id}/rate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ rating }),
+      });
+
+      if (response.ok) {
+        setJob({ ...job, rating });
+        toast.success('Rating saved');
+      } else {
+        toast.error('Failed to save rating');
+      }
+    } catch (error) {
+      console.error('Error saving rating:', error);
+      toast.error('Failed to save rating');
+    }
+  };
+
+  // AI Analysis Management Functions
+  const startAnalysis = (analysisKey: string) => {
+    const now = Date.now();
+    const controller = new AbortController();
+
+    setAnalysisStates(prev => ({
+      ...prev,
+      [analysisKey]: { loading: true, startTime: now, lastRun: now }
+    }));
+    setAbortControllers(prev => ({ ...prev, [analysisKey]: controller }));
+
+    return controller;
+  };
+
+  const endAnalysis = (analysisKey: string) => {
+    setAnalysisStates(prev => ({
+      ...prev,
+      [analysisKey]: { ...prev[analysisKey], loading: false }
+    }));
+    setAbortControllers(prev => {
+      const { [analysisKey]: _, ...rest } = prev;
+      return rest;
+    });
+  };
+
+  const cancelAnalysis = (analysisKey: string) => {
+    const controller = abortControllers[analysisKey];
+    if (controller) {
+      controller.abort();
+      endAnalysis(analysisKey);
+      toast.info('Analysis cancelled');
+    }
+  };
+
+  const canRunAnalysis = (analysisKey: string, cooldownMs = 30000): boolean => {
+    const state = analysisStates[analysisKey];
+    if (!state) return true;
+    if (state.loading) {
+      toast.error('Analysis already in progress');
+      return false;
+    }
+    if (state.lastRun && Date.now() - state.lastRun < cooldownMs) {
+      const secondsLeft = Math.ceil((cooldownMs - (Date.now() - state.lastRun)) / 1000);
+      toast.error(`Please wait ${secondsLeft}s before running again`);
+      return false;
+    }
+    return true;
+  };
+
   const deleteJob = async () => {
     if (!token || !job) return;
 
     const confirmed = window.confirm(
       `Are you sure you want to delete "${job.title}" at ${job.company}? This action cannot be undone.`
     );
-    
+
     if (!confirmed) return;
 
     setUpdating(true);
@@ -331,8 +438,8 @@ export default function JobDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="min-h-screen bg-gray-50" suppressHydrationWarning>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" suppressHydrationWarning>
           {/* Header Skeleton */}
           <div className="mb-8">
             <div className="h-10 w-32 bg-gray-200 rounded-lg animate-pulse mb-4" />
@@ -423,18 +530,35 @@ export default function JobDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-8">
-          <Button 
-            variant="ghost" 
+    <div className="min-h-screen bg-gray-50" suppressHydrationWarning>
+      {/* Site Header */}
+      <SiteHeader />
+
+      {/* Cache Preloader - Invisible component that preloads AI caches */}
+      {user && token && job && (
+        <CachePreloader
+          jobId={job.id}
+          userId={user.id}
+          token={token}
+          activeTab={activeTab}
+          onCacheStatus={setCacheStatus}
+        />
+      )}
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Back Button */}
+        <div className="mb-6">
+          <Button
+            variant="ghost"
             onClick={() => router.push('/dashboard')}
-            className="mb-4"
           >
             <ArrowLeftIcon className="h-4 w-4 mr-2" />
             Back to Dashboard
           </Button>
+        </div>
+
+        {/* Job Header */}
+        <div className="mb-8">
 
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex items-start justify-between">
@@ -499,11 +623,28 @@ export default function JobDetailPage() {
                       </div>
                     );
                   })()}
-                  {job.matchScore && (
-                    <div className="flex items-center gap-3">
-                      <MatchScoreDonut score={job.matchScore} size={60} strokeWidth={6} />
+                  {job.postedDate && (
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <ClockIcon className="h-5 w-5" />
+                      <span>Posted: {new Date(job.postedDate).toLocaleDateString()}</span>
                     </div>
                   )}
+                  {job.applicationDeadline && (
+                    <div className="flex items-center gap-2 text-red-600">
+                      <ClockIcon className="h-5 w-5" />
+                      <span>Deadline: {new Date(job.applicationDeadline).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                  {job.matchScore ? (
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-gray-600">Resume Match:</span>
+                      <MatchScoreDonut score={job.matchScore} size={60} strokeWidth={6} />
+                    </div>
+                  ) : hasResume ? (
+                    <div className="text-sm text-gray-400 italic">
+                      No match score calculated
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -541,7 +682,7 @@ export default function JobDetailPage() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 md:grid-cols-4 lg:grid-cols-7 bg-white border rounded-lg p-2 gap-1 h-auto min-h-[52px]">
+          <TabsList className="grid w-full grid-cols-4 md:grid-cols-5 lg:grid-cols-11 bg-white border rounded-lg p-2 gap-1 h-auto min-h-[52px]">
             <TabsTrigger
               value="overview"
               className="flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 hover:bg-gray-50 transition-all duration-200"
@@ -559,12 +700,36 @@ export default function JobDetailPage() {
               <span className="sm:hidden text-xs">💰</span>
             </TabsTrigger>
             <TabsTrigger
+              value="location"
+              className="flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-teal-50 data-[state=active]:text-teal-700 hover:bg-gray-50 transition-all duration-200"
+            >
+              <span className="text-base">🌍</span>
+              <span className="hidden sm:inline font-medium">Location</span>
+              <span className="sm:hidden text-xs">🌍</span>
+            </TabsTrigger>
+            <TabsTrigger
               value="application"
               className="flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700 hover:bg-gray-50 transition-all duration-200"
             >
               <span className="text-base">📝</span>
               <span className="hidden sm:inline font-medium">Application</span>
               <span className="sm:hidden text-xs">App</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="interview"
+              className="flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 hover:bg-gray-50 transition-all duration-200"
+            >
+              <span className="text-base">🎯</span>
+              <span className="hidden md:inline font-medium">Interview</span>
+              <span className="md:hidden text-xs">Int</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="network"
+              className="flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700 hover:bg-gray-50 transition-all duration-200"
+            >
+              <span className="text-base">🔗</span>
+              <span className="hidden lg:inline font-medium">Network</span>
+              <span className="lg:hidden text-xs">Net</span>
             </TabsTrigger>
             <TabsTrigger
               value="timeline"
@@ -581,6 +746,13 @@ export default function JobDetailPage() {
               <span className="text-base">👥</span>
               <span className="hidden lg:inline font-medium">Contacts</span>
               <span className="lg:hidden text-xs">People</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="company"
+              className="hidden lg:flex items-center gap-2 px-3 py-2 rounded-md data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700 hover:bg-gray-50 transition-all duration-200"
+            >
+              <span className="text-base">🏢</span>
+              <span className="font-medium">Company</span>
             </TabsTrigger>
             <TabsTrigger
               value="research"
@@ -739,6 +911,30 @@ export default function JobDetailPage() {
                   </Card>
                 )}
 
+                {/* Removed: AI Job Analysis Card and Smart Requirements from overview tab */}
+
+                {/* Key Responsibilities */}
+                {extractedData?.responsibilities?.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <CheckCircleIcon className="h-5 w-5 text-green-600" />
+                        Key Responsibilities
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-2">
+                        {extractedData.responsibilities.map((responsibility: string, index: number) => (
+                          <li key={index} className="flex items-start gap-2">
+                            <CheckCircleIcon className="w-4 h-4 text-green-600 mt-1 flex-shrink-0" />
+                            <span className="text-gray-700">{responsibility}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Enhanced Skills & Technologies */}
                 {(job.skills || extractedData?.programmingLanguages || extractedData?.frameworks) && (
                   <Card>
@@ -808,24 +1004,7 @@ export default function JobDetailPage() {
                   </Card>
                 )}
 
-                {/* Responsibilities */}
-                {extractedData?.responsibilities?.length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Key Responsibilities</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ul className="space-y-2">
-                        {extractedData.responsibilities.map((responsibility: string, index: number) => (
-                          <li key={index} className="flex items-start gap-2">
-                            <CheckCircleIcon className="w-4 h-4 text-green-600 mt-1 flex-shrink-0" />
-                            <span className="text-gray-700">{responsibility}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </CardContent>
-                  </Card>
-                )}
+                {/* Key Responsibilities moved before Skills & Technologies */}
 
                 {/* Benefits & Perks */}
                 {(job.perks || extractedData?.benefits?.length > 0) && (
@@ -854,6 +1033,105 @@ export default function JobDetailPage() {
 
               {/* Sidebar */}
               <div className="space-y-6">
+                {/* Job Rating */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Your Rating</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-center space-x-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <StarIcon
+                          key={star}
+                          className={`w-8 h-8 cursor-pointer transition-all ${
+                            star <= (job.rating || 0)
+                              ? 'fill-black text-black'
+                              : 'text-gray-300 hover:text-gray-400 hover:scale-110'
+                          }`}
+                          onClick={() => handleRating(star)}
+                        />
+                      ))}
+                    </div>
+                    {job.rating && (
+                      <p className="text-center text-sm text-gray-500 mt-2">
+                        {job.rating} out of 5 stars
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Resume Match Score */}
+                <MatchScoreCard
+                  matchScore={job.matchScore}
+                  detailedAnalysis={(job as any).detailedAnalysis}
+                  isCalculating={analysisStates['match-score']?.loading || false}
+                  onRecalculate={async () => {
+                    const analysisKey = 'match-score';
+
+                    // Check if we can run the analysis (prevents duplicates and respects cooldown)
+                    if (!canRunAnalysis(analysisKey, 10000)) return; // 10s cooldown
+
+                    const controller = startAnalysis(analysisKey);
+
+                    try {
+                      const response = await fetch(`/api/jobs/${job.id}/calculate-match`, {
+                        method: 'POST',
+                        headers: {
+                          'Authorization': `Bearer ${token}`,
+                        },
+                        signal: controller.signal,
+                      });
+
+                      if (response.ok) {
+                        const data = await response.json();
+
+                        // Debug: Log received data
+                        console.log('📊 Match calculation response:', {
+                          matchScore: data.matchScore,
+                          hasDetailedAnalysis: !!data.detailedAnalysis,
+                          hasImprovementPlan: !!data.detailedAnalysis?.improvementPlan,
+                          improvementPlanKeys: data.detailedAnalysis?.improvementPlan ? Object.keys(data.detailedAnalysis.improvementPlan) : []
+                        });
+
+                        // Update job state with new match score and detailed analysis
+                        const updatedJob = {
+                          ...job,
+                          matchScore: data.matchScore,
+                          detailedAnalysis: data.detailedAnalysis,
+                          confidence: data.confidence,
+                          components: data.components
+                        } as any;
+
+                        console.log('🔄 Updated job state:', {
+                          hasDetailedAnalysis: !!updatedJob.detailedAnalysis,
+                          strengthsCount: updatedJob.detailedAnalysis?.strengthsHighlights?.length || 0,
+                          missingCount: updatedJob.detailedAnalysis?.missingElements?.length || 0
+                        });
+
+                        setJob(updatedJob);
+
+                        // Refresh from server to get the saved analysis from database
+                        await fetchJob();
+
+                        toast.success(`Match score updated: ${data.matchScore}%`);
+                      } else {
+                        const errorData = await response.json().catch(() => ({}));
+                        toast.error(errorData.error || 'Failed to calculate match score');
+                      }
+                    } catch (error: any) {
+                      if (error.name === 'AbortError') {
+                        // Analysis was cancelled, already handled
+                        return;
+                      }
+                      console.error('Match calculation error:', error);
+                      toast.error('Failed to calculate match score');
+                    } finally {
+                      endAnalysis(analysisKey);
+                    }
+                  }}
+                  onCancel={() => cancelAnalysis('match-score')}
+                />
+
                 {/* Quick Actions */}
                 <Card>
                   <CardHeader>
@@ -935,32 +1213,105 @@ export default function JobDetailPage() {
             </div>
           </TabsContent>
 
-          {/* Enhanced Adaptive Salary Intelligence Tab */}
-          <TabsContent value="salary" className="space-y-6">
-            <ModernSalaryIntelligence
+          {/* Enhanced Adaptive Salary Intelligence Tab - LAZY LOADED */}
+          {activeTab === 'salary' && (
+            <div className="space-y-6">
+              <ModernSalaryIntelligence
+                jobId={job.id}
+                jobTitle={job.title}
+                company={job.company}
+                location={job.location || ''}
+                hasResume={hasResume}
+                token={token || ''}
+              />
+            </div>
+          )}
+
+          {/* Location Intelligence Tab - LAZY LOADED */}
+          {activeTab === 'location' && (
+            <div className="space-y-6">
+              <LocationIntelligence
+                jobId={job.id}
+                jobLocation={job.location || ''}
+                jobTitle={job.title}
+                company={job.company}
+                token={token || ''}
+              />
+            </div>
+          )}
+
+          {/* Application Strategy Tab - LAZY LOADED - Unified component */}
+          {activeTab === 'application' && (
+            <UnifiedApplicationStrategy
               jobId={job.id}
               jobTitle={job.title}
               company={job.company}
-              location={job.location || ''}
-              hasResume={hasResume}
               token={token || ''}
             />
-          </TabsContent>
+          )}
 
-          {/* Other tabs will be implemented similarly... */}
-          <TabsContent value="application">
-            <Card>
-              <CardHeader>
-                <CardTitle>Application Tracking</CardTitle>
-                <CardDescription>Track your application progress and important dates</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-gray-500">
-                  Application tracking interface coming soon...
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+          {/* Unified Interview Center Tab - LAZY LOADED */}
+          {activeTab === 'interview' && (
+            <div className="space-y-6">
+              <UnifiedInterviewCenter
+                jobId={job.id}
+                jobTitle={job.title}
+                company={job.company}
+                userId={user?.id || ''}
+                token={token || ''}
+                jobData={{
+                  title: job.title,
+                  company: job.company,
+                  description: job.description || '',
+                  requirements: job.requirements || '',
+                }}
+              />
+
+              <SmartQuestionsSmart
+                jobId={job.id}
+                jobTitle={job.title}
+                company={job.company}
+                userId={user?.id || ''}
+                token={token || ''}
+              />
+            </div>
+          )}
+
+          {/* Network Intelligence Hub Tab - LAZY LOADED */}
+          {activeTab === 'network' && (
+            <div className="space-y-6">
+              {/* Using Enhanced LinkedIn Network Integration with unified caching */}
+              <LinkedInNetworkIntegrationEnhanced
+                jobId={job.id}
+                userId={user?.id || ''}
+                token={token || ''}
+                jobData={{
+                  title: job.title,
+                  company: job.company,
+                  location: job.location,
+                  description: job.description,
+                }}
+              />
+
+              {/* Using Enhanced Insider Intelligence with unified caching */}
+              <InsiderIntelligenceEnhanced
+                companyName={job.company}
+                jobTitle={job.title}
+                userId={user?.id || ''}
+                token={token || ''}
+                jobId={job.id}
+              />
+
+              {/* Using Enhanced Outreach Assistant with unified caching */}
+              <OutreachAssistantEnhanced
+                companyName={job.company}
+                jobTitle={job.title}
+                userId={user?.id || ''}
+                token={token || ''}
+                jobId={job.id}
+              />
+            </div>
+          )}
 
           <TabsContent value="timeline">
             <Card>
@@ -1013,6 +1364,37 @@ export default function JobDetailPage() {
             </Card>
           </TabsContent>
 
+          {/* Company Intelligence Center Tab - LAZY LOADED */}
+          {activeTab === 'company' && (
+            <div className="space-y-6">
+              {/* Using Enhanced Company Intelligence with unified caching */}
+              <CompanyIntelligenceCenterEnhanced
+                jobId={job.id}
+                userId={user?.id || ''}
+                jobData={{
+                  title: job.title,
+                  company: job.company,
+                  location: job.location,
+                  description: job.description,
+                  requirements: job.requirements,
+                }}
+                token={token || ''}
+              />
+
+              <CultureAnalysis
+                companyName={job.company}
+                jobTitle={job.title}
+                userId={user?.id || ''}
+              />
+
+              <CompetitiveAnalysis
+                companyName={job.company}
+                jobTitle={job.title}
+                userId={user?.id || ''}
+              />
+            </div>
+          )}
+
           <TabsContent value="research">
             <Card>
               <CardHeader>
@@ -1027,19 +1409,19 @@ export default function JobDetailPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="notes">
-            <Card>
-              <CardHeader>
-                <CardTitle>Notes & Thoughts</CardTitle>
-                <CardDescription>Keep track of your thoughts, interview prep, and private notes</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-gray-500">
-                  Notes interface coming soon...
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+          {/* Smart Notes Tab - LAZY LOADED */}
+          {activeTab === 'notes' && (
+            <div className="space-y-6">
+              <SmartNotes
+                jobId={job.id}
+                userId={user?.id || ''}
+                jobData={{
+                  title: job.title,
+                  company: job.company,
+                }}
+              />
+            </div>
+          )}
         </Tabs>
       </div>
     </div>

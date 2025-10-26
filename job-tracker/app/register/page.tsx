@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { JobNekoLogo } from '@/components/ui/jobneko-logo';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -43,10 +44,10 @@ export default function RegisterPage() {
       if (response.ok) {
         login(data.user, data.token);
         toast.success('Account created successfully!');
-        
-        // Force navigation after a small delay to ensure state is updated
+
+        // Redirect to onboarding for new users
         setTimeout(() => {
-          router.push('/dashboard');
+          router.push('/onboarding');
         }, 100);
       } else {
         toast.error(data.error || 'Registration failed');
@@ -62,8 +63,11 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Job Tracker</CardTitle>
-          <CardDescription>Create your account</CardDescription>
+          <div className="flex justify-center mb-4">
+            <JobNekoLogo size={80} showText={false} />
+          </div>
+          <CardTitle className="text-2xl font-bold">Join JobNeko</CardTitle>
+          <CardDescription>Create your AI-powered job search assistant</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

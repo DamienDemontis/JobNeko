@@ -16,8 +16,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Job Tracker - Manage Your Job Applications",
-  description: "Extract, organize, and track job applications with AI-powered matching",
+  title: "JobNeko - AI-Powered Job Search Assistant",
+  description: "Your intelligent companion for job hunting. Extract, organize, and optimize job applications with AI-powered insights and real-time market intelligence.",
+  icons: {
+    icon: [
+      { url: '/cat-icon.svg', type: 'image/svg+xml' },
+    ],
+    apple: '/apple-icon.png',
+  },
 };
 
 export default function RootLayout({

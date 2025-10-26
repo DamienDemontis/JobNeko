@@ -94,6 +94,8 @@ export async function GET(
       ...job,
       rating: job.ratings[0]?.rating || null,
       ratings: undefined,
+      detailedAnalysis: job.matchAnalysis ? JSON.parse(job.matchAnalysis) : null,
+      matchAnalysis: undefined, // Remove raw JSON string
     };
 
     return NextResponse.json({ job: formattedJob });

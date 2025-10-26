@@ -3,7 +3,7 @@
  * Provides real, consistent resume-to-job matching with actionable feedback
  */
 
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 import { skillsGapAnalysis, type SkillsAnalysisResult } from './skills-gap-analysis';
 
 export interface ResumeMatchResult {
@@ -103,27 +103,33 @@ export class ResumeMatchingService {
     jobTitle: string,
     company: string,
     jobDescription: string,
-    jobRequirements: string
+    jobRequirements: string,
+    preExtractedSkills?: any[], // NEW: Pre-extracted skills from database
+    apiKey?: string // User's API key for AI operations
   ): Promise<ResumeMatchResult> {
 
     console.log('📄 Starting comprehensive resume matching analysis...');
 
     try {
-      // Step 1: Get skills gap analysis first
+      // Step 1: Get skills gap analysis first (with optional pre-extracted skills)
       const skillsAnalysis = await skillsGapAnalysis.analyzeSkillsGap(
         resumeContent,
         jobTitle,
         jobDescription,
-        jobRequirements
+        jobRequirements,
+        undefined, // currentSalary
+        preExtractedSkills, // Pass cached skills
+        apiKey // Pass user's API key
       );
 
       // Step 2: Extract detailed resume and job components
-      const resumeComponents = await this.extractResumeComponents(resumeContent);
+      const resumeComponents = await this.extractResumeComponents(resumeContent, apiKey);
       const jobComponents = await this.extractJobComponents(
         jobTitle,
         company,
         jobDescription,
-        jobRequirements
+        jobRequirements,
+        apiKey
       );
 
       // Step 3: Calculate match breakdown
@@ -189,7 +195,7 @@ export class ResumeMatchingService {
   /**
    * Extract structured components from resume
    */
-  private async extractResumeComponents(resumeContent: string): Promise<any> {
+  private async extractResumeComponents(resumeContent: string, apiKey?: string): Promise<any> {
     const prompt = `Analyze this resume and extract structured information:
 
 Resume:
@@ -237,16 +243,18 @@ Extract and return JSON with:
 }`;
 
     try {
-      const response = await generateCompletion(prompt, {
-        temperature: 0.1,
-        max_tokens: 1500
-      });
-
-      if (!response || !response.content) {
+      const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt,
+      overrides: {
+        customApiKey: apiKey  // Pass user's API key
+      }
+    });
+      if (!response || !(typeof response.data === 'string' ? response.data : JSON.stringify(response.data))) {
         throw new Error('Failed to get valid response from AI service');
       }
 
-      const cleanedContent = this.cleanJsonResponse(response.content);
+      const cleanedContent = this.cleanJsonResponse((typeof response.data === 'string' ? response.data : JSON.stringify(response.data)));
       return JSON.parse(cleanedContent);
     } catch (error) {
       console.error('Failed to extract resume components:', error);
@@ -261,7 +269,8 @@ Extract and return JSON with:
     jobTitle: string,
     company: string,
     description: string,
-    requirements: string
+    requirements: string,
+    apiKey?: string
   ): Promise<any> {
 
     const jobContent = `
@@ -316,16 +325,18 @@ Extract and return JSON with:
 }`;
 
     try {
-      const response = await generateCompletion(prompt, {
-        temperature: 0.1,
-        max_tokens: 1500
-      });
-
-      if (!response || !response.content) {
+      const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt,
+      overrides: {
+        customApiKey: apiKey  // Pass user's API key
+      }
+    });
+      if (!response || !(typeof response.data === 'string' ? response.data : JSON.stringify(response.data))) {
         throw new Error('Failed to get valid response from AI service');
       }
 
-      const cleanedContent = this.cleanJsonResponse(response.content);
+      const cleanedContent = this.cleanJsonResponse((typeof response.data === 'string' ? response.data : JSON.stringify(response.data)));
       return JSON.parse(cleanedContent);
     } catch (error) {
       console.error('Failed to extract job components:', error);
@@ -716,19 +727,53 @@ Extract and return JSON with:
       }
     }
 
-    // Add competitive edge factors
+    // Add competitive edge factors (as proper objects, not strings)
     if (resumeComponents.personalInfo?.yearsOfExperience > jobComponents.experience?.preferredYears) {
-      competitiveEdge.push('Exceeds preferred experience requirements');
+      topStrengths.push({
+        element: `${resumeComponents.personalInfo.yearsOfExperience} years experience`,
+        category: 'experience',
+        advantage: 'Exceeds preferred experience requirements',
+        howToLeverage: 'Emphasize your extensive experience in cover letter'
+      });
     }
 
     if (resumeComponents.certifications?.length > 0) {
-      competitiveEdge.push('Has relevant certifications');
+      topStrengths.push({
+        element: resumeComponents.certifications[0],
+        category: 'education',
+        advantage: 'Professional certifications demonstrate expertise',
+        howToLeverage: 'List prominently in certifications section'
+      });
+    }
+
+    // Add education strengths
+    if (resumeComponents.education?.length > 0) {
+      const edu = resumeComponents.education[0];
+      if (edu.degree) {
+        topStrengths.push({
+          element: `${edu.degree}${edu.field ? ` in ${edu.field}` : ''}`,
+          category: 'education',
+          advantage: 'Relevant educational background',
+          howToLeverage: 'Mention in summary section'
+        });
+      }
+    }
+
+    // Add soft skills/achievements if available
+    if (resumeComponents.achievements?.length > 0) {
+      const achievement = resumeComponents.achievements[0];
+      topStrengths.push({
+        element: achievement,
+        category: 'achievements',
+        advantage: 'Demonstrated track record of success',
+        howToLeverage: 'Use in behavioral interview examples'
+      });
     }
 
     return {
       topStrengths,
       uniqueAdvantages: uniqueAdvantages.slice(0, 3),
-      competitiveEdge
+      competitiveEdge: [] // Remove string array, all items are now in topStrengths as objects
     };
   }
 

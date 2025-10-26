@@ -59,7 +59,7 @@ export interface FilterCriteria {
 }
 
 interface AdvancedFiltersProps {
-  filters: FilterCriteria;
+  filters?: Partial<FilterCriteria>;
   onFiltersChange: (filters: FilterCriteria) => void;
   onApplyFilters: () => void;
   resultsCount?: number;
@@ -134,12 +134,12 @@ const applicationStatuses = [
 ];
 
 export default function AdvancedFilters({
-  filters = defaultFilters,
+  filters = {},
   onFiltersChange,
   onApplyFilters,
   resultsCount
 }: AdvancedFiltersProps) {
-  const [localFilters, setLocalFilters] = useState<FilterCriteria>(filters);
+  const [localFilters, setLocalFilters] = useState<FilterCriteria>({ ...defaultFilters, ...filters });
   const [activeSection, setActiveSection] = useState<string>('salary');
 
   const updateFilter = <K extends keyof FilterCriteria>(key: K, value: FilterCriteria[K]) => {
@@ -167,14 +167,14 @@ export default function AdvancedFilters({
   const getActiveFiltersCount = () => {
     let count = 0;
     if (localFilters.salaryMin || localFilters.salaryMax) count++;
-    if (localFilters.comfortLevel.length > 0) count++;
+    if (localFilters.comfortLevel?.length > 0) count++;
     if (localFilters.location) count++;
-    if (localFilters.workMode.length > 0) count++;
-    if (localFilters.experienceLevel.length > 0) count++;
-    if (localFilters.companySize.length > 0) count++;
+    if (localFilters.workMode?.length > 0) count++;
+    if (localFilters.experienceLevel?.length > 0) count++;
+    if (localFilters.companySize?.length > 0) count++;
     if (localFilters.familyFriendly || localFilters.parentalLeave || localFilters.healthInsurance || localFilters.childcare) count++;
     if (localFilters.minMatchScore) count++;
-    if (localFilters.applicationStatus.length > 0) count++;
+    if (localFilters.applicationStatus?.length > 0) count++;
     return count;
   };
 

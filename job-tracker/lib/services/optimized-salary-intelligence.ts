@@ -1,13 +1,12 @@
 /**
  * Optimized Salary Intelligence Service
  * Reduces API calls from 8+ to just 1-2 while maintaining quality
+ *
+ * ⚠️ SERVER-SIDE ONLY - Do not use in client-side components
+ * Use API routes to interact with this service from the frontend
  */
 
 import OpenAI from 'openai';
-
-const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  : null;
 
 export interface OptimizedSalaryAnalysis {
   compensation: {
@@ -60,6 +59,24 @@ export interface OptimizedSalaryAnalysis {
 }
 
 export class OptimizedSalaryIntelligence {
+  private client: OpenAI | null = null;
+
+  private getClient(): OpenAI {
+    if (!this.client) {
+      if (typeof window !== 'undefined') {
+        throw new Error('OptimizedSalaryIntelligence cannot be used in browser environment. Use API routes instead.');
+      }
+
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        throw new Error('OpenAI API key not configured');
+      }
+
+      this.client = new OpenAI({ apiKey });
+    }
+    return this.client;
+  }
+
   /**
    * Performs comprehensive salary analysis with a single optimized AI call
    */
@@ -71,9 +88,6 @@ export class OptimizedSalaryIntelligence {
     postedSalary?: string,
     userLocation?: string
   ): Promise<OptimizedSalaryAnalysis> {
-    if (!openai) {
-      throw new Error('OpenAI API key not configured');
-    }
 
     const startTime = Date.now();
 
@@ -88,8 +102,8 @@ export class OptimizedSalaryIntelligence {
         userLocation
       );
 
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+      const completion = await this.getClient().chat.completions.create({
+        model: 'gpt-5-mini',
         messages: [
           {
             role: 'system',
@@ -114,7 +128,6 @@ Be transparent about confidence levels. Higher confidence for well-known roles a
             content: prompt
           }
         ],
-        temperature: 0.3, // Lower temperature for more consistent estimates
         response_format: { type: 'json_object' }
       });
 
@@ -286,14 +299,9 @@ Return as JSON with this exact structure:
    * Quick salary estimate for job cards (lighter weight)
    */
   async quickEstimate(jobTitle: string, location: string): Promise<{ min: number; max: number; confidence: number }> {
-    if (!openai) {
-      // Fallback to rule-based estimation
-      return this.ruleBasedEstimate(jobTitle, location);
-    }
-
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+      const completion = await this.getClient().chat.completions.create({
+        model: 'gpt-5-mini',
         messages: [
           {
             role: 'system',
@@ -304,8 +312,7 @@ Return as JSON with this exact structure:
             content: `Estimate salary range for: ${jobTitle} in ${location}. Return JSON: { "min": number, "max": number, "confidence": 0-1 }`
           }
         ],
-        temperature: 0.3,
-        max_tokens: 100
+        max_completion_tokens: 100
       });
 
       return JSON.parse(completion.choices[0].message.content || '{"min": 50000, "max": 80000, "confidence": 0.5}');

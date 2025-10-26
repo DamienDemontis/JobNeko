@@ -1,11 +1,11 @@
 /**
- * Resume Analysis Service
- * Provides job-specific analysis of user resume data
+ * Resume Analysis Service - MIGRATED TO UNIFIED ARCHITECTURE
+ * Provides job-specific analysis with NO token limits and clean error handling
  */
 
 import { ResumeExtraction } from './ai-resume-extractor';
 import { ExtractedJobData } from '../ai-service';
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 
 export interface ResumeJobMatch {
   // Overall compatibility
@@ -112,16 +112,18 @@ export class ResumeAnalysisService {
 
     const prompt = this.buildAnalysisPrompt(resume, job, userContext);
 
-    const aiResponse = await generateCompletion(prompt, {
-      max_tokens: 2000,
-      temperature: 0.2 // Low temperature for consistent analysis
+    const aiResponse = await unifiedAI.process({
+      operation: 'skill_matching',
+      content: prompt,
+      overrides: { model: 'gpt-5-nano', reasoning: 'minimal' }
     });
 
-    if (!aiResponse?.content) {
-      throw new Error('Failed to analyze resume-job match');
+    if (!aiResponse.success) {
+      throw new Error(`Resume analysis failed: ${aiResponse.error?.message}`);
     }
 
-    return this.parseAnalysisResponse(aiResponse.content);
+    const responseContent = typeof aiResponse.data === 'string' ? aiResponse.data : JSON.stringify(aiResponse.data);
+    return this.parseAnalysisResponse(responseContent);
   }
 
   /**
@@ -163,21 +165,19 @@ Consider:
 
 Return ONLY valid JSON.`;
 
-    const aiResponse = await generateCompletion(prompt, {
-      max_tokens: 500,
-      temperature: 0.1
+    const aiResponse = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt,
+      overrides: { model: 'gpt-5-mini', reasoning: 'low' }
     });
 
-    if (!aiResponse?.content) {
-      return {
-        negotiationStrength: 5,
-        salaryGrowthPotential: 15,
-        marketPosition: 'unknown'
-      };
+    if (!aiResponse.success) {
+      throw new Error(`Salary expectations analysis failed: ${aiResponse.error?.message}`);
     }
 
     try {
-      return JSON.parse(aiResponse.content);
+      const responseContent = typeof aiResponse.data === 'string' ? aiResponse.data : JSON.stringify(aiResponse.data);
+    return JSON.parse(responseContent);
     } catch (error) {
       console.error('Failed to parse salary expectations:', error);
       return {
@@ -236,12 +236,13 @@ Focus on:
 
 Return ONLY valid JSON.`;
 
-    const aiResponse = await generateCompletion(prompt, {
-      max_tokens: 1000,
-      temperature: 0.2
+    const aiResponse = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt,
+      overrides: { model: 'gpt-5-nano', reasoning: 'minimal' }
     });
 
-    if (!aiResponse?.content) {
+    if (!aiResponse?.data && !aiResponse?.rawResponse) {
       return {
         skillGaps: [],
         learningPath: [],
@@ -250,7 +251,8 @@ Return ONLY valid JSON.`;
     }
 
     try {
-      return JSON.parse(aiResponse.content);
+      const responseContent = typeof aiResponse.data === 'string' ? aiResponse.data : JSON.stringify(aiResponse.data);
+    return JSON.parse(responseContent);
     } catch (error) {
       console.error('Failed to parse skill gaps analysis:', error);
       return {

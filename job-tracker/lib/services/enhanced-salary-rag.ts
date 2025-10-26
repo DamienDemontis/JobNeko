@@ -2,7 +2,7 @@
 // Integrates user profile context with live web search for personalized salary intelligence
 
 import { aiWebSearch } from './ai-web-search';
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 import { profileContextService, type UserProfileContext, type AIContextPrompt } from './profile-context-service';
 import { salaryAnalysisCache } from './salary-analysis-cache';
 import { geographicSalaryIntelligence, type GeographicSalaryAnalysis } from './geographic-salary-intelligence';
@@ -177,7 +177,7 @@ export class EnhancedSalaryRAG {
       );
 
       if (validSources.length === 0 && !edgeCaseInfo.isRemotePosition) {
-        throw new Error('No valid web sources found. Analysis requires real market data.');
+        throw new Error('No web search data available. Cannot generate analysis without real market data.');
       }
 
       // Step 5: Run comprehensive analysis in parallel
@@ -298,7 +298,7 @@ export class EnhancedSalaryRAG {
           analysisId,
           timestamp: new Date().toISOString(),
           processingTime: Date.now() - startTime,
-          version: '6.0.0-comprehensive',
+          version: '5.0.0-no-fallbacks',
         },
       };
 
@@ -633,20 +633,19 @@ export class EnhancedSalaryRAG {
   ): Promise<Omit<PersonalizedSalaryAnalysis, 'sources' | 'metadata' | 'geographicAnalysis' | 'skillsAnalysis' | 'resumeMatch' | 'edgeCaseHandling'>> {
     const prompt = this.buildAnalysisPrompt(request, userContext, aiContext, webIntelligence);
 
-    const response = await generateCompletion(prompt, {
-      temperature: 0.1,
-      max_tokens: 2500,
+    const response = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt
     });
-
-    if (!response || !response.content) {
+    if (!response || !(typeof response.data === 'string' ? response.data : JSON.stringify(response.data))) {
       throw new Error('Failed to get valid response from AI service');
     }
 
-    console.log('🤖 AI Response length:', response.content.length);
-    console.log('🤖 AI Response preview:', response.content.substring(0, 200) + '...');
+    console.log('🤖 AI Response length:', (typeof response.data === 'string' ? response.data : JSON.stringify(response.data)).length);
+    console.log('🤖 AI Response preview:', (typeof response.data === 'string' ? response.data : JSON.stringify(response.data)).substring(0, 200) + '...');
 
     try {
-      const cleanedContent = this.cleanJsonResponse(response.content);
+      const cleanedContent = this.cleanJsonResponse((typeof response.data === 'string' ? response.data : JSON.stringify(response.data)));
       const parsed = JSON.parse(cleanedContent);
 
       // Log the parsed confidence to debug NaN issue
@@ -669,7 +668,7 @@ export class EnhancedSalaryRAG {
       return parsed;
     } catch (error) {
       console.error('❌ Failed to parse AI analysis:', error);
-      console.error('❌ Raw AI response:', response.content);
+      console.error('❌ Raw AI response:', (typeof response.data === 'string' ? response.data : JSON.stringify(response.data)));
       throw new Error('Failed to generate analysis - invalid JSON format');
     }
   }

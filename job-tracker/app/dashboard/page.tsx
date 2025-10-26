@@ -7,16 +7,31 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import {
   Search, Star, MapPin, Building, DollarSign, LogOut, User,
   Clock, CheckCircle, XCircle, PlayCircle, Phone, Filter,
   Briefcase, TrendingUp, Calendar, ExternalLink, ArrowRight,
-  Settings, Plus, Download, FileText, BarChart3, Target
+  Settings, Plus, Download, FileText, BarChart3, Target, Trash2
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { MatchScoreDonut } from '@/components/ui/match-score-donut';
+import { AIJobDiscovery } from '@/components/ui/ai-job-discovery';
+import { PerformanceAnalytics } from '@/components/ui/performance-analytics';
+import { SmartRecommendations } from '@/components/ui/smart-recommendations';
+import { JobNekoLogo } from '@/components/ui/jobneko-logo';
+import { SiteHeader } from '@/components/ui/site-header';
 
 interface Job {
   id: string;
@@ -63,10 +78,11 @@ const applicationStatusConfig: Record<string, {
 
 const getMatchScoreDisplay = (score?: number) => {
   if (!score) return { text: 'No Score', className: 'text-gray-400' };
-  if (score >= 85) return { text: `${score}%`, className: 'text-black font-semibold' };
-  if (score >= 70) return { text: `${score}%`, className: 'text-gray-700 font-medium' };
-  if (score >= 50) return { text: `${score}%`, className: 'text-gray-500' };
-  return { text: `${score}%`, className: 'text-gray-400' };
+  const roundedScore = Math.round(score);
+  if (roundedScore >= 85) return { text: `${roundedScore}%`, className: 'text-black font-semibold' };
+  if (roundedScore >= 70) return { text: `${roundedScore}%`, className: 'text-gray-700 font-medium' };
+  if (roundedScore >= 50) return { text: `${roundedScore}%`, className: 'text-gray-500' };
+  return { text: `${roundedScore}%`, className: 'text-gray-400' };
 };
 
 const getSalaryDisplay = (salary?: string): { display: string; hasAmount: boolean } => {
@@ -84,12 +100,23 @@ export default function ProfessionalDashboard() {
   const { user, token, logout, isLoading: authLoading } = useAuth();
 
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [allJobs, setAllJobs] = useState<Job[]>([]); // Store all jobs for filtering
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<string>('createdAt');
   const [hasResume, setHasResume] = useState(false);
   const [resumePromptDismissed, setResumePromptDismissed] = useState(false);
+  const [dashboardView, setDashboardView] = useState<'jobs' | 'discovery' | 'analytics' | 'recommendations'>('jobs');
+  const [jobToDelete, setJobToDelete] = useState<{ id: string; title: string } | null>(null);
+
+  // Advanced Filters
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [workModeFilter, setWorkModeFilter] = useState<string>('all');
+  const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [dateRangeFilter, setDateRangeFilter] = useState<string>('all');
+  const [salaryFilter, setSalaryFilter] = useState<string>('all');
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -123,18 +150,13 @@ export default function ProfessionalDashboard() {
     if (!currentToken) return;
 
     try {
-      const params = new URLSearchParams({
-        ...(search && { search }),
-        ...(sortBy && { sortBy }),
-      });
-
-      const response = await fetch(`/api/jobs?${params}`, {
+      const response = await fetch(`/api/jobs`, {
         headers: { Authorization: `Bearer ${currentToken}` },
       });
 
       if (response.ok) {
         const data = await response.json();
-        setJobs(data.jobs);
+        setAllJobs(data.jobs);
       } else {
         throw new Error('Failed to fetch jobs');
       }
@@ -169,6 +191,34 @@ export default function ProfessionalDashboard() {
     }
   };
 
+  const confirmDeleteJob = async () => {
+    if (!jobToDelete) return;
+
+    const currentToken = token || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
+    if (!currentToken) return;
+
+    try {
+      const response = await fetch(`/api/jobs/${jobToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${currentToken}`,
+        },
+      });
+
+      if (response.ok) {
+        setAllJobs(allJobs.filter(job => job.id !== jobToDelete.id));
+        setJobs(jobs.filter(job => job.id !== jobToDelete.id));
+        toast.success('Job deleted successfully');
+      } else {
+        toast.error('Failed to delete job');
+      }
+    } catch (error) {
+      toast.error('Failed to delete job');
+    } finally {
+      setJobToDelete(null);
+    }
+  };
+
   const handleRating = async (jobId: string, rating: number) => {
     if (!token) return;
 
@@ -183,6 +233,9 @@ export default function ProfessionalDashboard() {
       });
 
       if (response.ok) {
+        setAllJobs(allJobs.map(job =>
+          job.id === jobId ? { ...job, rating } : job
+        ));
         setJobs(jobs.map(job =>
           job.id === jobId ? { ...job, rating } : job
         ));
@@ -195,23 +248,113 @@ export default function ProfessionalDashboard() {
     }
   };
 
+  // Client-side filtering and sorting
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchJobs();
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [search, sortBy]);
+    let filtered = [...allJobs];
+
+    // Search filter (across multiple fields)
+    if (search.trim()) {
+      const searchLower = search.toLowerCase();
+      filtered = filtered.filter(job =>
+        job.title?.toLowerCase().includes(searchLower) ||
+        job.company?.toLowerCase().includes(searchLower) ||
+        job.location?.toLowerCase().includes(searchLower) ||
+        job.skills?.toLowerCase().includes(searchLower) ||
+        job.summary?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(job => job.applicationStatus === statusFilter);
+    }
+
+    // Work mode filter
+    if (workModeFilter !== 'all') {
+      filtered = filtered.filter(job => job.workMode?.toLowerCase() === workModeFilter.toLowerCase());
+    }
+
+    // Priority filter
+    if (priorityFilter !== 'all') {
+      filtered = filtered.filter(job => job.priority === priorityFilter);
+    }
+
+    // Date range filter
+    if (dateRangeFilter !== 'all') {
+      const now = new Date();
+      const jobDate = (job: Job) => new Date(job.createdAt);
+
+      switch (dateRangeFilter) {
+        case 'today':
+          filtered = filtered.filter(job => {
+            const diff = now.getTime() - jobDate(job).getTime();
+            return diff < 24 * 60 * 60 * 1000;
+          });
+          break;
+        case 'week':
+          filtered = filtered.filter(job => {
+            const diff = now.getTime() - jobDate(job).getTime();
+            return diff < 7 * 24 * 60 * 60 * 1000;
+          });
+          break;
+        case 'month':
+          filtered = filtered.filter(job => {
+            const diff = now.getTime() - jobDate(job).getTime();
+            return diff < 30 * 24 * 60 * 60 * 1000;
+          });
+          break;
+      }
+    }
+
+    // Salary filter
+    if (salaryFilter !== 'all') {
+      if (salaryFilter === 'disclosed') {
+        filtered = filtered.filter(job => {
+          const salaryDisplay = getSalaryDisplay(job.salary);
+          return salaryDisplay.hasAmount;
+        });
+      } else if (salaryFilter === 'undisclosed') {
+        filtered = filtered.filter(job => {
+          const salaryDisplay = getSalaryDisplay(job.salary);
+          return !salaryDisplay.hasAmount;
+        });
+      }
+    }
+
+    // Sorting
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'createdAt':
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        case 'matchScore':
+          return (b.matchScore || 0) - (a.matchScore || 0);
+        case 'rating':
+          return (b.rating || 0) - (a.rating || 0);
+        case 'applicationStatus':
+          const priorityA = applicationStatusConfig[a.applicationStatus]?.priority ?? 0;
+          const priorityB = applicationStatusConfig[b.applicationStatus]?.priority ?? 0;
+          return priorityB - priorityA;
+        default:
+          return 0;
+      }
+    });
+
+    setJobs(filtered);
+  }, [allJobs, search, statusFilter, workModeFilter, priorityFilter, dateRangeFilter, salaryFilter, sortBy]);
 
   const renderStars = (jobId: string, currentRating?: number) => {
     return (
-      <div className="flex space-x-1">
+      <div className="flex space-x-1" onClick={(e) => e.stopPropagation()}>
         {[1, 2, 3, 4, 5].map((star) => (
           <Star
             key={star}
             className={`w-4 h-4 cursor-pointer ${
               star <= (currentRating || 0) ? 'fill-black text-black' : 'text-gray-300 hover:text-gray-400'
             }`}
-            onClick={() => handleRating(jobId, star)}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRating(jobId, star);
+            }}
           />
         ))}
       </div>
@@ -241,39 +384,55 @@ export default function ProfessionalDashboard() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Clean Header */}
-      <header className="border-b border-gray-200 bg-white">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-black">Job Tracker</h1>
-              <p className="text-gray-600 text-sm mt-1">Welcome back, {user?.name || user?.email}</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/profile">
-                  <User className="w-4 h-4 mr-2" />
-                  Profile
-                </Link>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/settings">
-                  <Settings className="w-4 h-4 mr-2" />
-                  Settings
-                </Link>
-              </Button>
-              <Button variant="outline" size="sm" onClick={logout}>
-                <LogOut className="w-4 h-4 mr-2" />
-                Logout
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Site Header */}
+      <SiteHeader />
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+        {/* Navigation Tabs */}
+        <div className="flex gap-1 p-1 bg-gray-100 rounded-lg mb-8 max-w-2xl">
+          <Button
+            variant={dashboardView === 'jobs' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setDashboardView('jobs')}
+            className="flex-1"
+          >
+            <Briefcase className="w-4 h-4 mr-2" />
+            My Jobs
+          </Button>
+          <Button
+            variant={dashboardView === 'discovery' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setDashboardView('discovery')}
+            className="flex-1"
+          >
+            <Target className="w-4 h-4 mr-2" />
+            Job Discovery
+          </Button>
+          <Button
+            variant={dashboardView === 'analytics' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setDashboardView('analytics')}
+            className="flex-1"
+          >
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Analytics
+          </Button>
+          <Button
+            variant={dashboardView === 'recommendations' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setDashboardView('recommendations')}
+            className="flex-1"
+          >
+            <Star className="w-4 h-4 mr-2" />
+            Recommendations
+          </Button>
+        </div>
+
+        {/* Jobs View */}
+        {dashboardView === 'jobs' && (
+          <>
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
           <Card className="border border-gray-200">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -379,37 +538,267 @@ export default function ProfessionalDashboard() {
           </Card>
         )}
 
+        {/* Rematch All Jobs */}
+        {hasResume && allJobs.length > 0 && (
+          <Card className="mb-8 border border-gray-200">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-black mb-1">Resume Match Scores</h3>
+                  <p className="text-sm text-gray-600">Recalculate match scores for all your jobs with your latest resume</p>
+                </div>
+                <Button
+                  onClick={async () => {
+                    try {
+                      setLoading(true);
+                      toast.info('Recalculating match scores...');
+
+                      const response = await fetch('/api/jobs/rematch', {
+                        method: 'POST',
+                        headers: {
+                          'Authorization': `Bearer ${token}`,
+                        },
+                      });
+
+                      if (response.ok) {
+                        const data = await response.json();
+                        toast.success(`Updated ${data.updatedJobs} of ${data.totalJobs} jobs!`);
+                        // Refresh jobs
+                        fetchJobs();
+                      } else {
+                        toast.error('Failed to recalculate match scores');
+                      }
+                    } catch (error) {
+                      toast.error('Failed to recalculate match scores');
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  disabled={loading}
+                >
+                  <Target className="w-4 h-4 mr-2" />
+                  {loading ? 'Calculating...' : 'Recalculate All Matches'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Search and Filters */}
         <Card className="mb-8 border border-gray-200">
           <CardContent className="p-6">
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Search jobs, companies, skills..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-10 border-gray-200 focus:border-black"
-                />
+            <div className="flex flex-col gap-4">
+              {/* Search and Sort Row */}
+              <div className="flex flex-col md:flex-row gap-4">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search jobs, companies, skills, location..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-10 border-gray-200 focus:border-black"
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <Select value={sortBy} onValueChange={setSortBy}>
+                    <SelectTrigger className="w-48 border-gray-200 focus:border-black">
+                      <SelectValue placeholder="Sort by" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="createdAt">Most Recent</SelectItem>
+                      <SelectItem value="matchScore">Best Match</SelectItem>
+                      <SelectItem value="rating">Highest Rated</SelectItem>
+                      <SelectItem value="applicationStatus">Status</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Button
+                    variant={showFilters ? 'default' : 'outline'}
+                    onClick={() => setShowFilters(!showFilters)}
+                    className="gap-2"
+                  >
+                    <Filter className="w-4 h-4" />
+                    Filters
+                    {(statusFilter !== 'all' || workModeFilter !== 'all' || priorityFilter !== 'all' || dateRangeFilter !== 'all' || salaryFilter !== 'all') && (
+                      <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 flex items-center justify-center">
+                        {[statusFilter, workModeFilter, priorityFilter, dateRangeFilter, salaryFilter].filter(f => f !== 'all').length}
+                      </Badge>
+                    )}
+                  </Button>
+                </div>
               </div>
 
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-48 border-gray-200 focus:border-black">
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="createdAt">Most Recent</SelectItem>
-                  <SelectItem value="matchScore">Best Match</SelectItem>
-                  <SelectItem value="rating">Highest Rated</SelectItem>
-                  <SelectItem value="applicationStatus">Status</SelectItem>
-                </SelectContent>
-              </Select>
+              {/* Advanced Filters */}
+              {showFilters && (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 pt-4 border-t border-gray-200">
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-2 block">Status</label>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="border-gray-200 focus:border-black">
+                        <SelectValue placeholder="All statuses" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Statuses</SelectItem>
+                        <SelectItem value="not_applied">Not Applied</SelectItem>
+                        <SelectItem value="applied">Applied</SelectItem>
+                        <SelectItem value="phone_screening">Phone Screen</SelectItem>
+                        <SelectItem value="technical_assessment">Technical Test</SelectItem>
+                        <SelectItem value="first_interview">First Interview</SelectItem>
+                        <SelectItem value="second_interview">Second Interview</SelectItem>
+                        <SelectItem value="final_interview">Final Interview</SelectItem>
+                        <SelectItem value="offer_extended">Offer Received</SelectItem>
+                        <SelectItem value="offer_accepted">Offer Accepted</SelectItem>
+                        <SelectItem value="application_rejected">Rejected</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-2 block">Work Mode</label>
+                    <Select value={workModeFilter} onValueChange={setWorkModeFilter}>
+                      <SelectTrigger className="border-gray-200 focus:border-black">
+                        <SelectValue placeholder="All modes" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Modes</SelectItem>
+                        <SelectItem value="remote">Remote</SelectItem>
+                        <SelectItem value="hybrid">Hybrid</SelectItem>
+                        <SelectItem value="onsite">On-site</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-2 block">Priority</label>
+                    <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                      <SelectTrigger className="border-gray-200 focus:border-black">
+                        <SelectValue placeholder="All priorities" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Priorities</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="low">Low</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-2 block">Date Added</label>
+                    <Select value={dateRangeFilter} onValueChange={setDateRangeFilter}>
+                      <SelectTrigger className="border-gray-200 focus:border-black">
+                        <SelectValue placeholder="All time" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Time</SelectItem>
+                        <SelectItem value="today">Today</SelectItem>
+                        <SelectItem value="week">This Week</SelectItem>
+                        <SelectItem value="month">This Month</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-2 block">Salary Info</label>
+                    <Select value={salaryFilter} onValueChange={setSalaryFilter}>
+                      <SelectTrigger className="border-gray-200 focus:border-black">
+                        <SelectValue placeholder="All" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="disclosed">Disclosed</SelectItem>
+                        <SelectItem value="undisclosed">Not Disclosed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+
+              {/* Active Filters Display */}
+              {(statusFilter !== 'all' || workModeFilter !== 'all' || priorityFilter !== 'all' || dateRangeFilter !== 'all' || salaryFilter !== 'all') && (
+                <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
+                  <span className="text-xs font-medium text-gray-600">Active filters:</span>
+                  <div className="flex flex-wrap gap-2">
+                    {statusFilter !== 'all' && (
+                      <Badge variant="secondary" className="gap-1">
+                        Status: {applicationStatusConfig[statusFilter]?.label || statusFilter}
+                        <button
+                          onClick={() => setStatusFilter('all')}
+                          className="ml-1 hover:text-black"
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    )}
+                    {workModeFilter !== 'all' && (
+                      <Badge variant="secondary" className="gap-1 capitalize">
+                        {workModeFilter}
+                        <button
+                          onClick={() => setWorkModeFilter('all')}
+                          className="ml-1 hover:text-black"
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    )}
+                    {priorityFilter !== 'all' && (
+                      <Badge variant="secondary" className="gap-1 capitalize">
+                        {priorityFilter} Priority
+                        <button
+                          onClick={() => setPriorityFilter('all')}
+                          className="ml-1 hover:text-black"
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    )}
+                    {dateRangeFilter !== 'all' && (
+                      <Badge variant="secondary" className="gap-1 capitalize">
+                        {dateRangeFilter === 'today' ? 'Today' : dateRangeFilter === 'week' ? 'This Week' : 'This Month'}
+                        <button
+                          onClick={() => setDateRangeFilter('all')}
+                          className="ml-1 hover:text-black"
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    )}
+                    {salaryFilter !== 'all' && (
+                      <Badge variant="secondary" className="gap-1 capitalize">
+                        Salary {salaryFilter}
+                        <button
+                          onClick={() => setSalaryFilter('all')}
+                          className="ml-1 hover:text-black"
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setStatusFilter('all');
+                        setWorkModeFilter('all');
+                        setPriorityFilter('all');
+                        setDateRangeFilter('all');
+                        setSalaryFilter('all');
+                      }}
+                      className="h-6 px-2 text-xs"
+                    >
+                      Clear all
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
         {/* Jobs List */}
-        {jobs.length === 0 ? (
+        {allJobs.length === 0 ? (
+          // No jobs at all - show get started message
           <Card className="border border-gray-200">
             <CardContent className="text-center py-16">
               <div className="text-6xl mb-4">🚀</div>
@@ -432,6 +821,30 @@ export default function ProfessionalDashboard() {
                   </Button>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        ) : jobs.length === 0 ? (
+          // Has jobs but search/filter returned nothing - show no results message
+          <Card className="border border-gray-200">
+            <CardContent className="text-center py-16">
+              <div className="text-6xl mb-4">🔍</div>
+              <h3 className="text-2xl font-bold mb-3 text-black">No jobs found</h3>
+              <p className="text-gray-600 mb-8 max-w-md mx-auto">
+                No jobs match your current search or filters. Try adjusting your criteria.
+              </p>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSearch('');
+                  setStatusFilter('all');
+                  setWorkModeFilter('all');
+                  setPriorityFilter('all');
+                  setDateRangeFilter('all');
+                  setSalaryFilter('all');
+                }}
+              >
+                Clear all filters
+              </Button>
             </CardContent>
           </Card>
         ) : (
@@ -467,7 +880,7 @@ export default function ProfessionalDashboard() {
                           {job.title}
                         </h3>
 
-                        <div className="flex items-center gap-4 text-gray-600 mb-3">
+                        <div className="flex items-center gap-4 text-gray-600 mb-3 flex-wrap">
                           <div className="flex items-center gap-2">
                             {(job as any).companyLogoUrl ? (
                               <img
@@ -496,6 +909,16 @@ export default function ProfessionalDashboard() {
                               <MapPin className="w-4 h-4" />
                               <span>{job.location}</span>
                             </div>
+                          )}
+                          {job.workMode && (
+                            <Badge variant="secondary" className="text-xs capitalize">
+                              {job.workMode}
+                            </Badge>
+                          )}
+                          {job.contractType && (
+                            <Badge variant="outline" className="text-xs capitalize">
+                              {job.contractType}
+                            </Badge>
                           )}
                         </div>
 
@@ -548,10 +971,17 @@ export default function ProfessionalDashboard() {
                           </div>
 
                           <div className="flex items-center gap-4">
-                            {/* Match Score */}
-                            {job.matchScore && (
-                              <MatchScoreDonut score={job.matchScore} size={50} strokeWidth={6} />
-                            )}
+                            {/* Match Score - Always show */}
+                            {job.matchScore ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500">Resume Match:</span>
+                                <MatchScoreDonut score={job.matchScore} size={50} strokeWidth={6} />
+                              </div>
+                            ) : hasResume ? (
+                              <div className="text-xs text-gray-400 italic">
+                                No match score
+                              </div>
+                            ) : null}
 
                             {/* External Link */}
                             {job.url && (
@@ -568,6 +998,19 @@ export default function ProfessionalDashboard() {
                               </Button>
                             )}
 
+                            {/* Delete Button */}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setJobToDelete({ id: job.id, title: job.title });
+                              }}
+                              className="text-gray-400 hover:text-red-600"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+
                             {/* Arrow */}
                             <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-black transition-colors" />
                           </div>
@@ -580,7 +1023,48 @@ export default function ProfessionalDashboard() {
             })}
           </div>
         )}
+          </>
+        )}
+
+        {/* AI Job Discovery View */}
+        {dashboardView === 'discovery' && (
+          <AIJobDiscovery />
+        )}
+
+        {/* Performance Analytics View */}
+        {dashboardView === 'analytics' && (
+          <PerformanceAnalytics />
+        )}
+
+        {/* Smart Recommendations View */}
+        {dashboardView === 'recommendations' && (
+          <SmartRecommendations />
+        )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!jobToDelete} onOpenChange={(open) => !open && setJobToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Job</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <span className="font-semibold">"{jobToDelete?.title}"</span>?
+              <br />
+              <br />
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteJob}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

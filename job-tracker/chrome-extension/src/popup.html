@@ -3,248 +3,655 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Job Tracker</title>
+  <title>JobNeko</title>
   <style>
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
-    
+
     body {
-      width: 350px;
-      min-height: 400px;
+      width: 380px;
+      height: 600px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: #333;
+      background: #000000;
+      color: #ffffff;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .container {
+      background: #000000;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .loading-section {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 500px;
+    }
+
+    .loading-content {
+      text-align: center;
+    }
+
+    .loading-spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid #333333;
+      border-radius: 50%;
+      border-top-color: #ffffff;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    .loading-content p {
+      color: #999999;
+      font-size: 14px;
+    }
+
+    .header {
+      background: #000000;
+      padding: 16px;
+      border-bottom: 1px solid #333333;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo-icon {
+      width: 60px;
+      height: 48px;
+      font-size: 20px;
+      background: #ffffff;
+      border-radius: 8px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .logo-icon svg,
+    .logo-icon > div {
+      width: 80px !important;
+      height: 80px !important;
+      position: absolute;
+      top: -5px;
+      left: -10px;
+    }
+
+    .logo h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #333333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: #ffffff;
     }
     
-    .container {
-      padding: 20px;
-      background: white;
-      min-height: 400px;
+    .nav-tabs {
+      display: flex;
+      background: #000000;
+      border-bottom: 1px solid #333333;
+    }
+
+    .nav-tab {
+      flex: 1;
+      padding: 12px;
+      background: none;
+      border: none;
+      color: #666666;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .nav-tab.active {
+      color: #ffffff;
+      border-bottom: 2px solid #ffffff;
+    }
+
+    .nav-tab:hover {
+      color: #cccccc;
+    }
+
+    .tab-content {
+      flex: 1;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
     }
-    
-    .header {
-      text-align: center;
-      margin-bottom: 20px;
+
+    .tab-panel {
+      display: none;
+      height: 100%;
+      overflow-y: auto;
+      padding: 20px;
     }
-    
-    .header h1 {
-      font-size: 24px;
-      color: #667eea;
-      margin-bottom: 5px;
+
+    .tab-panel.active {
+      display: block;
     }
-    
-    .header p {
-      font-size: 14px;
-      color: #666;
+
+    /* Custom scrollbar for tab panels */
+    .tab-panel::-webkit-scrollbar {
+      width: 8px;
     }
-    
+
+    .tab-panel::-webkit-scrollbar-track {
+      background: #1a1a1a;
+    }
+
+    .tab-panel::-webkit-scrollbar-thumb {
+      background: #333333;
+      border-radius: 4px;
+    }
+
+    .tab-panel::-webkit-scrollbar-thumb:hover {
+      background: #444444;
+    }
+
     .auth-section {
-      margin-bottom: 20px;
-      padding: 15px;
-      background: #f7f8fa;
-      border-radius: 8px;
+      padding: 20px;
     }
-    
+
     .auth-section.hidden {
       display: none;
     }
-    
+
     .form-group {
-      margin-bottom: 15px;
+      margin-bottom: 16px;
     }
-    
+
     .form-group label {
       display: block;
-      margin-bottom: 5px;
+      margin-bottom: 6px;
       font-size: 14px;
       font-weight: 500;
-      color: #333;
+      color: #ffffff;
     }
-    
+
     .form-group input {
       width: 100%;
-      padding: 8px 12px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
+      padding: 12px;
+      background: #1a1a1a;
+      border: 1px solid #333333;
+      border-radius: 6px;
+      color: #ffffff;
       font-size: 14px;
     }
-    
+
     .form-group input:focus {
       outline: none;
-      border-color: #667eea;
-      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      border-color: #ffffff;
     }
     
     .btn {
       width: 100%;
-      padding: 10px;
+      padding: 12px;
       border: none;
       border-radius: 6px;
-      font-size: 16px;
-      font-weight: 600;
+      font-size: 14px;
+      font-weight: 500;
       cursor: pointer;
-      transition: all 0.3s ease;
+      transition: all 0.2s ease;
     }
-    
+
     .btn-primary {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
+      background: #ffffff;
+      color: #000000;
     }
-    
+
     .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+      background: #f0f0f0;
     }
-    
+
     .btn-primary:disabled {
       opacity: 0.5;
       cursor: not-allowed;
-      transform: none;
     }
-    
+
     .btn-secondary {
-      background: #f7f8fa;
-      color: #333;
+      background: transparent;
+      color: #ffffff;
+      border: 1px solid #333333;
       margin-top: 10px;
     }
-    
+
     .btn-secondary:hover {
-      background: #e9ecef;
+      border-color: #ffffff;
+    }
+
+    .btn-small {
+      width: auto;
+      padding: 6px 12px;
+      font-size: 12px;
     }
     
     .main-section {
       flex: 1;
       display: flex;
       flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
     }
-    
+
     .main-section.hidden {
       display: none;
     }
-    
-    .user-info {
-      padding: 15px;
-      background: #f7f8fa;
-      border-radius: 8px;
-      margin-bottom: 20px;
-    }
-    
-    .user-info h3 {
-      font-size: 16px;
-      margin-bottom: 5px;
-      color: #333;
-    }
-    
-    .user-info p {
-      font-size: 14px;
-      color: #666;
-    }
-    
+
     .extract-section {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
       text-align: center;
+      padding: 40px 20px;
     }
-    
+
     .extract-icon {
-      width: 80px;
-      height: 80px;
-      margin-bottom: 20px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      width: 60px;
+      height: 60px;
+      margin: 0 auto 16px;
+      background: #1a1a1a;
+      border: 1px solid #333333;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 36px;
+      font-size: 24px;
     }
-    
+
     .extract-section h2 {
-      font-size: 20px;
-      margin-bottom: 10px;
-      color: #333;
+      font-size: 18px;
+      margin-bottom: 8px;
+      color: #ffffff;
+      font-weight: 600;
     }
-    
+
     .extract-section p {
       font-size: 14px;
-      color: #666;
+      color: #999999;
       margin-bottom: 20px;
+      line-height: 1.4;
+    }
+
+    .queue-section {
+      padding: 0;
+    }
+
+    .queue-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .queue-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .queue-count {
+      background: #1a1a1a;
+      color: #999999;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+    }
+
+    .queue-list {
+      space-y: 8px;
+    }
+
+    .queue-item {
+      background: #1a1a1a;
+      border: 1px solid #333333;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+      transition: all 0.2s;
+    }
+
+    .queue-item-clickable {
+      cursor: pointer;
+    }
+
+    .queue-item-clickable:hover {
+      background: #222222;
+      border-color: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    .queue-item-header {
+      display: flex;
+      justify-content: between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .queue-item-url {
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 500;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      white-space: nowrap;
+      flex: 1;
+    }
+
+    .queue-status {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+
+    .queue-status.pending {
+      background: #333333;
+      color: #999999;
+    }
+
+    .queue-status.processing {
+      background: #1a4480;
+      color: #87ceeb;
+    }
+
+    .queue-status.completed {
+      background: #1e4d3b;
+      color: #90ee90;
+    }
+
+    .queue-status.failed {
+      background: #4d1e1e;
+      color: #ff6b6b;
+    }
+
+    .queue-progress {
+      margin-top: 8px;
+    }
+
+    .queue-progress-label {
+      color: #999999;
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+
+    .queue-progress-bar {
+      background: #333333;
+      height: 4px;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .queue-progress-fill {
+      background: #ffffff;
+      height: 100%;
+      transition: width 0.3s ease;
+    }
+
+    .queue-action {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #333333;
+    }
+
+    .queue-view-job {
+      color: #999999;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .queue-item-clickable:hover .queue-view-job {
+      color: #ffffff;
+    }
+
+    .queue-empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: #666666;
+    }
+
+    .queue-empty-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+
+    .settings-section {
+      space-y: 20px;
+    }
+
+    .settings-group {
+      margin-bottom: 20px;
+    }
+
+    .settings-label {
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .settings-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      background: #1a1a1a;
+      border: 1px solid #333333;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    .settings-item-label {
+      color: #ffffff;
+      font-size: 14px;
+    }
+
+    .settings-item-desc {
+      color: #999999;
+      font-size: 12px;
     }
     
     .status {
-      padding: 10px;
-      margin-top: 15px;
+      padding: 12px;
+      margin-top: 16px;
       border-radius: 6px;
       font-size: 14px;
       text-align: center;
     }
-    
+
     .status.success {
-      background: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
+      background: #1e4d3b;
+      color: #90ee90;
+      border: 1px solid #2d5a47;
     }
-    
+
     .status.error {
-      background: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
+      background: #4d1e1e;
+      color: #ff6b6b;
+      border: 1px solid #5a2d2d;
     }
-    
+
     .status.info {
-      background: #d1ecf1;
-      color: #0c5460;
-      border: 1px solid #bee5eb;
+      background: #1a4480;
+      color: #87ceeb;
+      border: 1px solid #2d5299;
     }
-    
+
     .footer {
-      margin-top: 20px;
-      padding-top: 15px;
-      border-top: 1px solid #e9ecef;
-      text-align: center;
+      border-top: 1px solid #333333;
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
-    
+
+    .footer-links {
+      display: flex;
+      gap: 16px;
+    }
+
     .footer a {
-      color: #667eea;
+      color: #999999;
       text-decoration: none;
-      font-size: 14px;
+      font-size: 12px;
+      transition: color 0.2s;
     }
-    
+
     .footer a:hover {
-      text-decoration: underline;
+      color: #ffffff;
     }
     
     .loading {
       display: inline-block;
-      width: 20px;
-      height: 20px;
-      border: 3px solid rgba(255,255,255,.3);
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(0,0,0,.3);
       border-radius: 50%;
-      border-top-color: white;
+      border-top-color: #000000;
       animation: spin 1s ease-in-out infinite;
     }
-    
+
+    .loading-white {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-radius: 50%;
+      border-top-color: #ffffff;
+      animation: spin 1s ease-in-out infinite;
+    }
+
     @keyframes spin {
       to { transform: rotate(360deg); }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* Duplicate Job Modal */
+    .duplicate-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .duplicate-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+    }
+
+    .duplicate-content {
+      position: relative;
+      background: #1a1a1a;
+      border: 1px solid #333333;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 320px;
+      width: 90%;
+      text-align: center;
+      animation: slideUp 0.3s ease-out;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .duplicate-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .duplicate-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 12px;
+    }
+
+    .duplicate-message {
+      font-size: 14px;
+      color: #999999;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+
+    .duplicate-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .duplicate-actions .btn {
+      flex: 1;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <h1>Job Tracker</h1>
-      <p>Extract and save job offers</p>
+    <!-- Loading State -->
+    <div id="loadingSection" class="loading-section">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <p>Loading...</p>
+      </div>
+    </div>
+
+    <!-- Header -->
+    <div class="header hidden" id="headerSection">
+      <div class="logo">
+        <div class="logo-icon" id="catAnimation"></div>
+        <h1>JobNeko</h1>
+      </div>
+      <div class="user-avatar hidden" id="userAvatar">U</div>
     </div>
 
     <!-- Login Section -->
-    <div id="authSection" class="auth-section">
+    <div id="authSection" class="auth-section hidden">
       <form id="loginForm">
         <div class="form-group">
           <label for="email">Email</label>
@@ -265,30 +672,96 @@
 
     <!-- Main Section (shown after login) -->
     <div id="mainSection" class="main-section hidden">
-      <div class="user-info">
-        <h3>Welcome back!</h3>
-        <p id="userEmail">user@example.com</p>
+      <!-- Navigation Tabs -->
+      <div class="nav-tabs">
+        <button class="nav-tab active" data-tab="extract">Extract</button>
+        <button class="nav-tab" data-tab="queue">Queue</button>
+        <button class="nav-tab" data-tab="settings">Settings</button>
       </div>
-      
-      <div class="extract-section">
-        <div class="extract-icon">📋</div>
-        <h2>Ready to Extract</h2>
-        <p>Click the button below to extract job information from this page</p>
-        <button id="extractBtn" class="btn btn-primary">
-          Extract Job Offer
-        </button>
+
+      <!-- Tab Content -->
+      <div class="tab-content">
+        <!-- Extract Tab -->
+        <div id="extractTab" class="tab-panel active">
+          <div class="extract-section">
+            <div class="extract-icon">📋</div>
+            <h2>Extract Job Data</h2>
+            <p>Extract job information from the current page and add it to your tracking queue</p>
+            <button id="extractBtn" class="btn btn-primary">
+              Extract Job Offer
+            </button>
+          </div>
+        </div>
+
+        <!-- Queue Tab -->
+        <div id="queueTab" class="tab-panel">
+          <div class="queue-section">
+            <div class="queue-header">
+              <div class="queue-title">Extraction Queue</div>
+              <div class="queue-count" id="queueCount">0 items</div>
+            </div>
+            <div id="queueList" class="queue-list">
+              <!-- Queue items will be populated here -->
+            </div>
+            <div id="queueEmpty" class="queue-empty">
+              <div class="queue-empty-icon">📋</div>
+              <p>No extractions in progress</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="settingsTab" class="tab-panel">
+          <div class="settings-section">
+            <div class="settings-group">
+              <div class="settings-label">Account</div>
+              <div class="settings-item">
+                <div>
+                  <div class="settings-item-label" id="userEmail">user@example.com</div>
+                  <div class="settings-item-desc">Signed in</div>
+                </div>
+              </div>
+            </div>
+            <div class="settings-group">
+              <div class="settings-label">Actions</div>
+              <div class="settings-item">
+                <div>
+                  <div class="settings-item-label">Dashboard</div>
+                  <div class="settings-item-desc">Open JobNeko dashboard</div>
+                </div>
+                <button class="btn btn-small btn-secondary" id="dashboardLink">Open</button>
+              </div>
+              <div class="settings-item">
+                <div>
+                  <div class="settings-item-label">Sign Out</div>
+                  <div class="settings-item-desc">Sign out of your account</div>
+                </div>
+                <button class="btn btn-small btn-secondary" id="logoutLink">Sign Out</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div id="status" class="status" style="display: none;"></div>
+    </div>
 
-      <div class="footer">
-        <a href="#" id="dashboardLink">Open Dashboard</a>
-        <span> | </span>
-        <a href="#" id="logoutLink">Logout</a>
+    <!-- Duplicate Job Notification Modal -->
+    <div id="duplicateModal" class="duplicate-modal hidden">
+      <div class="duplicate-overlay"></div>
+      <div class="duplicate-content">
+        <div class="duplicate-icon">⚠️</div>
+        <h3 class="duplicate-title">Job Already Extracted</h3>
+        <p class="duplicate-message" id="duplicateMessage"></p>
+        <div class="duplicate-actions">
+          <button id="duplicateViewBtn" class="btn btn-primary">View Job</button>
+          <button id="duplicateCloseBtn" class="btn btn-secondary">Close</button>
+        </div>
       </div>
     </div>
   </div>
 
+  <script src="lottie.min.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

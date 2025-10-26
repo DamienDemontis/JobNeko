@@ -1,20 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { aiResumeExtractor } from '../../../../lib/services/ai-resume-extractor';
 import { prisma } from '../../../../lib/prisma';
+import { validateToken } from '@/lib/auth';
 import { salaryAnalysisPersistence } from '@/lib/services/salary-analysis-persistence';
 
 export async function POST(request: NextRequest) {
   try {
+    // Try to get user ID from formData first (old profile page method)
     const formData = await request.formData();
     const resume = formData.get('resume') as File;
-    const userId = formData.get('userId') as string;
+    let userId = formData.get('userId') as string;
+
+    // If no userId in formData, try to get from auth token (onboarding method)
+    if (!userId) {
+      const token = request.headers.get('authorization')?.replace('Bearer ', '');
+      if (token) {
+        const user = await validateToken(token);
+        if (user) {
+          userId = user.id;
+        }
+      }
+    }
 
     if (!resume) {
       return NextResponse.json({ error: 'No resume file provided' }, { status: 400 });
     }
 
     if (!userId) {
-      return NextResponse.json({ error: 'User ID required' }, { status: 400 });
+      return NextResponse.json({ error: 'User ID or authentication required' }, { status: 400 });
     }
 
     if (resume.type !== 'application/pdf') {
@@ -29,8 +42,12 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await resume.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    // Get user's API key (handles encryption and platform fallback securely)
+    const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+    const apiKey = await getUserApiKey(userId);
+
     // Extract resume content using AI
-    const extraction = await aiResumeExtractor.extractFromPDF(buffer, resume.name);
+    const extraction = await aiResumeExtractor.extractFromPDF(buffer, resume.name, apiKey);
 
     // Store resume data in database
     const newResume = await prisma.resume.create({
@@ -194,7 +211,20 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      const extraction = JSON.parse(activeResume.content);
+      // Handle both JSON and plain text content
+      let extraction;
+      try {
+        extraction = JSON.parse(activeResume.content);
+      } catch (parseError) {
+        // If content is not JSON, create a basic structure
+        extraction = {
+          name: activeResume.content.split('\n')[0] || 'Unknown',
+          technicalSkills: activeResume.skills || [],
+          softSkills: [],
+          yearsOfExperience: 0,
+          careerLevel: 'Unknown'
+        };
+      }
 
       const summary = {
         fileName: activeResume.fileName,

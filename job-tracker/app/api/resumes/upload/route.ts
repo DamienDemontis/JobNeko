@@ -20,23 +20,50 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get('resume') as File;
+    const displayName = formData.get('displayName') as string;
+    const setPrimary = formData.get('setPrimary') === 'true';
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Validate file type
-    if (file.type !== 'application/pdf') {
+    if (!displayName || displayName.trim().length === 0) {
+      return NextResponse.json({ error: 'Display name is required' }, { status: 400 });
+    }
+
+    // Check resume count limit (30 max)
+    const resumeCount = await prisma.resume.count({
+      where: {
+        userId: user.id,
+        isActive: true
+      }
+    });
+
+    if (resumeCount >= 30) {
       return NextResponse.json(
-        { error: 'Only PDF files are supported' },
+        { error: 'Resume limit reached. Maximum 30 resumes allowed. Please delete some resumes first.' },
         { status: 400 }
       );
     }
 
-    // Validate file size (5MB limit)
-    if (file.size > 5 * 1024 * 1024) {
+    // Validate file type (PDF, DOC, DOCX)
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
       return NextResponse.json(
-        { error: 'File size too large. Maximum 5MB allowed.' },
+        { error: 'Invalid file type. Only PDF, DOC, and DOCX files are supported.' },
+        { status: 400 }
+      );
+    }
+
+    // Validate file size (10MB limit)
+    if (file.size > 10 * 1024 * 1024) {
+      return NextResponse.json(
+        { error: 'File size too large. Maximum 10MB allowed.' },
         { status: 400 }
       );
     }
@@ -59,26 +86,44 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(bytes);
     await writeFile(filePath, buffer);
 
-    // Extract raw text from PDF (simple and reliable)
-    const extractedData = await aiResumeExtractor.extractFromPDF(buffer, fileName);
+    // Get user's API key (handles encryption and platform fallback securely)
+    const { getUserApiKey } = await import('@/lib/utils/api-key-helper');
+    const apiKey = await getUserApiKey(user.id);
 
-    // Deactivate previous resumes
-    await prisma.resume.updateMany({
-      where: { userId: user.id },
-      data: { isActive: false },
-    });
+    // Extract raw text from PDF (simple and reliable)
+    console.log('Starting PDF extraction for:', fileName);
+    const extractedData = await aiResumeExtractor.extractFromPDF(buffer, fileName, apiKey);
+    console.log('PDF extraction completed successfully');
+
+    // If setting as primary or this is the first resume, handle primary logic
+    const shouldBePrimary = setPrimary || resumeCount === 0;
+
+    if (shouldBePrimary) {
+      // Unset all existing primary flags
+      await prisma.resume.updateMany({
+        where: {
+          userId: user.id,
+          isPrimary: true
+        },
+        data: { isPrimary: false }
+      });
+    }
 
     // Create resume record with raw text
     const resume = await prisma.resume.create({
       data: {
         userId: user.id,
+        displayName: displayName.trim(),
         fileName: file.name,
         fileUrl,
+        fileSizeBytes: file.size,
         content: extractedData.rawText || extractedData.summary || '', // Store raw text content
         skills: '[]', // AI services will extract when needed
         experience: '[]', // AI services will extract when needed
         education: '[]', // AI services will extract when needed
+        isPrimary: shouldBePrimary,
         isActive: true,
+        usageCount: 0
       },
     });
 
@@ -98,18 +143,58 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
+      success: true,
       resume: {
         id: resume.id,
-        filename: file.name,
+        displayName: resume.displayName,
+        fileName: file.name,
+        fileSizeBytes: file.size,
+        isPrimary: resume.isPrimary,
         uploadedAt: resume.createdAt.toISOString(),
         extractedText: extractedData.rawText || extractedData.summary || '', // Return full content
         rawText: extractedData.rawText || '', // Return full raw text
         createdAt: resume.createdAt.toISOString(),
       },
-      message: 'Resume uploaded and text extracted successfully',
+      message: 'Resume uploaded and extracted successfully',
     });
   } catch (error) {
     console.error('Resume upload error:', error);
+
+    // Provide more specific error messages
+    if (error instanceof Error) {
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+
+      // Check for specific error types
+      if (error.message.includes('AI service not configured')) {
+        return NextResponse.json(
+          { error: 'AI service configuration error. Please contact support.' },
+          { status: 503 }
+        );
+      }
+
+      if (error.message.includes('Failed to extract text from PDF')) {
+        return NextResponse.json(
+          { error: 'Unable to extract text from PDF. Please ensure the file is not password protected.' },
+          { status: 400 }
+        );
+      }
+
+      if (error.message.includes('Resume extraction failed')) {
+        return NextResponse.json(
+          { error: 'Unable to process resume content. Please try again.' },
+          { status: 400 }
+        );
+      }
+
+      return NextResponse.json(
+        { error: `Upload failed: ${error.message}` },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Failed to upload resume' },
       { status: 500 }

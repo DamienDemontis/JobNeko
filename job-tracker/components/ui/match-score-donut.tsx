@@ -8,11 +8,23 @@ interface MatchScoreDonutProps {
   strokeWidth?: number;
 }
 
+// Utility function to get color class based on score (exported for use in other components)
+export function getScoreColorClass(score: number): string {
+  if (score >= 90) return 'text-emerald-600';
+  if (score >= 80) return 'text-green-600';
+  if (score >= 70) return 'text-lime-600';
+  if (score >= 60) return 'text-yellow-600';
+  if (score >= 50) return 'text-orange-600';
+  if (score >= 40) return 'text-red-600';
+  return 'text-red-800';
+}
+
 export function MatchScoreDonut({ score, size = 80, strokeWidth = 12 }: MatchScoreDonutProps) {
+  const roundedScore = Math.round(score);
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const strokeDasharray = circumference;
-  const strokeDashoffset = circumference - (score / 100) * circumference;
+  const strokeDashoffset = circumference - (roundedScore / 100) * circumference;
 
   // Progressive color based on score - more gentle colors
   const getColor = (score: number) => {
@@ -35,6 +47,9 @@ export function MatchScoreDonut({ score, size = 80, strokeWidth = 12 }: MatchSco
     return 'text-red-800';
   };
 
+  // Export helper for use in other components
+  const colorClass = getColorClass(score);
+
   return (
     <div className="relative inline-flex items-center justify-center">
       <svg
@@ -56,7 +71,7 @@ export function MatchScoreDonut({ score, size = 80, strokeWidth = 12 }: MatchSco
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={getColor(score)}
+          stroke={getColor(roundedScore)}
           strokeWidth={strokeWidth}
           fill="none"
           strokeDasharray={strokeDasharray}
@@ -67,8 +82,8 @@ export function MatchScoreDonut({ score, size = 80, strokeWidth = 12 }: MatchSco
       </svg>
       {/* Score text in center */}
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <div className={`${size > 60 ? 'text-lg' : 'text-sm'} font-bold ${getColorClass(score)} leading-none`}>
-          {score}%
+        <div className={`${size > 60 ? 'text-lg' : 'text-sm'} font-bold ${getColorClass(roundedScore)} leading-none`}>
+          {roundedScore}%
         </div>
         <div className={`${size > 60 ? 'text-xs' : 'text-[10px]'} text-gray-500 ${size > 60 ? 'mt-0.5' : ''}`}>
           match

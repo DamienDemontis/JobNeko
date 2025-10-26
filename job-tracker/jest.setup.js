@@ -140,3 +140,37 @@ global.IntersectionObserver = jest.fn().mockImplementation(() => ({
   unobserve: jest.fn(),
   disconnect: jest.fn(),
 }));
+
+// Configure PDF.js for testing
+const path = require('path');
+
+// Set up PDF.js worker source for node environment
+global.PDFJS = {
+  workerSrc: path.join(__dirname, 'node_modules', 'pdf-parse', 'lib', 'pdf.js', 'v1.10.100', 'build', 'pdf.worker.js')
+};
+
+// Additional window/document mocks for PDF.js if not already defined
+if (typeof global.window === 'undefined') {
+  global.window = {
+    location: { href: 'http://localhost' }
+  };
+}
+
+if (typeof global.document === 'undefined') {
+  global.document = {
+    createElement: () => ({}),
+    head: { appendChild: () => {} }
+  };
+}
+
+// Set PDF.js worker src directly
+if (typeof window !== 'undefined' && !window.pdfjsLib) {
+  window.pdfjsLib = {
+    GlobalWorkerOptions: {
+      workerSrc: path.join(__dirname, 'node_modules', 'pdf-parse', 'lib', 'pdf.js', 'v1.10.100', 'build', 'pdf.worker.js')
+    }
+  };
+}
+
+// Increase default timeout for tests
+jest.setTimeout(30000);

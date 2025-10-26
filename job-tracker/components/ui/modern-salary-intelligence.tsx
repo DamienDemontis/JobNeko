@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -22,6 +24,7 @@ import {
   MapPin,
   DollarSign,
   AlertTriangle,
+  AlertCircle,
   CheckCircle,
   ExternalLink,
   Zap,
@@ -49,7 +52,7 @@ interface ModernSalaryIntelligenceProps {
 }
 
 interface AnalysisState {
-  status: 'idle' | 'searching' | 'analyzing' | 'complete' | 'error';
+  status: 'checking-cache' | 'idle' | 'searching' | 'analyzing' | 'complete' | 'error';
   progress: number;
   currentStep: string;
   analysis: PersonalizedSalaryAnalysis | null;
@@ -65,9 +68,9 @@ export default function ModernSalaryIntelligence({
   token
 }: ModernSalaryIntelligenceProps) {
   const [state, setState] = useState<AnalysisState>({
-    status: 'idle',
+    status: 'checking-cache',
     progress: 0,
-    currentStep: '',
+    currentStep: 'Checking for cached analysis...',
     analysis: null,
     error: null,
   });
@@ -81,10 +84,22 @@ export default function ModernSalaryIntelligence({
     currency: string;
   } | null>(null);
   const [convertingCurrency, setConvertingCurrency] = useState(false);
+  const lastJobIdRef = useRef<string | null>(null);
+  const hasAutoLoadedRef = useRef(false);
 
-  // Auto-load cached analysis on mount
+  // Auto-load cached analysis ONCE when component first mounts
   useEffect(() => {
-    checkForCachedAnalysis();
+    // Only auto-load once per session, not on every re-render or jobId change
+    if (!hasAutoLoadedRef.current) {
+      hasAutoLoadedRef.current = true;
+      lastJobIdRef.current = jobId;
+      checkForCachedAnalysis();
+    } else if (lastJobIdRef.current !== jobId) {
+      // If jobId changes, reset and check cache for new job
+      lastJobIdRef.current = jobId;
+      checkForCachedAnalysis();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
 
   const checkForCachedAnalysis = async () => {
@@ -107,10 +122,27 @@ export default function ModernSalaryIntelligence({
             analysis: cacheData.analysis,
             error: null,
           });
+          return;
         }
       }
+      // No cache found, show initial state
+      setState({
+        status: 'idle',
+        progress: 0,
+        currentStep: '',
+        analysis: null,
+        error: null,
+      });
     } catch (error) {
       console.log('No cached analysis found');
+      // On error, show initial state
+      setState({
+        status: 'idle',
+        progress: 0,
+        currentStep: '',
+        analysis: null,
+        error: null,
+      });
     }
   };
 
@@ -203,13 +235,24 @@ export default function ModernSalaryIntelligence({
       }
 
       const data = await response.json();
+      console.log('🔍 API Response structure:', data);
+
+      // Handle different response structures
+      let analysisData = data.analysis || data;
+
+      // If we get raw AI format, try to access the transformed version
+      if (analysisData.compensation && !analysisData.salaryIntelligence) {
+        console.warn('⚠️ Received raw AI format instead of transformed format:', analysisData);
+        // The transformation should have happened on the server
+        throw new Error('Server returned invalid analysis format');
+      }
 
       setState(prev => ({
         ...prev,
         status: 'complete',
         progress: 100,
         currentStep: 'Analysis complete!',
-        analysis: data.analysis,
+        analysis: analysisData,
       }));
 
       toast.success(forceRefresh ? 'Fresh salary analysis completed!' : 'Salary analysis completed successfully!');
@@ -284,6 +327,32 @@ export default function ModernSalaryIntelligence({
     if (confidence >= 0.4) return 'text-orange-600 bg-orange-50 border-orange-200';
     return 'text-red-600 bg-red-50 border-red-200';
   };
+
+  const renderCacheLoading = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Brain className="w-5 h-5 text-purple-600" />
+          Enhanced Salary Intelligence
+          <Badge className="bg-purple-100 text-purple-700 border-purple-200">
+            <Zap className="w-3 h-3 mr-1" />
+            AI + Live Data
+          </Badge>
+        </CardTitle>
+        <CardDescription>
+          Checking for cached analysis...
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
+        <Skeleton className="h-12 w-full" />
+      </CardContent>
+    </Card>
+  );
 
   const renderInitialState = () => (
     <Card>
@@ -399,7 +468,10 @@ export default function ModernSalaryIntelligence({
 
   const renderAnalysis = () => {
     const { analysis } = state;
-    if (!analysis) return null;
+    if (!analysis || !analysis.salaryIntelligence || !analysis.salaryIntelligence.range) {
+      console.error('Invalid analysis structure:', analysis);
+      return null;
+    }
 
     return (
       <div className="space-y-6">
@@ -410,6 +482,11 @@ export default function ModernSalaryIntelligence({
               <CardTitle className="flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-green-600" />
                 Salary Intelligence
+                {(analysis as any).jobType && (analysis as any).jobType !== 'standard' && (
+                  <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300">
+                    {(analysis as any).jobType.toUpperCase()}
+                  </Badge>
+                )}
                 <Badge className={`${getConfidenceColor(analysis.salaryIntelligence.range.confidence)} border`}>
                   {Math.round(analysis.salaryIntelligence.range.confidence * 100)}% confidence
                 </Badge>
@@ -445,35 +522,67 @@ export default function ModernSalaryIntelligence({
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
-                <div className="text-2xl font-bold text-green-700">
-                  {formatCurrency(
-                    convertedSalaries?.min ?? analysis.salaryIntelligence.range.min,
-                    convertedSalaries?.currency ?? analysis.salaryIntelligence.range.currency
-                  )}
-                </div>
-                <div className="text-sm text-green-600">Minimum</div>
-              </div>
-              <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="text-2xl font-bold text-blue-700">
+            {/* Job Type Note for special cases */}
+            {(analysis as any).jobType && (analysis as any).jobType !== 'standard' && (analysis as any).jobTypeNotes && (
+              <Alert className="bg-yellow-50 border-yellow-200">
+                <AlertCircle className="w-4 h-4 text-yellow-600" />
+                <AlertDescription className="text-yellow-800">
+                  <strong>{(analysis as any).jobType.toUpperCase()} Position:</strong> {(analysis as any).jobTypeNotes}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Check if compensation is fixed (VIE, internship, etc.) */}
+            {(analysis.salaryIntelligence.range as any).isFixed ? (
+              <div className="text-center p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
+                <div className="text-3xl font-bold text-blue-700">
                   {formatCurrency(
                     convertedSalaries?.median ?? analysis.salaryIntelligence.range.median,
                     convertedSalaries?.currency ?? analysis.salaryIntelligence.range.currency
                   )}
                 </div>
-                <div className="text-sm text-blue-600">Market Rate</div>
-              </div>
-              <div className="text-center p-4 bg-purple-50 rounded-lg border border-purple-200">
-                <div className="text-2xl font-bold text-purple-700">
-                  {formatCurrency(
-                    convertedSalaries?.max ?? analysis.salaryIntelligence.range.max,
-                    convertedSalaries?.currency ?? analysis.salaryIntelligence.range.currency
-                  )}
+                <div className="text-sm text-blue-600 mt-2">
+                  {(analysis as any).jobType === 'vie' ? 'Fixed VIE Gratification' :
+                   (analysis as any).jobType === 'internship' ? 'Fixed Internship Stipend' :
+                   'Fixed Compensation'}
                 </div>
-                <div className="text-sm text-purple-600">Maximum</div>
+                {(analysis as any).jobTypeNotes && (
+                  <div className="text-xs text-gray-600 mt-2">
+                    {(analysis as any).jobTypeNotes}
+                  </div>
+                )}
               </div>
-            </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
+                  <div className="text-2xl font-bold text-green-700">
+                    {formatCurrency(
+                      convertedSalaries?.min ?? analysis.salaryIntelligence.range.min,
+                      convertedSalaries?.currency ?? analysis.salaryIntelligence.range.currency
+                    )}
+                  </div>
+                  <div className="text-sm text-green-600">Minimum</div>
+                </div>
+                <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="text-2xl font-bold text-blue-700">
+                    {formatCurrency(
+                      convertedSalaries?.median ?? analysis.salaryIntelligence.range.median,
+                      convertedSalaries?.currency ?? analysis.salaryIntelligence.range.currency
+                    )}
+                  </div>
+                  <div className="text-sm text-blue-600">Market Rate</div>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg border border-purple-200">
+                  <div className="text-2xl font-bold text-purple-700">
+                    {formatCurrency(
+                      convertedSalaries?.max ?? analysis.salaryIntelligence.range.max,
+                      convertedSalaries?.currency ?? analysis.salaryIntelligence.range.currency
+                    )}
+                  </div>
+                  <div className="text-sm text-purple-600">Maximum</div>
+                </div>
+              </div>
+            )}
 
             {convertedSalaries && (
               <div className="text-xs text-muted-foreground text-center bg-blue-50 p-2 rounded">
@@ -550,7 +659,7 @@ export default function ModernSalaryIntelligence({
                 </div>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Skills Match</span>
+                    <span className="text-sm font-medium">Detailed Skills Match</span>
                     <div className="flex items-center gap-2">
                       <Progress value={analysis.personalizedInsights.skillsMatch} className="w-16 h-2" />
                       <span className="text-sm">{analysis.personalizedInsights.skillsMatch}%</span>
@@ -564,10 +673,6 @@ export default function ModernSalaryIntelligence({
                         View detailed breakdown
                       </CollapsibleTrigger>
                       <CollapsibleContent className="mt-2 space-y-2">
-                        <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
-                          {analysis.personalizedInsights.skillsBreakdown.matchExplanation}
-                        </div>
-
                         {analysis.personalizedInsights.skillsBreakdown.matchingSkills.length > 0 && (
                           <div>
                             <div className="text-xs font-medium text-green-700 mb-1">✓ Matching Skills</div>
@@ -643,12 +748,14 @@ export default function ModernSalaryIntelligence({
             {analysis.personalizedInsights.salaryProgression && (
               <div className="space-y-2">
                 <h4 className="font-semibold">Salary Progression</h4>
-                {analysis.personalizedInsights.salaryProgression.currentVsOffer && (
+                {analysis.personalizedInsights.salaryProgression.currentVsOffer &&
+                 analysis.personalizedInsights.salaryProgression.currentVsOffer !== 'N/A' && (
                   <p className="text-sm text-gray-700">
                     <strong>vs Current:</strong> {analysis.personalizedInsights.salaryProgression.currentVsOffer}
                   </p>
                 )}
-                {analysis.personalizedInsights.salaryProgression.expectedVsOffer && (
+                {analysis.personalizedInsights.salaryProgression.expectedVsOffer &&
+                 analysis.personalizedInsights.salaryProgression.expectedVsOffer !== 'N/A' && (
                   <p className="text-sm text-gray-700">
                     <strong>vs Expected:</strong> {analysis.personalizedInsights.salaryProgression.expectedVsOffer}
                   </p>
@@ -730,7 +837,7 @@ export default function ModernSalaryIntelligence({
                     <ExternalLink className="w-5 h-5 text-gray-600" />
                     Data Sources
                     <Badge variant="outline" className="text-xs">
-                      {analysis.sources.webSources.length} sources
+                      {analysis.sources?.webSources?.length || 0} sources
                     </Badge>
                   </div>
                   {sourcesExpanded ? (
@@ -744,7 +851,7 @@ export default function ModernSalaryIntelligence({
             <CollapsibleContent>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {analysis.sources.webSources.map((source, index) => (
+                  {(analysis.sources?.webSources || []).map((source, index) => (
                 <a
                   key={index}
                   href={source.url}
@@ -761,7 +868,7 @@ export default function ModernSalaryIntelligence({
                           {source.type.replace('_', ' ')}
                         </Badge>
                         <Badge variant="outline" className="text-xs">
-                          {Math.round(source.relevance * 100)}% relevance
+                          {source.relevance}% relevance
                         </Badge>
                       </div>
                     </div>
@@ -805,6 +912,7 @@ export default function ModernSalaryIntelligence({
     </Card>
   );
 
+  if (state.status === 'checking-cache') return renderCacheLoading();
   if (state.status === 'idle') return renderInitialState();
   if (state.status === 'searching' || state.status === 'analyzing') return renderProgress();
   if (state.status === 'complete') return renderAnalysis();

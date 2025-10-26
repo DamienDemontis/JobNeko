@@ -1,7 +1,7 @@
 // AI-Powered Negotiation Coach with Resume Analysis
 // Uses user's resume and profile data to provide personalized negotiation strategies
 
-import { generateCompletion } from '../ai-service';
+import { unifiedAI } from './unified-ai-service';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -159,16 +159,15 @@ export class AINegotiationCoachService {
     // Generate negotiation strategy
     const prompt = this.buildNegotiationPrompt(request, userProfile, ragContext);
 
-    const aiResponse = await generateCompletion(prompt, {
-      max_tokens: 3000,
-      temperature: 0.3 // Balanced for creativity and consistency
+    const aiResponse = await unifiedAI.process({
+      operation: 'general_completion',
+      content: prompt
     });
-
-    if (!aiResponse || !aiResponse.content) {
+    if (!aiResponse || !(typeof aiResponse.data === 'string' ? aiResponse.data : JSON.stringify(aiResponse.data))) {
       throw new Error('Failed to generate negotiation strategy. AI service unavailable.');
     }
 
-    const strategy = this.parseAIResponse(aiResponse.content);
+    const strategy = this.parseAIResponse((typeof aiResponse.data === 'string' ? aiResponse.data : JSON.stringify(aiResponse.data)));
 
     // Update readiness based on actual data
     strategy.readiness = {

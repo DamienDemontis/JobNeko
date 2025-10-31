@@ -107,6 +107,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     const response = await generateCompletion(prompt, {
       max_tokens: options.max_tokens || 4000, // Increased from 2000 to handle reasoning tokens
       temperature: options.temperature || 0.7,
+      model: options.model as any, // Pass through model selection (gpt-5-mini, etc.)
       reasoning: 'low', // Use low reasoning to avoid token exhaustion
       apiKey // Pass user's API key
     });

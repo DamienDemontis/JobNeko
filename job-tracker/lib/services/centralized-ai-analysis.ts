@@ -54,7 +54,7 @@ class CentralizedAIAnalysisService {
     additionalData?: Record<string, any>,
     options: AnalysisOptions = {}
   ): Promise<AnalysisResult<T>> {
-    const { forceRefresh = false, timeout = 30000, maxRetries = 2 } = options;
+    const { forceRefresh = false, timeout = 120000, maxRetries = 2 } = options; // 2 minutes timeout
 
     try {
       // First check cache if not forcing refresh
@@ -126,7 +126,7 @@ class CentralizedAIAnalysisService {
     userId: string,
     token: string,
     additionalData?: Record<string, any>,
-    timeout: number = 30000,
+    timeout: number = 120000, // 2 minutes default timeout
     maxRetries: number = 2
   ): Promise<AnalysisResult<T>> {
     let lastError: Error | null = null;

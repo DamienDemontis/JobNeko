@@ -135,7 +135,9 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 *.db
-prisma/dev.db*
+**/prisma/dev.db*
+**/prisma/*.db
+**/prisma/*.db-journal
 
 # AI/ML specific
 *.pkl

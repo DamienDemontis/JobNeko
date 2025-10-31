@@ -169,11 +169,16 @@ REQUIREMENTS:
 - Consider user's experience level: ${userContext.experienceLevel || 'Not specified'}
 `;
 
+      // Use GPT-5-mini for faster question generation
       const response = await aiServiceManagerClient.generateCompletion(
         questionsPrompt,
         'interview_prep',
         userId,
-        { temperature: 0.4, max_tokens: 2500 }
+        {
+          temperature: 0.4,
+          max_tokens: 2500,
+          model: 'gpt-5-mini'
+        }
       );
 
       const questionsData = JSON.parse(response.content);
@@ -269,11 +274,16 @@ Scores should be 1-10 where:
 Be constructive but honest in feedback.
 `;
 
+      // Use GPT-5-mini for faster evaluations
       const evalResponse = await aiServiceManagerClient.generateCompletion(
         evaluationPrompt,
         'interview_prep',
         userId,
-        { temperature: 0.3, max_tokens: 1500 }
+        {
+          temperature: 0.3,
+          max_tokens: 800,
+          model: 'gpt-5-mini'
+        }
       );
 
       const evaluation = JSON.parse(evalResponse.content);
@@ -382,11 +392,16 @@ READINESS LEVELS:
 - not_ready: <5 average, substantial preparation required
 `;
 
+      // Use GPT-5-mini for faster session feedback
       const feedbackResponse = await aiServiceManagerClient.generateCompletion(
         feedbackPrompt,
         'interview_prep',
         userId,
-        { temperature: 0.3, max_tokens: 1000 }
+        {
+          temperature: 0.3,
+          max_tokens: 1000,
+          model: 'gpt-5-mini'
+        }
       );
 
       const sessionFeedback = JSON.parse(feedbackResponse.content);

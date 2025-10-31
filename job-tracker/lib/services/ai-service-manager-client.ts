@@ -80,6 +80,10 @@ class AIServiceManagerClient {
     try {
       console.log(`🤖 Requesting AI generation: ${taskType}`);
 
+      // Create AbortController with 2 minute timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes
+
       const response = await fetch('/api/ai/generate', {
         method: 'POST',
         headers: {
@@ -92,11 +96,15 @@ class AIServiceManagerClient {
           options: {
             // No token limits - using unified AI architecture
             temperature: options.temperature || 0.7,
+            max_tokens: options.max_tokens,
             model: options.model
           },
           metadata: { userId }
-        })
+        }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const error = await response.json();
@@ -123,6 +131,15 @@ class AIServiceManagerClient {
       return aiResponse;
     } catch (error) {
       console.error(`❌ AI generation failed for ${taskType}:`, error);
+
+      // Better error message for abort/timeout
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new Error('Request timed out after 2 minutes. Please try again with a shorter prompt or simpler task.');
+        }
+        throw new Error(error.message || `AI generation failed for ${taskType}`);
+      }
+
       throw error;
     }
   }

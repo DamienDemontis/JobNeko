@@ -330,45 +330,150 @@ Return ONLY the JSON object, no markdown formatting.`
   },
 
   smart_questions: {
-    maxTokens: 3000,
+    maxTokens: 3500,
     temperature: 0.4,
     cacheHours: 8,
-    requiredFields: ['questions', 'categories'],
+    requiredFields: ['questions', 'redFlagQuestions'],
     promptTemplate: (job: any, userProfile: any) => `
-You are an expert interview strategist. Generate strategic questions for this specific role.
+You are an expert interview strategist helping a candidate prepare strategic questions to ask their interviewer.
+
+**CRITICAL**: These are questions the CANDIDATE will ask the INTERVIEWER during the job interview, NOT questions the interviewer asks the candidate.
 
 JOB DETAILS:
 - Title: ${job.title}
 - Company: ${job.company}
-- Location: ${job.location}
+- Location: ${job.location || 'Not specified'}
+- Description: ${job.description || 'Not provided'}
+- Requirements: ${job.requirements || 'Not provided'}
 
-Return a JSON object with this structure:
+Generate strategic, thoughtful questions the CANDIDATE should ask the INTERVIEWER during their job interview. These questions should:
+1. Demonstrate deep preparation and research about ${job.company}
+2. Help the candidate evaluate if this role/company is a good fit
+3. Be SPECIFIC to ${job.company} and ${job.title} - NO generic questions
+4. Reveal important information about culture, expectations, and potential issues
+5. Show genuine interest and critical thinking
+
+Return a JSON object with this EXACT structure:
 {
   "questions": [
     {
-      "question": "How has the company's focus on 5G technology impacted the strategic priorities for backend development?",
-      "category": "strategic|technical|culture|growth",
-      "stage": "panel|final|any",
-      "priority": "high|medium|low",
+      "question": "I noticed ${job.company} recently [specific event/news/achievement]. How is that impacting the priorities for this ${job.title} role?",
+      "category": "research",
+      "priority": "high",
       "effectiveness": 9,
-      "reasoning": "Shows research depth and connects to role",
-      "followUps": ["What role would this position play in that strategy?"]
+      "reasoning": "Demonstrates company research and connects to role impact",
+      "bestTime": "Mid-interview when discussing role responsibilities",
+      "followUps": ["What would success look like in supporting that initiative?"]
     }
   ],
-  "categories": {
-    "strategic": 8,
-    "technical": 6,
-    "culture": 4,
-    "growth": 5
-  },
-  "customizationTips": [
-    "Research recent company announcements",
-    "Connect questions to specific role responsibilities"
+  "redFlagQuestions": [
+    {
+      "question": "What's the typical tenure for someone in this ${job.title} role?",
+      "redFlag": "High turnover in the position",
+      "goodAnswer": "Average tenure of 3+ years, people leave for promotions",
+      "concerningAnswer": "High turnover (< 1 year), vague answers, defensiveness",
+      "priority": "high",
+      "reasoning": "Reveals stability and growth opportunities"
+    }
   ],
   "analysisDate": "${new Date().toISOString()}"
 }
 
-Return ONLY the JSON object, no markdown formatting.`
+**CATEGORIES** - These are MUTUALLY EXCLUSIVE. Each question belongs to ONE category ONLY:
+
+1. **"research"** - Questions about EXTERNAL information about the company:
+   - Recent news articles, press releases, earnings reports
+   - Industry trends and how ${job.company} compares to competitors
+   - Products, services, technology stack, patents
+   - Market position, customer base, partnerships
+   - Recent acquisitions, funding rounds, leadership changes
+   Example: "I read that ${job.company} recently launched X product. How has that affected the engineering roadmap?"
+
+2. **"culture"** - Questions about INTERNAL team environment and work style:
+   - Day-to-day work-life balance (hours, flexibility, burnout)
+   - Team collaboration style and communication patterns
+   - Decision-making processes, autonomy levels
+   - Feedback culture, code review practices
+   - Remote work policies, office environment
+   - Team social events, diversity initiatives
+   Example: "How does the team handle work-life balance during sprint deadlines?"
+
+3. **"role"** - Questions about THIS SPECIFIC ${job.title} POSITION:
+   - Daily tasks and responsibilities for THIS role
+   - Specific tools, languages, frameworks for THIS job
+   - Team structure (who you report to, who reports to you)
+   - First 30/60/90 days expectations
+   - Performance metrics and success criteria for THIS role
+   - Onboarding process, training, mentorship
+   Example: "What would a typical day look like for this ${job.title} position?"
+
+4. **"strategy"** - Questions about COMPANY-LEVEL future direction:
+   - Long-term vision (3-5 year goals)
+   - Planned market expansion, new product lines
+   - Strategic priorities for the organization
+   - Biggest challenges facing the company
+   - Competitive advantages and differentiation
+   - Growth trajectory and scaling plans
+   Example: "What are ${job.company}'s top 3 strategic priorities for the next 2 years?"
+
+**STRICT RULES TO AVOID OVERLAP**:
+- DO NOT ask about "career growth" in role questions → That belongs in "culture" (internal team environment)
+- DO NOT ask about "company challenges" in role questions → That belongs in "strategy" (company-level)
+- DO NOT ask about "team size" in research questions → That belongs in "role" (specific to this position)
+- DO NOT ask about "work culture" in role questions → That belongs in "culture" category
+- DO NOT ask about "product roadmap" in role questions → That belongs in "strategy" (company future)
+
+Each question MUST fit ONLY ONE category. If a question could fit multiple categories, it's TOO BROAD - make it more specific.
+
+**REQUIREMENTS**:
+- Generate EXACTLY 12-16 strategic questions distributed across categories:
+  * 3-4 **research** questions - ONLY about external company info, news, industry, competitors
+    Example: "I noticed ${job.company} was mentioned in [article] about [topic]. How does that impact your position in the market?"
+
+  * 3-4 **culture** questions - ONLY about internal team environment, work-life balance, collaboration
+    Example: "How does the team typically handle on-call rotations and work-life balance?"
+
+  * 3-4 **role** questions - ONLY about THIS specific ${job.title} position's day-to-day work
+    Example: "What tools and technologies would I be working with daily in this ${job.title} role?"
+
+  * 3-4 **strategy** questions - ONLY about company-wide future direction and long-term goals
+    Example: "What are the company's main strategic priorities for the next 18-24 months?"
+
+- Each question MUST be categorized correctly. Double-check that:
+  * Research questions mention external sources (news, reports, industry data)
+  * Culture questions focus on HOW people work together
+  * Role questions are specific to THIS ${job.title} position
+  * Strategy questions discuss company-wide goals, not team-level plans
+- Generate 6-8 red flag questions covering:
+  * Turnover and tenure
+  * Work-life balance red flags
+  * Management and leadership issues
+  * Team dynamics problems
+  * Role clarity and expectations
+  * Growth and development limitations
+- ALL questions must be specific to ${job.company} and ${job.title}
+- NO generic questions like "What does success look like?" or "Describe the culture"
+- Include specific details from job description and requirements
+- "effectiveness" should be 7-10 (these are high-value questions)
+
+**PRIORITY LEVELS**:
+- "high": Must-ask questions that reveal critical information
+- "medium": Important questions that provide valuable insights
+- "low": Nice-to-have questions if time permits
+
+**FINAL VALIDATION BEFORE RETURNING**:
+Before you return the JSON, verify:
+1. Each category has 3-4 DIFFERENT questions
+2. NO question appears in multiple categories
+3. Research questions mention external sources/data
+4. Culture questions focus on team environment/work style
+5. Role questions are specific to the ${job.title} position
+6. Strategy questions discuss company-wide future plans
+7. No overlap between categories
+
+If you find any duplicate topics across categories, REWRITE those questions to be more specific to their category.
+
+Return ONLY the JSON object, no markdown formatting, no additional text.`
   }
 };
 

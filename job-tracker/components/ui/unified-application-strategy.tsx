@@ -33,6 +33,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { AnalysisButton } from '@/components/shared/analysis-button';
+import { AnalysisLoadingState } from '@/components/shared/analysis-loading-state';
 
 // Strategy data from ApplicationStrategyIntelligence API
 interface StrategyAnalysis {
@@ -296,15 +298,14 @@ export default function UnifiedApplicationStrategy({
             </div>
           </div>
           {analysis && !loading && (
-            <Button
+            <AnalysisButton
               onClick={() => runAnalysis(true)}
-              disabled={loading}
+              loading={loading}
+              icon={RefreshCw}
+              label="Refresh"
               variant="outline"
               size="sm"
-            >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Refresh
-            </Button>
+            />
           )}
         </div>
         {cached && cacheAge && (
@@ -318,17 +319,8 @@ export default function UnifiedApplicationStrategy({
       <CardContent>
         {/* Cache Checking State */}
         {checkingCache && (
-          <div className="space-y-4 py-8">
-            <div className="text-center text-sm text-gray-600 mb-6">
-              Checking for cached analysis...
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Skeleton className="h-32 w-full" />
-              <Skeleton className="h-32 w-full" />
-              <Skeleton className="h-32 w-full" />
-            </div>
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-12 w-full" />
+          <div className="py-8">
+            <AnalysisLoadingState type="checking-cache" />
           </div>
         )}
 
@@ -384,22 +376,23 @@ export default function UnifiedApplicationStrategy({
               </div>
             )}
 
-            <Button
+            <AnalysisButton
               onClick={() => runAnalysis(false)}
-              disabled={loading || loadingResumes || resumes.length === 0 || !selectedResumeId}
-            >
-              <Target className="w-4 h-4 mr-2" />
-              Generate Strategy
-            </Button>
+              loading={loading}
+              disabled={loadingResumes || resumes.length === 0 || !selectedResumeId}
+              icon={Target}
+              label="Generate Strategy"
+            />
           </div>
         )}
 
         {/* Loading State */}
         {loading && !analysis && (
-          <div className="text-center py-12">
-            <RefreshCw className="w-12 h-12 text-blue-600 mx-auto mb-4 animate-spin" />
-            <p className="text-gray-600 mb-2">Analyzing application strategy...</p>
-            <p className="text-sm text-gray-500">Searching real data and optimizing approach</p>
+          <div className="py-12">
+            <AnalysisLoadingState
+              type="generating"
+              message="Analyzing application strategy and searching real data..."
+            />
           </div>
         )}
 

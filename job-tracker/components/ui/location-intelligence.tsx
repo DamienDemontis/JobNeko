@@ -30,6 +30,8 @@ import { toast } from 'sonner';
 import { DataSourcesSection, DataSource } from '@/components/shared/data-sources-section';
 import { QualityMetricGrid, QualityMetric } from '@/components/shared/quality-metric-grid';
 import { InfoGrid, InfoItem } from '@/components/shared/info-grid';
+import { AnalysisButton } from '@/components/shared/analysis-button';
+import { AnalysisLoadingState } from '@/components/shared/analysis-loading-state';
 
 interface LocationIntelligenceProps {
   jobId: string;
@@ -244,18 +246,8 @@ export default function LocationIntelligence({
           Location Intelligence
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="text-center text-sm text-gray-600 mb-4">
-          Checking for cached analysis...
-        </div>
-        <div className="space-y-4">
-          <Skeleton className="h-24 w-full" />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
-          </div>
-          <Skeleton className="h-12 w-full" />
-        </div>
+      <CardContent>
+        <AnalysisLoadingState type="checking-cache" />
       </CardContent>
     </Card>
   );
@@ -278,10 +270,13 @@ export default function LocationIntelligence({
               cost of living, quality of life metrics, and practical information.
             </p>
           </div>
-          <Button onClick={() => runAnalysis()} className="w-full max-w-md mx-auto">
-            <Zap className="w-4 h-4 mr-2" />
-            Start Location Analysis
-          </Button>
+          <AnalysisButton
+            onClick={() => runAnalysis()}
+            loading={false}
+            icon={Zap}
+            label="Start Location Analysis"
+            className="w-full max-w-md mx-auto"
+          />
         </div>
       </CardContent>
     </Card>
@@ -369,10 +364,14 @@ export default function LocationIntelligence({
                   {analysis.costOfLiving.affordabilityRating.toUpperCase()}
                 </Badge>
               </CardTitle>
-              <Button variant="outline" size="sm" onClick={() => runAnalysis(true)}>
-                <RefreshCw className="w-4 h-4 mr-1" />
-                Refresh
-              </Button>
+              <AnalysisButton
+                onClick={() => runAnalysis(true)}
+                loading={false}
+                icon={RefreshCw}
+                label="Refresh"
+                variant="outline"
+                size="sm"
+              />
             </div>
           </CardHeader>
           <CardContent>
@@ -603,10 +602,13 @@ export default function LocationIntelligence({
             {state.error || 'Failed to analyze location. Please try again.'}
           </AlertDescription>
         </Alert>
-        <Button onClick={() => runAnalysis()} className="w-full">
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Retry Analysis
-        </Button>
+        <AnalysisButton
+          onClick={() => runAnalysis()}
+          loading={false}
+          icon={RefreshCw}
+          label="Retry Analysis"
+          className="w-full"
+        />
       </CardContent>
     </Card>
   );

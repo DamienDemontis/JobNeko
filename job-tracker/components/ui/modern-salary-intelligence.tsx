@@ -41,6 +41,8 @@ import { toast } from 'sonner';
 import type { PersonalizedSalaryAnalysis } from '@/lib/services/enhanced-salary-rag';
 import { salaryAnalysisCache } from '@/lib/services/salary-analysis-cache';
 import { currencyConverter } from '@/lib/services/currency-converter';
+import { AnalysisButton } from '@/components/shared/analysis-button';
+import { AnalysisLoadingState } from '@/components/shared/analysis-loading-state';
 
 interface ModernSalaryIntelligenceProps {
   jobId: string;
@@ -343,13 +345,8 @@ export default function ModernSalaryIntelligence({
           Checking for cached analysis...
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-32 w-full" />
-        </div>
-        <Skeleton className="h-12 w-full" />
+      <CardContent>
+        <AnalysisLoadingState type="checking-cache" />
       </CardContent>
     </Card>
   );
@@ -408,10 +405,14 @@ export default function ModernSalaryIntelligence({
           </div>
         )}
 
-        <Button onClick={() => runAnalysis(false)} className="w-full" size="lg">
-          <TrendingUp className="w-4 h-4 mr-2" />
-          Start Intelligent Analysis
-        </Button>
+        <AnalysisButton
+          onClick={() => runAnalysis(false)}
+          loading={false}
+          icon={TrendingUp}
+          label="Start Intelligent Analysis"
+          className="w-full"
+          size="lg"
+        />
       </CardContent>
     </Card>
   );
@@ -455,12 +456,7 @@ export default function ModernSalaryIntelligence({
         </div>
 
         {state.status === 'analyzing' && (
-          <div className="text-center">
-            <div className="inline-flex items-center gap-2 text-purple-600">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
-              <span className="text-sm font-medium">AI is analyzing your personalized context...</span>
-            </div>
-          </div>
+          <AnalysisLoadingState type="generating" message="AI is analyzing your personalized context..." />
         )}
       </CardContent>
     </Card>
@@ -883,13 +879,13 @@ export default function ModernSalaryIntelligence({
         </Card>
 
         <div className="flex justify-center">
-          <Button
+          <AnalysisButton
             onClick={() => runAnalysis(true)}
+            loading={false}
+            icon={RefreshCw}
+            label="Run New Analysis"
             variant="outline"
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Run New Analysis
-          </Button>
+          />
         </div>
       </div>
     );
@@ -905,9 +901,13 @@ export default function ModernSalaryIntelligence({
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-gray-700">{state.error}</p>
-        <Button onClick={() => runAnalysis(false)} variant="outline">
-          Try Again
-        </Button>
+        <AnalysisButton
+          onClick={() => runAnalysis(false)}
+          loading={false}
+          icon={RefreshCw}
+          label="Try Again"
+          variant="outline"
+        />
       </CardContent>
     </Card>
   );

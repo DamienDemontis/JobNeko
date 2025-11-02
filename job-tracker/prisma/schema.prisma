@@ -531,3 +531,37 @@ model AITask {
   @@index([jobId])
   @@index([status, updatedAt])
 }
+
+model InterviewPracticeSession {
+  id                String   @id @default(cuid())
+  userId            String
+  jobId             String
+
+  // Session details
+  sessionType       String   // mock_interview, practice_drill, skill_focus
+  difficulty        String   // easy, medium, hard
+
+  // Questions and responses (stored as JSON)
+  questionsData     String   // JSON array of questions
+  responsesData     String?  // JSON array of responses with evaluations
+
+  // Session status
+  status            String   @default("in_progress") // in_progress, completed, abandoned
+  currentQuestionIndex Int   @default(0)
+
+  // Timing
+  startedAt         DateTime @default(now())
+  completedAt       DateTime?
+  totalDuration     Int?     // seconds
+
+  // Overall feedback (stored as JSON)
+  overallFeedback   String?  // JSON object with performance summary
+
+  // Metadata
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([jobId])
+  @@index([status])
+}

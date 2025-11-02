@@ -30,6 +30,7 @@ interface UnifiedInterviewCenterProps {
 export function UnifiedInterviewCenter({
   jobId,
   userId,
+  token,
   jobData
 }: UnifiedInterviewCenterProps) {
   return (
@@ -49,6 +50,7 @@ export function UnifiedInterviewCenter({
           <InterviewCoach
             jobId={jobId}
             userId={userId}
+            token={token}
             jobData={jobData}
           />
         </CardContent>

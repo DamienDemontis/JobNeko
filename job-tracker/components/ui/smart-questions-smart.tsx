@@ -101,7 +101,7 @@ export default function SmartQuestionsSmart({
       title="Questions to Ask Your Interviewer"
       description={`Strategic questions for you to ask during your interview at ${company}. Demonstrate preparation and evaluate if this role is right for you.`}
       icon={<MessageSquare className="h-5 w-5" />}
-      autoLoad={true}
+      autoLoad={false}
     >
       {(data, helpers) => (
         <div className="space-y-6">

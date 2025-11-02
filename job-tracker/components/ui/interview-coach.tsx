@@ -91,6 +91,7 @@ interface SessionFeedback {
 interface InterviewCoachProps {
   jobId: string;
   userId: string;
+  token: string;
   jobData: {
     title: string;
     company: string;
@@ -99,11 +100,14 @@ interface InterviewCoachProps {
   };
 }
 
-export function InterviewCoach({ jobId, userId, jobData }: InterviewCoachProps) {
+export function InterviewCoach({ jobId, userId, token, jobData }: InterviewCoachProps) {
   const [currentSession, setCurrentSession] = useState<CoachingSession | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [pastSessions, setPastSessions] = useState<any[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [userResponse, setUserResponse] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [recognition, setRecognition] = useState<any>(null);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [sessionType, setSessionType] = useState<string>('mock_interview');
   const [difficulty, setDifficulty] = useState<string>('medium');
@@ -111,6 +115,8 @@ export function InterviewCoach({ jobId, userId, jobData }: InterviewCoachProps) 
   const [showFeedback, setShowFeedback] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("coach");
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [interimTranscript, setInterimTranscript] = useState('');
 
   const generateCoachingQuestions = async (type: string, difficultyLevel: string) => {
     setIsLoading(true);
@@ -183,8 +189,25 @@ REQUIREMENTS:
 
       const questionsData = JSON.parse(response.content);
 
+      // Create session in database
+      const createResponse = await fetch('/api/interview-practice', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          jobId,
+          sessionType: type,
+          difficulty: difficultyLevel,
+          questions: questionsData.questions
+        })
+      });
+
+      const { session: dbSession } = await createResponse.json();
+
       const newSession: CoachingSession = {
-        id: `session_${Date.now()}`,
+        id: dbSession.id,
         sessionType: type as any,
         questions: questionsData.questions,
         responses: [],
@@ -192,6 +215,7 @@ REQUIREMENTS:
       };
 
       setCurrentSession(newSession);
+      setCurrentSessionId(dbSession.id);
       setCurrentQuestionIndex(0);
       setTimeRemaining(questionsData.questions[0]?.expectedDuration * 60 || 300);
 
@@ -274,15 +298,16 @@ Scores should be 1-10 where:
 Be constructive but honest in feedback.
 `;
 
-      // Use GPT-5-mini for faster evaluations
+      // Use GPT-5-mini for faster evaluations with higher token limit
       const evalResponse = await aiServiceManagerClient.generateCompletion(
         evaluationPrompt,
         'interview_prep',
         userId,
         {
           temperature: 0.3,
-          max_tokens: 800,
-          model: 'gpt-5-mini'
+          max_tokens: 2000,
+          model: 'gpt-5-mini',
+          reasoning: 'low'
         }
       );
 
@@ -422,8 +447,53 @@ READINESS LEVELS:
     }
   };
 
+  const loadPracticeHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const response = await fetch(`/api/interview-practice?jobId=${jobId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPastSessions(data.sessions || []);
+      }
+    } catch (error) {
+      console.error('Error loading practice history:', error);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const saveSessionToDatabase = async (session: CoachingSession) => {
+    try {
+      if (currentSessionId) {
+        // Update existing session
+        await fetch(`/api/interview-practice/${currentSessionId}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            responsesData: session.responses,
+            currentQuestionIndex,
+            status: session.completedAt ? 'completed' : 'in_progress',
+            totalDuration: session.completedAt && session.startedAt
+              ? Math.floor((session.completedAt.getTime() - session.startedAt.getTime()) / 1000)
+              : undefined,
+            overallFeedback: session.overallFeedback
+          })
+        });
+      }
+    } catch (error) {
+      console.error('Error saving session:', error);
+    }
+  };
+
   const startNewSession = () => {
     setCurrentSession(null);
+    setCurrentSessionId(null);
     setCurrentQuestionIndex(0);
     setUserResponse('');
     setShowFeedback(false);
@@ -433,6 +503,110 @@ READINESS LEVELS:
   const getCurrentQuestion = () => {
     if (!currentSession) return null;
     return currentSession.questions[currentQuestionIndex];
+  };
+
+  const startRecording = () => {
+    try {
+      // Check for browser support
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+      if (!SpeechRecognition) {
+        setError('Speech recognition not supported in this browser. Please use Chrome, Edge, or Safari.');
+        return;
+      }
+
+      const recognitionInstance = new SpeechRecognition();
+
+      // Configuration for best real-time experience
+      recognitionInstance.continuous = true;  // Keep listening
+      recognitionInstance.interimResults = true;  // Show interim results as user speaks
+      recognitionInstance.lang = 'en-US';
+      recognitionInstance.maxAlternatives = 1;
+
+      // Real-time results handler
+      recognitionInstance.onresult = (event: any) => {
+        let interim = '';
+        let final = '';
+
+        // Process all results
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+
+          if (event.results[i].isFinal) {
+            final += transcript + ' ';
+          } else {
+            interim += transcript;
+          }
+        }
+
+        // Update interim transcript (live feedback)
+        setInterimTranscript(interim);
+
+        // Append final results to user response
+        if (final) {
+          setUserResponse(prev => {
+            const needsSpace = prev.length > 0 && !/[\s.!?,]$/.test(prev);
+            return prev + (needsSpace ? ' ' : '') + final.trim();
+          });
+        }
+      };
+
+      // Handle errors
+      recognitionInstance.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+
+        if (event.error === 'no-speech') {
+          // User stopped speaking, just continue listening
+          return;
+        }
+
+        if (event.error !== 'aborted') {
+          setError(`Speech recognition error: ${event.error}`);
+        }
+
+        setIsRecording(false);
+        setInterimTranscript('');
+      };
+
+      // Handle end (auto-restart if still recording)
+      recognitionInstance.onend = () => {
+        if (isRecording) {
+          // Auto-restart if user is still recording
+          try {
+            recognitionInstance.start();
+          } catch (e) {
+            console.log('Recognition restart prevented');
+          }
+        }
+        setInterimTranscript('');
+      };
+
+      // Start recognition
+      recognitionInstance.start();
+      setRecognition(recognitionInstance);
+      setIsRecording(true);
+      setError(null);
+
+    } catch (error) {
+      console.error('Error starting speech recognition:', error);
+      setError('Failed to start speech recognition. Please check browser permissions.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (recognition) {
+      setIsRecording(false); // Set first to prevent auto-restart
+      recognition.stop();
+      setInterimTranscript('');
+    }
+  };
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
   };
 
   const getReadinessColor = (readiness: string) => {
@@ -445,6 +619,20 @@ READINESS LEVELS:
     }
   };
 
+  // Load history when switching to history tab
+  useEffect(() => {
+    if (activeTab === 'history') {
+      loadPracticeHistory();
+    }
+  }, [activeTab]);
+
+  // Save session whenever it updates
+  useEffect(() => {
+    if (currentSession && currentSessionId) {
+      saveSessionToDatabase(currentSession);
+    }
+  }, [currentSession, currentQuestionIndex]);
+
   // Timer effect
   useEffect(() => {
     if (timeRemaining > 0 && currentSession && !showFeedback) {
@@ -454,26 +642,18 @@ READINESS LEVELS:
   }, [timeRemaining, currentSession, showFeedback]);
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Brain className="h-5 w-5" />
-          AI Interview Coach
-        </CardTitle>
-        <CardDescription>
-          Personalized interview practice with real-time feedback and improvement recommendations
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {!currentSession && (
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="coach">Start Practice</TabsTrigger>
-              <TabsTrigger value="history">Practice History</TabsTrigger>
-            </TabsList>
+    <div className="w-full space-y-6">
+      {/* Setup Card */}
+      {!currentSession && (
+        <Card>
+          <CardContent className="pt-6">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="coach">Start Practice</TabsTrigger>
+                <TabsTrigger value="history">Practice History</TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="coach" className="space-y-6">
-              <div className="space-y-4">
+              <TabsContent value="coach" className="space-y-4 mt-6">
                 <div>
                   <label className="text-sm font-medium mb-2 block">Session Type</label>
                   <Select value={sessionType} onValueChange={setSessionType}>
@@ -510,41 +690,116 @@ READINESS LEVELS:
                   <Play className="h-4 w-4 mr-2" />
                   Start Coaching Session
                 </Button>
-              </div>
-            </TabsContent>
+              </TabsContent>
 
-            <TabsContent value="history" className="space-y-4">
-              <div className="text-center py-8 text-gray-500">
-                <Brain className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p>No practice sessions yet</p>
-                <p className="text-sm">Complete your first session to see progress tracking</p>
-              </div>
-            </TabsContent>
-          </Tabs>
-        )}
+              <TabsContent value="history" className="mt-6">
+                {loadingHistory ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <span className="ml-3 text-sm text-gray-600">Loading practice history...</span>
+                  </div>
+                ) : pastSessions.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <Clock className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p className="font-medium text-gray-700 mb-2">No Practice Sessions Yet</p>
+                    <p className="text-sm max-w-md mx-auto">
+                      Complete your first practice session to start tracking your progress
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {pastSessions.map((session) => (
+                      <Card key={session.id} className="border-l-4 border-l-blue-500">
+                        <CardHeader>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <CardTitle className="text-lg flex items-center gap-2">
+                                {session.sessionType === 'mock_interview' && <Users className="h-4 w-4" />}
+                                {session.sessionType === 'practice_drill' && <Code className="h-4 w-4" />}
+                                {session.sessionType === 'skill_focus' && <Target className="h-4 w-4" />}
+                                {session.sessionType.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                              </CardTitle>
+                              <p className="text-sm text-gray-500 mt-1">
+                                {new Date(session.startedAt).toLocaleDateString()} at {new Date(session.startedAt).toLocaleTimeString()}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <Badge variant={session.difficulty === 'hard' ? 'destructive' : session.difficulty === 'medium' ? 'default' : 'secondary'}>
+                                {session.difficulty}
+                              </Badge>
+                              <p className="text-xs text-gray-500 mt-2">
+                                {session.questionsData.length} questions
+                              </p>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          {session.status === 'completed' && session.responsesData ? (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-gray-600">Questions Answered:</span>
+                                <span className="font-medium">{session.responsesData.length} / {session.questionsData.length}</span>
+                              </div>
+                              {session.overallFeedback && (
+                                <>
+                                  <div className="flex items-center justify-between text-sm">
+                                    <span className="text-gray-600">Overall Score:</span>
+                                    <span className="font-medium">{session.overallFeedback.overallPerformance}/10</span>
+                                  </div>
+                                  <Badge className={getReadinessColor(session.overallFeedback.readiness)}>
+                                    {session.overallFeedback.readiness.replace('_', ' ')}
+                                  </Badge>
+                                </>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="text-sm text-yellow-700 bg-yellow-50 p-3 rounded">
+                              Session in progress ({session.currentQuestionIndex + 1} / {session.questionsData.length} questions)
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      )}
 
-        {isLoading && (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <span className="ml-3 text-sm text-gray-600">
-              Generating personalized coaching session...
-            </span>
-          </div>
-        )}
+      {/* Loading State */}
+      {isLoading && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className="ml-3 text-sm text-gray-600">
+                Generating personalized coaching session...
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-        {error && (
-          <div className="p-4 border border-red-200 rounded-md bg-red-50">
-            <p className="text-sm text-red-600">{error}</p>
-            <Button
-              onClick={startNewSession}
-              variant="outline"
-              size="sm"
-              className="mt-2"
-            >
-              Try Again
-            </Button>
-          </div>
-        )}
+      {/* Error State */}
+      {error && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="p-4 border border-red-200 rounded-md bg-red-50">
+              <p className="text-sm text-red-600">{error}</p>
+              <Button
+                onClick={startNewSession}
+                variant="outline"
+                size="sm"
+                className="mt-2"
+              >
+                Try Again
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
         {/* Active Session */}
         {currentSession && !currentSession.completedAt && (
@@ -607,23 +862,51 @@ READINESS LEVELS:
                     </div>
                   )}
 
-                  <Textarea
-                    value={userResponse}
-                    onChange={(e) => setUserResponse(e.target.value)}
-                    placeholder="Type your response here..."
-                    className="min-h-32"
-                  />
+                  <div className="relative">
+                    <Textarea
+                      value={userResponse + (interimTranscript ? ' ' + interimTranscript : '')}
+                      onChange={(e) => setUserResponse(e.target.value)}
+                      placeholder="Type your response here or use voice recording..."
+                      className="min-h-32"
+                      disabled={isRecording}
+                    />
+                    {isRecording && (
+                      <div className="absolute top-2 right-2 flex items-center gap-2 bg-red-50 px-3 py-1 rounded-full border border-red-200">
+                        <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                        <span className="text-xs text-red-700 font-medium">Listening</span>
+                      </div>
+                    )}
+                    {interimTranscript && (
+                      <div className="absolute bottom-2 left-2 text-xs text-gray-400 italic">
+                        {interimTranscript}
+                      </div>
+                    )}
+                  </div>
 
                   <div className="flex justify-between">
                     <div className="flex items-center gap-2">
                       <Button
-                        variant="outline"
+                        variant={isRecording ? "destructive" : "outline"}
                         size="sm"
-                        onClick={() => setIsRecording(!isRecording)}
+                        onClick={toggleRecording}
                       >
-                        {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                        {isRecording ? 'Stop' : 'Record'}
+                        {isRecording ? (
+                          <>
+                            <MicOff className="h-4 w-4 mr-1" />
+                            Stop Recording
+                          </>
+                        ) : (
+                          <>
+                            <Mic className="h-4 w-4 mr-1" />
+                            Record Answer
+                          </>
+                        )}
                       </Button>
+                      {isRecording && (
+                        <span className="text-xs text-gray-500">
+                          Speaking in real-time...
+                        </span>
+                      )}
                     </div>
                     <Button
                       onClick={submitResponse}
@@ -818,7 +1101,6 @@ READINESS LEVELS:
             </CardContent>
           </Card>
         )}
-      </CardContent>
-    </Card>
+    </div>
   );
 }

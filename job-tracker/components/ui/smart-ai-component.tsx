@@ -12,6 +12,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, RefreshCw, CheckCircle, Clock } from 'lucide-react';
 import { centralizedAIAnalysis, AnalysisType, AnalysisResult } from '@/lib/services/centralized-ai-analysis';
+import { AnalysisButton } from '@/components/shared/analysis-button';
+import { AnalysisLoadingState } from '@/components/shared/analysis-loading-state';
 
 interface SmartAIComponentProps {
   jobId: string;
@@ -62,6 +64,33 @@ export default function SmartAIComponent({
     isCached: false
   });
 
+  const checkCache = async () => {
+    // Check cache without triggering fresh analysis
+    try {
+      const result: AnalysisResult = await centralizedAIAnalysis.runAnalysis(
+        analysisType,
+        jobId,
+        userId,
+        token,
+        additionalData,
+        { forceRefresh: false }
+      );
+
+      if (result.cached && result.data) {
+        // Load cached data
+        setState({
+          data: result.data,
+          isLoading: false,
+          error: null,
+          isCached: true
+        });
+      }
+    } catch (error) {
+      // If cache check fails, just stay in idle state
+      console.log('No cached analysis found');
+    }
+  };
+
   const runAnalysis = async (forceRefresh: boolean = false) => {
     setState(prev => ({
       ...prev,
@@ -97,8 +126,14 @@ export default function SmartAIComponent({
   };
 
   useEffect(() => {
-    if (autoLoad && jobId && userId && token) {
-      runAnalysis();
+    if (jobId && userId && token) {
+      if (autoLoad) {
+        // Auto-load: run full analysis (which checks cache first)
+        runAnalysis();
+      } else {
+        // Don't auto-load, but DO check for cached data
+        checkCache();
+      }
     }
   }, [jobId, userId, token, analysisType]);
 
@@ -143,10 +178,10 @@ export default function SmartAIComponent({
 
       <CardContent>
         {state.isLoading && (
-          <div className="flex items-center justify-center py-8">
-            <RefreshCw className="h-6 w-6 animate-spin mr-2" />
-            <span>Generating {analysisType.replace('_', ' ')} analysis...</span>
-          </div>
+          <AnalysisLoadingState
+            type="generating"
+            message={`Generating ${analysisType.replace('_', ' ')} analysis...`}
+          />
         )}
 
         {state.error && (
@@ -156,14 +191,15 @@ export default function SmartAIComponent({
               <p className="text-red-800 font-medium">Analysis Failed</p>
               <p className="text-red-600 text-sm">{state.error}</p>
             </div>
-            <Button
+            <AnalysisButton
               onClick={() => runAnalysis(true)}
+              loading={state.isLoading}
+              icon={RefreshCw}
+              label="Retry"
               variant="outline"
               size="sm"
               className="ml-auto"
-            >
-              Retry
-            </Button>
+            />
           </div>
         )}
 
@@ -176,24 +212,26 @@ export default function SmartAIComponent({
               <span>
                 Analysis generated: {new Date(helpers.safeGet('analysisDate', new Date().toISOString())).toLocaleDateString()}
               </span>
-              <Button
+              <AnalysisButton
                 onClick={() => runAnalysis(true)}
+                loading={state.isLoading}
+                icon={RefreshCw}
+                label="Refresh"
                 variant="outline"
                 size="sm"
-                disabled={state.isLoading}
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
-              </Button>
+              />
             </div>
           </div>
         )}
 
         {!state.data && !state.isLoading && !state.error && (
           <div className="text-center py-8">
-            <Button onClick={() => runAnalysis()}>
-              Generate {title}
-            </Button>
+            <AnalysisButton
+              onClick={() => runAnalysis()}
+              loading={state.isLoading}
+              icon={CheckCircle}
+              label={`Generate ${title}`}
+            />
           </div>
         )}
       </CardContent>
